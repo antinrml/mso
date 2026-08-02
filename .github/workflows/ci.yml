@@ -1,0 +1,59 @@
+name: CI
+
+# MANUAL ONLY — `gh workflow run CI`, or the Actions tab.
+#
+# This ran on every push to main and every PR until 2026-07-30, at roughly 80 s of
+# hosted-runner time per push, duplicating a `pre-push` hook that already runs
+# typecheck + lint + test + check locally and blocks the push when they fail.
+#
+# Three steps here are NOT covered by that hook, and they are the reason this file
+# still exists rather than being deleted:
+#   • `pnpm install --frozen-lockfile` from a clean checkout — the only thing that
+#     catches lockfile drift, because the hook runs against an existing node_modules
+#   • `bash -n scripts/install.sh`
+#   • `pnpm build`
+# So run it by hand before cutting a release, or after touching package.json,
+# pnpm-lock.yaml or scripts/install.sh.
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate installer syntax
+        run: bash -n scripts/install.sh
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Slice checks
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build

@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+# One-click install for the apps MSO can own: Hermes and OpenClaw.
+#
+# WHY A SCRIPT, not an argv assembled in TypeScript. Each install is a SEQUENCE —
+# fetch the installer, run it, configure it, install its service — while the job
+# layer spawns exactly one child and never a shell (lib/managed-apps/job-child.ts).
+# Keeping the sequence here honours that contract, puts the steps under version
+# control where they can be read and diffed, and keeps the argv that ends up in the
+# persisted job record down to two elements.
+#
+# SECRETS. The provider key arrives in the ENVIRONMENT and never in this script's
+# argv, because os-vps stores a job's argv in the job record and writes it to the
+# audit log (app/api/v1/managed-apps/[id]/install/route.ts). Where an upstream CLI
+# has no env path, the key is re-exported to it as a flag: that argv belongs to a
+# transient child of this box, visible in `ps` only to the uid that could read the
+# resulting config file anyway, and it is never persisted. It is not passed to
+# anything else, and it is not echoed.
+#
+# Everything here must be NON-INTERACTIVE. The job layer gives its child no stdin
+# (JOB_STDIO), so a prompt does not hang — it gets EOF and the install dies
+# halfway, which is worse than not starting.
+set -euo pipefail
+
+APP="${1:-}"
+# loopback by default, deliberately. This runs on machines that are not mine: a
+# gateway bound to the LAN on someone's first install is an exposure they never
+# asked for. This host overrides it because Traefik has to reach the gateway.
+BIND="${MSO_INSTALL_GATEWAY_BIND:-loopback}"
+PROVIDER="${MSO_INSTALL_PROVIDER:-}"
+KEY="${MSO_INSTALL_API_KEY:-}"
+# The origin MSO will frame this app's dashboard from (lib/managed-apps/origin.ts:
+# https://<id>.os.rahmanef.com). Empty in single-origin deployments.
+APP_ORIGIN="${MSO_INSTALL_APP_ORIGIN:-}"
+
+log() { printf '\n=== %s\n' "$*"; }
+
+case "$APP" in
+hermes | openclaw) ;;
+*)
+  echo "usage: managed-app-install <hermes|openclaw>" >&2
+  exit 2
+  ;;
+esac
+
+# ---------------------------------------------------------------- hermes ----
+install_hermes() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  # Downloaded, then run from a file — not `curl | bash`. The bytes that execute
+  # are the bytes on disk, a truncated download fails at curl instead of running
+  # half a script, and the job transcript can name what it fetched.
+  log "downloading the Hermes installer"
+  curl -fsSL --max-time 300 https://hermes-agent.nousresearch.com/install.sh -o "$tmp/install.sh"
+  printf 'installer: %s bytes, sha256 %s\n' "$(wc -c <"$tmp/install.sh")" "$(sha256sum <"$tmp/install.sh" | cut -c1-16)"
+
+  log "running the installer (non-interactive)"
+  # --non-interactive makes it skip every stage that would ask (install.sh:3211).
+  # It pulls uv, Python, Node and ffmpeg itself; sudo is used only to apt-get git
+  # and degrades to a no-op without it.
+  bash "$tmp/install.sh" --non-interactive
+
+  hermes_cmd
+  log "configuring from the environment"
+  # `setup --non-interactive` is documented as "use defaults/env vars", and Hermes
+  # reads ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY / NOUS_API_KEY —
+  # so for Hermes the key never becomes an argv at all.
+  "${HERMES_CMD[@]}" setup --non-interactive
+
+  log "installing the gateway service"
+  "${HERMES_CMD[@]}" gateway install --start-now --start-on-login
+
+  install_hermes_dashboard
+}
+
+# The gateway is NOT the dashboard, and shipping only the gateway is what made a
+# fresh install look broken: `hermes gateway install` creates hermes-gateway.service
+# (Telegram/Discord/WhatsApp plumbing) and binds nothing on 9119, so the MSO iframe —
+# pointed at HERMES_DASHBOARD_URL, default http://127.0.0.1:9119 — got ECONNREFUSED and
+# rendered the proxy's own {"error":"managed application upstream unavailable"}.
+# This box hid the gap for months because its 9119 unit was written by hand.
+#
+# There is no `hermes dashboard install`, so the unit is ours. `hermes serve` is NOT a
+# substitute: it answers /api/* but replies 404 {"error":"Headless backend (hermes serve):
+# web UI disabled"} at /, which is a dead iframe with extra steps.
+#
+# No --skip-build on purpose. The first start runs `npm install && vite build` into
+# hermes_cli/web_dist (~1 min); every later start finds it current and comes up in 2s.
+# --skip-build would shave nothing off the warm path and turn a missing dist into a
+# permanently broken service instead of a slow first boot.
+install_hermes_dashboard() {
+  local unit="$HOME/.config/systemd/user/hermes-dashboard.service"
+  log "installing the dashboard service (127.0.0.1:${HERMES_DASHBOARD_PORT:-9119})"
+  mkdir -p "$(dirname "$unit")"
+  cat >"$unit" <<UNIT
+[Unit]
+Description=Hermes Agent Dashboard (web UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${HERMES_CMD[*]} dashboard --no-open --host 127.0.0.1 --port ${HERMES_DASHBOARD_PORT:-9119}
+WorkingDirectory=$HOME/.hermes
+Environment="HERMES_HOME=$HOME/.hermes"
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+UNIT
+
+  # Without linger a user unit dies with the last session, so the dashboard would
+  # vanish on logout and never return after a reboot. Idempotent, needs no sudo.
+  loginctl enable-linger "$USER" >/dev/null 2>&1 || true
+  systemctl --user daemon-reload
+  systemctl --user enable --now hermes-dashboard.service
+
+  # Wait for the FIRST build rather than declaring victory at spawn: an install that
+  # reports success while the iframe is still refused is the bug this whole function
+  # exists to fix. Not fatal — the unit keeps building after the job ends.
+  local i
+  for i in $(seq 1 90); do
+    if curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}/api/health"; then
+      log "dashboard is answering on 9119"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "dashboard did not answer within 180s — still building? check: systemctl --user status hermes-dashboard" >&2
+}
+
+# Sets HERMES_CMD. An ARRAY, because the last candidate is two words.
+#
+# Order matters and cost three consecutive failed installs to learn. The installer's own
+# launcher at ~/.local/bin/hermes is a bash wrapper that unsets PYTHONPATH/PYTHONHOME and
+# execs the VENV python — that is the one that works. But `~/.local/bin` is NOT on the PATH
+# a systemd service inherits (os-vps gets
+# /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin), so `command -v hermes`
+# misses it, and the next candidate down — ~/.hermes/hermes-agent/hermes — carries a
+# `#!/usr/bin/env python3` shebang. That runs the SYSTEM python, which has no `dotenv`, and
+# every install died on
+#   ModuleNotFoundError: No module named 'dotenv'   (env_loader.py:11)
+# with the venv sitting right there fully populated. So: explicit paths before PATH, and
+# the venv interpreter as the floor. Never the bare hermes-agent/hermes.
+hermes_cmd() {
+  local candidate
+  for candidate in "$HOME/.local/bin/hermes" "$HOME/.hermes/bin/hermes"; do
+    if [ -x "$candidate" ]; then
+      HERMES_CMD=("$candidate")
+      return 0
+    fi
+  done
+  if command -v hermes >/dev/null 2>&1; then
+    HERMES_CMD=("$(command -v hermes)")
+    return 0
+  fi
+  # What the working hermes-gateway.service unit used before any of this existed.
+  if [ -x "$HOME/.hermes/hermes-agent/venv/bin/python" ]; then
+    HERMES_CMD=("$HOME/.hermes/hermes-agent/venv/bin/python" -m hermes_cli.main)
+    return 0
+  fi
+  echo "hermes: installed, but no launcher and no venv found under ~/.hermes" >&2
+  return 1
+}
+
+# -------------------------------------------------------------- openclaw ----
+install_openclaw() {
+  log "installing the OpenClaw CLI"
+  # No sudo: npm's prefix is a user directory on any host set up this way
+  # (`npm config get prefix` → ~/.local here). A root-owned prefix is the one
+  # case this cannot fix, and npm says so plainly enough to act on.
+  npm install -g openclaw@latest
+
+  local openclaw
+  openclaw="$(openclaw_bin)"
+
+  local -a auth=(--auth-choice skip)
+  if [ -n "$KEY" ]; then
+    # OpenClaw's onboard takes the key as a flag. Env would be tidier, but a key
+    # that silently fails to register leaves an "installed" app that cannot answer
+    # a single prompt — the exact opposite of one-click. See the SECRETS note.
+    case "$PROVIDER" in
+    anthropic) auth=(--auth-choice apiKey --anthropic-api-key "$KEY") ;;
+    openai) auth=(--auth-choice openai-api-key --openai-api-key "$KEY") ;;
+    openrouter) auth=(--auth-choice openrouter-api-key --openrouter-api-key "$KEY") ;;
+    google) auth=(--auth-choice gemini-api-key --gemini-api-key "$KEY") ;;
+    groq) auth=(--auth-choice groq-api-key --groq-api-key "$KEY") ;;
+    xai) auth=(--auth-choice xai-api-key --xai-api-key "$KEY") ;;
+    deepseek) auth=(--auth-choice deepseek-api-key --deepseek-api-key "$KEY") ;;
+    *)
+      echo "unknown provider '$PROVIDER' — installing without one" >&2
+      auth=(--auth-choice skip)
+      ;;
+    esac
+  fi
+
+  log "running onboard (non-interactive) and installing the gateway service"
+  # --accept-risk is REQUIRED by --non-interactive: it is the acknowledgement that
+  # an agent with system access is a loaded gun. The skips drop the parts that are
+  # a conversation (channels, search, skills, hooks) — all addable later from the
+  # app's own UI, none of them needed for the gateway to come up healthy.
+  "$openclaw" onboard \
+    --non-interactive \
+    --accept-risk \
+    --flow quickstart \
+    --gateway-auth token \
+    --gateway-bind "$BIND" \
+    --install-daemon \
+    --skip-channels \
+    --skip-search \
+    --skip-skills \
+    --skip-hooks \
+    "${auth[@]}"
+
+  # OpenClaw's Control UI refuses a WebSocket whose browser origin is not on this
+  # list, and the page it refuses is the one MSO frames — "Browser origin not
+  # allowed", a working gateway behind a dead dashboard. onboard has no flag for it,
+  # so set it here. Origin only, never a wildcard: this list is what stops any other
+  # page in a browser from driving the agent.
+  if [ -n "$APP_ORIGIN" ]; then
+    log "allowing the MSO app origin on the Control UI"
+    "$openclaw" config set gateway.controlUi.allowedOrigins "[\"$APP_ORIGIN\"]" --strict-json
+    "$openclaw" gateway restart >/dev/null 2>&1 || true
+  fi
+}
+
+openclaw_bin() {
+  if command -v openclaw >/dev/null 2>&1; then
+    command -v openclaw
+  else
+    # `npm i -g` lands in a prefix that a non-login child's PATH may not carry.
+    echo "$(npm config get prefix)/bin/openclaw"
+  fi
+}
+
+case "$APP" in
+hermes) install_hermes ;;
+openclaw) install_openclaw ;;
+esac
+
+log "$APP install finished"

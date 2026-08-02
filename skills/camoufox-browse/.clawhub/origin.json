@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "camoufox-browse",
+  "ownerHandle": "zenaufa",
+  "installedVersion": "1.0.7",
+  "installedAt": 1784823891947,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "6781b0a4a341fc0196b2ca27c63cf688ce5b266658695e929b69f3cb85853343",
+    "integrity": "sha256-Z4GwpKNB/AGWssonxjz2iM5bJmZYaV6Sm2nzy4WFM0M="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "31199923690a74f28e36d90e374d767d2d399347e13eb309f09e7e44ca7347f0"
+  }
+}

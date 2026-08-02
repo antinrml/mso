@@ -1,0 +1,35 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.vercel
+# os-browser: track the service source, ignore its deps + local dev probes
+os-browser/*
+!os-browser/server.mjs
+!os-browser/package.json
+!os-browser/package-lock.json
+!os-browser/README.md
+convex-backend/
+.os-vps/
+# local session progress log (not tracked)
+progress.md
+
+# Coverage output (pnpm coverage) — generated, never committed.
+coverage/
+
+# Agent/debug scratch harnesses — never committed, never run in CI.
+**/zz-*
+
+# Camoufox browser-profile data: live session cookies, saved logins and the key that
+# decrypts them. It lives at ~/.local/share/camoufox/profiles/ and must never be inside a
+# checkout — this is the backstop for a stray copy, or a CAMOUFOX_PROFILE aimed here.
+camoufox-profile*/
+**/cookies.sqlite*
+**/key4.db
+**/logins.json

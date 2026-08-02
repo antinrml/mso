@@ -1,0 +1,298 @@
+// SERVER-ONLY. Path resolution + bounds for host filesystem access. os-vps runs
+// as a host process, so /api/v1 talks to the FS directly (no agent). READ and
+// WRITE roots are separate: reads can be wide (browse), writes are narrow so the
+// browser shell can't clobber system files. Symlinks are realpath-resolved BEFORE the
+// bounds check so a link can't escape a root. Configure with OS_FS_READ_ROOTS /
+// OS_FS_WRITE_ROOTS (colon-separated; "~" = home, "/" = whole filesystem).
+import { existsSync, promises as fs, readdirSync, realpathSync } from "fs";
+import os from "os";
+import path from "path";
+import type { FsRoot } from "@/lib/os-api/types";
+import { HostError } from "./host-error";
+
+export function homeDir(): string {
+  return os.homedir();
+}
+
+function expandHome(p: string): string {
+  if (p === "~") return homeDir();
+  if (p.startsWith("~/")) return path.join(homeDir(), p.slice(2));
+  return p;
+}
+
+function rootsFromEnv(name: string, fallback: string[]): string[] {
+  const env = process.env[name];
+  if (env && env.trim())
+    return env.split(":").map((s) => s.trim()).filter(Boolean).map(expandHome);
+  return fallback;
+}
+
+export function readRootList(): string[] {
+  const h = homeDir();
+  return rootsFromEnv("OS_FS_READ_ROOTS", [h, path.join(h, "projects")]);
+}
+
+export function writeRootList(): string[] {
+  const h = homeDir();
+  return rootsFromEnv("OS_FS_WRITE_ROOTS", [h, path.join(h, "projects")]);
+}
+
+export function isUnderRoot(target: string, root: string): boolean {
+  const rel = path.relative(root, target);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+// Credential denylist: even inside a legal root, the app's OWN secret files are
+// off-limits to the FS API. Reading .env.local would leak OS_SESSION_SECRET —
+// turning one stolen session into the ability to mint cookies forever — and
+// ~/.os-vps holds the device allowlist, BYOK key and browser profile (cookies).
+// Other projects' .env files stay readable (session = owner, their call).
+const APP_DIR = (() => {
+  try {
+    return realpathSync(process.cwd());
+  } catch {
+    return process.cwd();
+  }
+})();
+
+// The app's own dir (realpath'd). Exposed so the zip stream can force-strip its
+// `.env*` secrets when a PARENT of it is archived — `zip -r` recurses past the
+// per-name credential gate, so that one blind spot needs an explicit exclude.
+export function appDir(): string {
+  return APP_DIR;
+}
+
+// Defense-in-depth: high-value credential material in $HOME is blocked even
+// though the session belongs to the owner — a hijacked session shouldn't walk
+// away with SSH keys or shell history. Override with OS_FS_ALLOW_SENSITIVE=1
+// (or narrow the roots entirely via OS_FS_READ_ROOTS).
+const SENSITIVE_HOME = [
+  ".ssh", ".gnupg", ".secrets", ".npmrc", "vault",
+  // shell + REPL history (the host shell may be zsh/fish, not just bash)
+  ".bash_history", ".zsh_history", ".python_history", ".mysql_history",
+  // cloud / infra credentials
+  ".aws", ".config/gcloud", ".kube", ".docker", ".config/rclone",
+  ".git-credentials", ".netrc", ".config/git/credentials",
+  // AI/dev-tool + OS keyring credentials (account tokens = full account access)
+  ".claude", ".claude.json", ".config/gh", ".config/anthropic", ".local/share/keyrings",
+  ".config/claude", ".config/GitHub", ".codex", ".gemini", ".copilot", ".mcp-auth",
+  ".convex", ".openclaw/credentials", ".openclaw/identity",
+  // database creds + password-manager CLIs
+  ".pgpass", ".config/op", ".config/lpass",
+  // loose private keys saved outside ~/.ssh (heredoc dumps, exports, etc.)
+  "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa",
+];
+
+export function isSensitivePath(real: string): boolean {
+  if (process.env.OS_FS_ALLOW_SENSITIVE === "1") return false;
+  const h = homeDir();
+  return SENSITIVE_HOME.some((n) => {
+    const p = path.join(h, n);
+    return real === p || isUnderRoot(real, p);
+  });
+}
+
+/** The app's OWN `.env*` — `.env.local` holds OS_SESSION_SECRET, so a copy of one
+ *  into a readable spot turns one stolen session into forever-mintable cookies. */
+export function isAppSecret(real: string): boolean {
+  const base = path.basename(real);
+  return path.dirname(real) === APP_DIR && base.startsWith(".env") && base !== ".env.example";
+}
+
+function isCredentialPath(real: string): boolean {
+  const store = path.join(homeDir(), ".os-vps");
+  if (real === store || isUnderRoot(real, store)) return true;
+  if (isSensitivePath(real)) return true;
+  const base = path.basename(real);
+  // Private keys land anywhere (heredoc dumps, downloaded service accounts); the
+  // extension is the only reliable marker outside the fixed ~/ locations above.
+  if (base.endsWith(".pem")) return true;
+  return isAppSecret(real);
+}
+
+/** The app's own secrets sitting UNDER `realBase` — empty when APP_DIR is not a
+ *  descendant, or holds no secrets. The per-path gate is exact-or-under, so a
+ *  recursive walk starting at a PARENT of APP_DIR never consults it for these. */
+function appSecretsUnder(realBase: string): string[] {
+  const dir = appDir();
+  if (dir === realBase || !isUnderRoot(dir, realBase)) return [];
+  try {
+    return readdirSync(dir)
+      .map((n) => path.join(dir, n))
+      .filter((p) => isAppSecret(p));
+  } catch {
+    return [];
+  }
+}
+
+// The per-path gate above is exact-or-under, so a PARENT of a denied entry never
+// matches it — and the two recursive callers (`zip -r`, `fs.cp {recursive}`) walk
+// straight past the gate into the children. Both need the nested locations named
+// explicitly. Filtered by existence so the callers never refuse (or exclude) over
+// a path that isn't on this box.
+function sensitiveUnder(realBase: string): string[] {
+  if (process.env.OS_FS_ALLOW_SENSITIVE === "1") return [];
+  const h = homeDir();
+  return [...SENSITIVE_HOME, ".os-vps"]
+    .map((n) => path.join(h, n))
+    .filter((p) => p !== realBase && isUnderRoot(p, realBase) && existsSync(p));
+}
+
+// Recursive READ (zip): NARROW the archive rather than refuse it — same shape as
+// appSecretExcludes. Info-ZIP `*` spans `/` and entries are stored relative to the
+// archive base, so `rel` drops a file and `rel/*` drops a whole dir.
+export function sensitiveExcludes(realBase: string): string[] {
+  return sensitiveUnder(realBase).flatMap((p) => {
+    const rel = path.relative(realBase, p);
+    return [rel, `${rel}/*`];
+  });
+}
+
+// Recursive WRITE (copy/move): REFUSE. Filtering is wrong for move — its EXDEV
+// branch is cp-then-rm, so a skipped file would be deleted instead of moved. And
+// a completed move relocates credentials OUT of their denylisted path, which makes
+// them plainly readable at the destination (relocate-then-read escalation).
+export function assertNoSensitiveDescendants(real: string): void {
+  const hit = sensitiveUnder(real)[0];
+  if (hit)
+    throw new HostError(
+      `Refusing: this directory contains a credential path (${path.relative(real, hit)})`,
+    );
+}
+
+// The app's own `.env*` needed the narrower fix the ~/ list can't give: on the
+// DEFAULT roots (~ and ~/projects) APP_DIR is a descendant of a copyable dir, so
+// `copy(~/projects, ~/backup)` walked past the per-path gate and duplicated
+// .env.local somewhere /api/v1/fs/read serves. Refusing outright would block
+// copying ~/projects, which is an ordinary thing to do — so copy SKIPS them and
+// only move refuses.
+//
+// Recursive COPY: a filter for `fs.cp`. Returns undefined when there is nothing
+// to skip, so the ordinary copy path stays exactly as it was.
+export function appSecretCopyFilter(realBase: string): ((src: string) => boolean) | undefined {
+  const secrets = new Set(appSecretsUnder(realBase));
+  return secrets.size ? (src: string) => !secrets.has(src) : undefined;
+}
+
+// Recursive MOVE: REFUSE, for the same reason the ~/ list does. A filter is wrong
+// here — the EXDEV branch is cp-then-rm, so a skipped secret would be DELETED
+// rather than moved, and a completed move relocates it out of its denylisted path
+// and makes it plainly readable at the destination.
+export function assertNoAppSecretDescendants(real: string): void {
+  const hit = appSecretsUnder(real)[0];
+  if (hit)
+    throw new HostError(
+      `Refusing: this directory contains the cockpit's own secrets (${path.relative(real, hit)})`,
+    );
+}
+
+function assertNotCredential(real: string): void {
+  if (isCredentialPath(real)) throw new HostError("Access to credential/sensitive files is blocked");
+}
+
+// Upload target guard — the write-side equivalent of safeWritePath for a file
+// that will land at `full` inside the already-resolved `destReal`. Upload writers
+// create intermediate dirs, so we can't realpath the (not-yet-existing) parent as
+// safeWritePath does; instead: (1) `full` is lexically under destReal, (2) the
+// DEEPEST EXISTING ancestor realpaths to still-under destReal (a symlinked
+// intermediate dir can't redirect the write outside), and (3) `full` is not a
+// credential/sensitive file — the same denylist writeFile/move/copy enforce but
+// the upload path was skipping (a session could otherwise drop
+// ~/.ssh/authorized_keys or ~/.os-vps/auth-devices.json via /api/v1/fs/upload).
+export async function assertUploadTarget(full: string, destReal: string): Promise<void> {
+  if (!isUnderRoot(full, destReal)) throw new HostError("Upload path escapes destination");
+  for (let anc = path.dirname(full); ; ) {
+    try {
+      const real = await fs.realpath(anc);
+      if (!isUnderRoot(real, destReal)) throw new HostError("Upload path escapes destination via symlink");
+      break;
+    } catch (e) {
+      if (e instanceof HostError) throw e;
+      const parent = path.dirname(anc);
+      if (parent === anc) break; // walked to the fs root; nothing existed
+      anc = parent;
+    }
+  }
+  assertNotCredential(full);
+}
+
+async function realRoots(list: string[]): Promise<string[]> {
+  return Promise.all(
+    list.map(async (r) => {
+      try {
+        return await fs.realpath(r);
+      } catch {
+        return path.resolve(r);
+      }
+    }),
+  );
+}
+
+// Realpath-resolved WRITE roots — shared by safeWritePath/assertNotRoot here and
+// exec.ts's cwd bounds, so the realpath-fallback strategy lives in one place.
+export async function resolveWriteRoots(): Promise<string[]> {
+  return realRoots(writeRootList());
+}
+
+// READ: "/" is the filesystem root (browse-anywhere if a read root allows it);
+// "~"/"" = home. Resolves symlinks, then asserts inside a read root.
+export async function resolveReadable(requested: string): Promise<string> {
+  const h = homeDir();
+  let absolute: string;
+  if (!requested || requested === "~") absolute = h;
+  else if (requested.startsWith("~/")) absolute = path.join(h, requested.slice(2));
+  else absolute = path.resolve(requested);
+  const real = await fs.realpath(path.resolve(absolute));
+  const rr = await realRoots(readRootList());
+  if (!rr.some((r) => isUnderRoot(real, r))) throw new HostError("Path outside readable roots");
+  assertNotCredential(real);
+  return real;
+}
+
+// WRITE: "/" collapses to home (never the FS root). When !mustExist the parent
+// is checked (target doesn't exist yet). Asserts inside a write root.
+export async function safeWritePath(requested: string, mustExist: boolean): Promise<string> {
+  const h = homeDir();
+  let absolute: string;
+  if (!requested || requested === "~" || requested === "/") absolute = h;
+  else if (requested.startsWith("~/")) absolute = path.join(h, requested.slice(2));
+  else absolute = path.resolve(requested);
+  const rr = await realRoots(writeRootList());
+  if (mustExist) {
+    const real = await fs.realpath(absolute);
+    if (!rr.some((r) => isUnderRoot(real, r))) throw new HostError("Path outside writable roots");
+    assertNotCredential(real);
+    return real;
+  }
+  const parent = await fs.realpath(path.dirname(absolute));
+  if (!rr.some((r) => isUnderRoot(parent, r))) throw new HostError("Path outside writable roots");
+  const joined = path.join(parent, path.basename(absolute));
+  assertNotCredential(joined);
+  return joined;
+}
+
+export async function assertNotRoot(p: string): Promise<void> {
+  const rr = await realRoots(writeRootList());
+  if (rr.some((r) => r === p)) throw new HostError("Refusing to modify a root directory");
+}
+
+function labelFor(p: string): string {
+  const h = homeDir();
+  if (p === "/") return "Filesystem";
+  if (p === h) return "Home";
+  if (p === path.join(h, "projects")) return "Projects";
+  return path.basename(p) || p;
+}
+
+// Sidebar jump-points: Home + Projects, plus any extra read roots (e.g. "/").
+export function resolveRoots(): FsRoot[] {
+  const h = homeDir();
+  const base: FsRoot[] = [
+    { label: "Home", path: h },
+    { label: "Projects", path: path.join(h, "projects") },
+  ];
+  const extra = readRootList()
+    .filter((p) => p !== h && p !== path.join(h, "projects"))
+    .map((p) => ({ label: labelFor(p), path: p }));
+  return [...base, ...extra];
+}

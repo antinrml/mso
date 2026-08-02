@@ -1,0 +1,40 @@
+import { managedAppOrigin } from "@/lib/managed-apps/origin";
+import type { ManagedAppFeature, ManagedAppId } from "@/lib/managed-apps/types";
+
+/** ONE window per managed app, opened on the vendor SPA root.
+ *
+ *  MSO used to scrape each upstream's built bundle and spawn a window per nav route.
+ *  That is gone: both dashboards ship their own sidebar, so re-hosting their navigation
+ *  was work with no payoff and six regexes against minified third-party JS holding it up.
+ *  The window shows the app; the app shows its own menu. */
+export function dashboardFeature(id: ManagedAppId, title: string): ManagedAppFeature {
+  return { id: `${id}:overview`, applicationId: id, title, route: "/", source: "nav-bundle", available: true };
+}
+
+/** The CLI the window falls back to when no dashboard origin is configured, and what the
+ *  UI/CLI toggle shows. `status` only: it exists on both (verified on this host against
+ *  `hermes --help` / `openclaw --help`) and only reads. Nothing here may be a verb that
+ *  starts WRITING unasked — `openclaw config`, `openclaw doctor` and `hermes model` all
+ *  do, which is why this is a fixed command and not a lookup the caller can widen. */
+export function cliCommand(feature: ManagedAppFeature): string {
+  return `${feature.applicationId} status`;
+}
+
+/** Where this app's dashboard is served from — the iframe `src` and the open-in-a-tab
+ *  link, which must agree — or null when this deployment serves no dashboard at all.
+ *
+ *  The app's OWN host, ROOT-mounted: `proxy.ts` rewrites every path on that host into this
+ *  app's proxy, so `/chat` there IS the proxy route, no path prefix. Root-mounting is why
+ *  no HTML/CSS rewriting is needed — the upstream's own URLs resolve as shipped. Hermes
+ *  emits them root-absolute (`/assets/x.js`, `next=/sessions`); OpenClaw emits them
+ *  `./`-relative with no <base>, which survives its nested routes because its static
+ *  handler answers /assets at any path depth.
+ *
+ *  Without a host template there is NO fallback to a path on the cockpit origin. That mode
+ *  put upstream JS in a realm holding the user's session, where `window.top.fetch` and
+ *  `window.open('/')` both reach /api/v1/exec and no header can intervene. A deployment
+ *  that cannot give each app its own origin does not show the vendor UI. */
+export function featureSource(feature: ManagedAppFeature): string | null {
+  const origin = managedAppOrigin(feature.applicationId);
+  return origin ? `${origin}/${feature.route.replace(/^\/+/, "")}` : null;
+}

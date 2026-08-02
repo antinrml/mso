@@ -1,0 +1,26 @@
+{
+  "$schema": "https://resource.rahmanef.com/slice-schema.json",
+  "slug": "camoufox-browser",
+  "version": "0.1.0",
+  "category": "ui",
+  "kind": "full",
+  "title": "Browser — real Firefox over VNC",
+  "description": "OS app: the browser. A real Camoufox (anti-fingerprinting Firefox) running on a headless X display on the host, shown over noVNC. Replaces the old iframe browser, which could only render the minority of sites that permit framing. The /camoufox-vnc bridge is gated by a verified cockpit session in proxy.ts.",
+  "namespace": "@/features/camoufox-browser",
+  "frontend": {
+    "slicePath": "frontend/slices/camoufox-browser",
+    "configExport": "camoufoxBrowserApp"
+  },
+  "deps": {
+    "npm": ["lucide-react"],
+    "shadcn": ["button"],
+    "env": ["CAMOUFOX_NOVNC_URL", "CAMOUFOX_VNC_PASSWD_TEXT"],
+    "peers": [
+      { "slug": "os-shell", "range": "^0.1", "reason": "renders as a window app" }
+    ]
+  },
+  "registers": ["registry"],
+  "audit": ["bp:ui-consistency"],
+  "license": "MIT",
+  "tags": ["os", "browser", "camoufox", "vnc", "ui"]
+}

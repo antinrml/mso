@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DISPLAY_NUM="${CAMOUFOX_DISPLAY_NUM:-92}"
+DISPLAY=":${DISPLAY_NUM}"
+VNC_PORT="${CAMOUFOX_VNC_PORT:-5902}"
+NOVNC_PORT="${CAMOUFOX_NOVNC_PORT:-6080}"
+GEOMETRY="${CAMOUFOX_GEOMETRY:-1440x920x24}"
+# NOT ~/.cache — that directory's whole social contract is "safe to delete", and this
+# path holds the live LinkedIn/Google logins, cookies and history. ~/.local/share is the
+# XDG home for data you would miss. If this path is ever wrong, `mkdir -p` below silently
+# creates an EMPTY profile and the logins look like they vanished, with no error anywhere.
+PROFILE="${CAMOUFOX_PROFILE:-$HOME/.local/share/camoufox/profiles/linkedin}"
+# Empty by default, and deliberately NOT passed when empty. A URL on the command line is
+# opened as an EXTRA tab on top of the restored session, so setting this to about:blank
+# left one dead "New Tab" behind on every power-on, forever. With no URL at all,
+# browser.startup.page=3 restores the tabs and stops there — the restored tabs come back
+# unloaded, so the landing state costs nothing until something is clicked.
+URL="${CAMOUFOX_START_URL:-}"
+BROWSER="${CAMOUFOX_BROWSER:-/home/rahman/.cache/camoufox/browsers/official/152.0.4-beta.28-924f3109/camoufox}"
+
+mkdir -p "$PROFILE"
+# 0700, enforced every start. What is in here is a live Google session (SID,
+# __Secure-1PSID, SAPISID) plus LinkedIn's li_at — cookie theft is a full account
+# takeover with no password and no 2FA prompt. Firefox itself writes cookies.sqlite
+# world-readable (0644); today only the 0700 on ~/.local/share stands between that and
+# every other account on the box, and one careless chmod up the chain removes it.
+chmod 700 "$PROFILE"
+
+# Credential snapshot, taken BEFORE the browser opens the DBs, so it captures exactly what
+# the previous session left on disk. These files ARE the logged-in-ness — losing them means
+# logging in again by hand on a display that has no password manager. Three generations,
+# not one: if what went wrong was a logout or a session invalidation, the newest snapshot
+# is already poisoned and you need to roll back past it.
+# Restore: stop the unit, `cp -p $SNAPDIR/1/* $PROFILE/`, start.
+SNAPDIR="${CAMOUFOX_SNAPSHOT_DIR:-$HOME/.local/state/camoufox/session-backup}"
+if [ -f "$PROFILE/cookies.sqlite" ]; then
+  mkdir -p "$SNAPDIR"
+  chmod 700 "$SNAPDIR" "$(dirname "$SNAPDIR")"
+  rm -rf "${SNAPDIR:?}/3"
+  for n in 2 1; do
+    if [ -d "$SNAPDIR/$n" ]; then mv "$SNAPDIR/$n" "$SNAPDIR/$((n + 1))"; fi
+  done
+  mkdir -p "$SNAPDIR/1"
+  # The -wal matters as much as the .sqlite: cookies written since the last checkpoint
+  # live only there, and a copy of the .sqlite alone silently loses them.
+  cp -p "$PROFILE"/cookies.sqlite* "$PROFILE"/key4.db "$PROFILE"/cert9.db "$SNAPDIR/1/" 2>/dev/null || true
+  chmod -R go-rwx "$SNAPDIR"
+fi
+
+# Reopen the previous windows and tabs. The session is powered off and on by hand now, so
+# without this every power cycle loses whatever was open. Gecko already writes
+# recovery.jsonlz4 every 15 s — page=3 is only what makes it READ it back, including after
+# the ungraceful stop this unit always gets. Appended once, not rewritten: user.js is
+# re-applied over prefs.js on every start, so one line here permanently wins.
+grep -qs "browser.startup.page" "$PROFILE/user.js" ||
+  printf 'user_pref("browser.startup.page", 3);\n' >>"$PROFILE/user.js"
+
+rm -f "/tmp/.X${DISPLAY_NUM}-lock"
+
+cleanup() {
+  jobs -pr | xargs -r kill 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+Xvfb "$DISPLAY" -screen 0 "$GEOMETRY" -nolisten tcp &
+sleep 0.5
+
+# A window manager is REQUIRED, not cosmetic. noVNC's resize=remote asks x11vnc to
+# change the RANDR screen size to the client's viewport (this is what makes the
+# browser usable on a phone instead of a 0.27x letterboxed thumbnail). With no WM
+# running, a top-level window is sized once at map time and never reflows on that
+# change, so the client gets a crisp but CROPPED top-left corner of a 1440px window.
+# matchbox keeps its single client maximized to the root across RANDR changes.
+DISPLAY="$DISPLAY" matchbox-window-manager -use_titlebar no &
+sleep 0.5
+
+DISPLAY="$DISPLAY" "$BROWSER" --no-remote --profile "$PROFILE" ${URL:+"$URL"} &
+sleep 2
+
+# -rfbauth, never -nopw. The loopback bind is NOT the only barrier this deserves:
+# behind this display sits a logged-in browser session with full keyboard and mouse,
+# and MSO now publishes it (gated) on the public origin. Generate the file once with
+#   x11vnc -storepasswd "$(head -c 18 /dev/urandom | base64 | tr -d /+= )" ~/.vnc/passwd
+VNC_PASSWD="${CAMOUFOX_VNC_PASSWD:-$HOME/.vnc/passwd}"
+if [ ! -s "$VNC_PASSWD" ]; then
+  echo "camoufox-vnc: refusing to start — no VNC password at $VNC_PASSWD" >&2
+  echo "camoufox-vnc: create one with: x11vnc -storepasswd <pass> $VNC_PASSWD" >&2
+  exit 1
+fi
+# BOTH v6 flags are needed, and neither is cosmetic. -rfbport only sets the IPv4 port, so
+# one display silently opened THREE listeners: 127.0.0.1:$VNC_PORT, [::1]:$VNC_PORT and
+# [::1]:5900. The v6 pair bypasses websockify, noVNC and the session gate in proxy.ts
+# entirely — reachable with a plain `ssh -L` — which is the one thing "only through
+# os-vps" forbids. -noipv6 alone drops [::1]:$VNC_PORT but NOT [::1]:5900: that one is
+# libvncserver's own IPv6 port, which x11vnc does not route through its noipv6 flag, so it
+# has to be disabled by hand with -rfbportv6 -1 (verified against this build: with only
+# -noipv6, ss still showed [::1]:5900). websockify below dials the IPv4 literal, so
+# dropping both v6 listeners costs nothing.
+x11vnc -display "$DISPLAY" -localhost -noipv6 -rfbportv6 -1 -forever -shared -rfbauth "$VNC_PASSWD" -rfbport "$VNC_PORT" -quiet &
+
+exec websockify --web=/usr/share/novnc "127.0.0.1:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}"
