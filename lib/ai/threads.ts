@@ -52,7 +52,7 @@ export async function getThread(id: string): Promise<ChatThread | null> {
 }
 
 export async function saveThread(t: ChatThread): Promise<void> {
-  await fs.mkdir(DIR, { recursive: true });
+  await fs.mkdir(DIR, { recursive: true, mode: 0o700 });
   const dest = fileFor(t.id);
   const tmp = `${dest}.tmp`;
   await fs.writeFile(tmp, stringify(t), { encoding: "utf8", mode: 0o600 });

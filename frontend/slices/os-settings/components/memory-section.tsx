@@ -80,7 +80,7 @@ export function MemorySection() {
       </SettingsRow>
       <SettingsBlock className="flex gap-2">
         <Input
-          placeholder="Remember a fact (e.g. “I deploy with pnpm build + restart”)"
+          placeholder="Remember a fact (e.g. “I deploy with bun run build + restart”)"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

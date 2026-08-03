@@ -77,6 +77,12 @@ const SENSITIVE_HOME = [
   ".claude", ".claude.json", ".config/gh", ".config/anthropic", ".local/share/keyrings",
   ".config/claude", ".config/GitHub", ".codex", ".gemini", ".copilot", ".mcp-auth",
   ".convex", ".openclaw/credentials", ".openclaw/identity",
+  // Camoufox browser profile + its session snapshots. cookies.sqlite there holds a
+  // LIVE Google session (SID/__Secure-1PSID/SAPISID) and LinkedIn's li_at — replaying
+  // those is account takeover with no password and no 2FA prompt. OS_FS_READ_ROOTS is
+  // ~, so without this an fs/read or an fs/zip of $HOME walks off with all of it, and
+  // assistant read-tools run with no approval gate. .vnc holds the VNC password file.
+  ".local/share/camoufox", ".local/state/camoufox", ".vnc",
   // database creds + password-manager CLIs
   ".pgpass", ".config/op", ".config/lpass",
   // loose private keys saved outside ~/.ssh (heredoc dumps, exports, etc.)

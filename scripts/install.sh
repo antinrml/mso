@@ -18,8 +18,8 @@ PORT="${MSO_PORT:-4005}"
 SERVICE="mso.service"
 DO_SERVICE=1
 DO_UNINSTALL=0
-# Let corepack fetch the pnpm version pinned in package.json without a tty prompt.
-export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# bun is the package manager; the RUNTIME stays node (see ensure_bun below).
+export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
 
 # ---- pretty output (tty + NO_COLOR aware) ----
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -108,33 +108,30 @@ ensure_node() {
   node_ok || die "Node still <20.9 after install."
 }
 
-ensure_pnpm() {
-  command -v pnpm >/dev/null 2>&1 && { info "pnpm $(pnpm -v) ok"; return; }
-  info "enabling pnpm via corepack…"
-  if command -v corepack >/dev/null 2>&1; then
-    # Do NOT force pnpm@latest: the repo pins pnpm via package.json's
-    # "packageManager" field and corepack honors it when pnpm runs in-project.
-    # Forcing latest (pnpm 11) drops pnpm.onlyBuiltDependencies/overrides →
-    # node-pty isn't compiled and the frozen lockfile mismatches.
-    corepack enable pnpm >/dev/null 2>&1 || sudo_do corepack enable pnpm
-  else
-    sudo_do npm install -g pnpm@10
-  fi
-  command -v pnpm >/dev/null 2>&1 || die "pnpm install failed."
+# bun installs dependencies; it does NOT run the app. `next start` stays on node
+# (see the unit's ExecStart below) because node-pty's binding is built against
+# node's ABI and the whole /api/v1 surface imports it.
+ensure_bun() {
+  command -v bun >/dev/null 2>&1 && { info "bun $(bun -v) ok"; return; }
+  info "installing bun…"
+  curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1 || die "bun install failed."
+  export PATH="$BUN_INSTALL/bin:$PATH"
+  command -v bun >/dev/null 2>&1 || die "bun installed but not on PATH — add $BUN_INSTALL/bin."
 }
 
 ensure_buildtools() {
-  # pnpm compiles node-pty (a native addon) → needs a C/C++ toolchain + python3.
+  # node-pty is a native addon with no linux prebuild → needs a C/C++ toolchain +
+  # python3 to compile at install time, under bun exactly as under pnpm.
   # This is the single most likely install failure on a minimal box.
   command -v cc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 && return
   info "installing build toolchain (for node-pty)…"
   if   command -v apt-get >/dev/null 2>&1; then sudo_do apt-get update -qq && sudo_do apt-get install -y -qq build-essential python3
   elif command -v dnf     >/dev/null 2>&1; then sudo_do dnf install -y -q gcc-c++ make python3
   elif command -v pacman  >/dev/null 2>&1; then sudo_do pacman -Sy --noconfirm base-devel python
-  else warn "no known package manager — if 'pnpm install' fails on node-pty, install a C++ toolchain + python3 by hand."; fi
+  else warn "no known package manager — if 'bun install' fails on node-pty, install a C++ toolchain + python3 by hand."; fi
 }
 
-ensure_git; ensure_node; ensure_pnpm; ensure_buildtools
+ensure_git; ensure_node; ensure_bun; ensure_buildtools
 
 # portable 32-byte hex RNG (node is guaranteed present by now)
 rand_hex() {
@@ -167,7 +164,7 @@ cd "$DIR"
 
 # ---- deps (compiles node-pty) ----
 info "installing dependencies…"
-pnpm install --frozen-lockfile || pnpm install
+bun install --frozen-lockfile || bun install
 
 # ---- data dir + secrets (write .env.local only if absent) ----
 mkdir -p "$HOME/.mso" && chmod 700 "$HOME/.mso"
@@ -195,7 +192,7 @@ fi
 
 # ---- build ----
 info "building (next build)…"
-pnpm build
+bun run build
 
 # ---- systemd unit ----
 if [ "$DO_SERVICE" -eq 1 ] && command -v systemctl >/dev/null 2>&1; then
@@ -240,7 +237,7 @@ EOF
   done
   [ "$up" -eq 1 ] || warn "no /api/health answer yet — check: journalctl -u mso -e"
 else
-  [ "$DO_SERVICE" -eq 1 ] && warn "no systemctl here — skipping service. Run manually: PORT=$PORT pnpm start"
+  [ "$DO_SERVICE" -eq 1 ] && warn "no systemctl here — skipping service. Run manually: PORT=$PORT bun run start"
 fi
 
 # ---- CLI on PATH ----

@@ -4,11 +4,11 @@
 // auth gate, basic API liveness.
 //
 // HOW TO RUN
-//   pnpm vitest run scripts/e2e/smoke.test.ts
+//   bun run vitest run scripts/e2e/smoke.test.ts
 // requires:
 //   E2E_BASE_URL=http://localhost:4005   (or wherever the prod build serves)
 //
-// `describe.skipIf` makes this a no-op in `pnpm test` unless E2E_BASE_URL is
+// `describe.skipIf` makes this a no-op in `bun run test` unless E2E_BASE_URL is
 // set. The CI hook (scripts/ci.sh) opts in post-deploy.
 
 import { describe, expect, it } from "vitest";
@@ -42,16 +42,20 @@ describe.skipIf(skip)(
     expect(() => JSON.parse(text)).not.toThrow();
   });
 
-  it.skipIf(skip)("GET /api/version returns JSON with buildId", async () => {
-    const res = await get("/api/version");
+  // /api/health, NOT /api/version — and /api/v1/sys/stats, NOT /api/v1/sys/cpu.
+  // Neither of those two ever existed in this repo (no git history for either path),
+  // so half of this deploy gate had been asserting 404 == 200 since it was written:
+  // it reported failure on every run, which is exactly how a gate stops being run.
+  it.skipIf(skip)("GET /api/health returns JSON with buildId", async () => {
+    const res = await get("/api/health");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { buildId?: unknown };
     expect(typeof body.buildId).toBe("string");
     expect((body.buildId as string).length).toBeGreaterThan(0);
   });
 
-  it.skipIf(skip)("GET /api/v1/sys/cpu without auth returns 401 (gate working)", async () => {
-    const res = await get("/api/v1/sys/cpu");
+  it.skipIf(skip)("GET /api/v1/sys/stats without auth returns 401 (gate working)", async () => {
+    const res = await get("/api/v1/sys/stats");
     // Auth gate is healthy when an unauthenticated probe returns 401.
     // Accept 403 too in case the gate evolves to "forbidden".
     expect([401, 403]).toContain(res.status);

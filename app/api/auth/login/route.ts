@@ -60,6 +60,14 @@ export function clientIp(req: NextRequest): string {
 // Now the per-IP gate runs first and an already-blocked IP returns without touching
 // the global budget, so the process-wide cap only ever counts attempts that were
 // actually going to reach the password compare.
+//
+// That reorder killed the single-IP variant but not the distributed one: six fresh
+// IPs spending 5 attempts each still filled the 30/min process-wide budget here, and
+// the owner's CORRECT password from a seventh address then got 429. So the global
+// budget is no longer charged on the way in at all — it is charged below, only by an
+// attempt that actually failed the password compare. A correct password can never be
+// rejected by it, while the distributed brute-force cap is unchanged (30 wrong
+// passwords per minute process-wide, on top of the per-IP 5/min).
 function rateLimited(ip: string): boolean {
   const now = Date.now();
   if (now - globalWindowStart > WINDOW_MS) {
@@ -74,8 +82,6 @@ function rateLimited(ip: string): boolean {
   const entry = rateLimitMap.get(ip);
   const live = entry && now <= entry.reset_at;
   if (live && entry.count >= MAX_ATTEMPTS) return true;
-
-  if (++globalAttempts > GLOBAL_MAX_ATTEMPTS) return true;
 
   if (!live) {
     rateLimitMap.set(ip, { count: 1, reset_at: now + WINDOW_MS });
@@ -123,6 +129,12 @@ export async function POST(req: NextRequest) {
   // before comparing, so the compare time does NOT reveal the secret's length.
   if (!constantTimeEq(password, provided)) {
     audit({ action: "auth.denied", actor: deviceId, ip, ok: false, detail: "bad password" });
+    // Charge the process-wide budget HERE, not in rateLimited(), so only a genuinely
+    // wrong password can exhaust it. See the note above rateLimited().
+    if (++globalAttempts > GLOBAL_MAX_ATTEMPTS) {
+      audit({ action: "auth.ratelimited", ip, ok: false, detail: "global" });
+      return NextResponse.json({ error: "Too many attempts, try again later" }, { status: 429 });
+    }
     return NextResponse.json({ error: "bad_password" }, { status: 401 });
   }
 

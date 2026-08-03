@@ -23,7 +23,7 @@ async function read(): Promise<Memory[]> {
 }
 
 async function write(list: Memory[]): Promise<void> {
-  await fs.mkdir(path.dirname(FILE), { recursive: true });
+  await fs.mkdir(path.dirname(FILE), { recursive: true, mode: 0o700 });
   const tmp = `${FILE}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(list, null, 2), { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, FILE);

@@ -5,9 +5,9 @@ Solo-maintainer project — PRs and issues welcome, scope kept deliberately smal
 ## Setup
 
 ```bash
-pnpm install
+bun install
 cp .env.example .env.local   # set OS_LOGIN_PASSWORD + OS_SESSION_SECRET
-pnpm dev                     # :3000, mock data by default (no host access needed)
+bun run dev                     # :3000, mock data by default (no host access needed)
 ```
 
 Node `>=20.9` (see `.nvmrc`). The mock adapter means you can develop every app
@@ -18,17 +18,17 @@ without a VPS or any credentials.
 A `pre-push` hook runs typecheck + lint + test + the slice/cycle checks and blocks
 the push if any fail, so this checklist is mostly a description of what already
 happens. `.github/workflows/ci.yml` is **manual** (`gh workflow run CI`) — run it
-before cutting a release or after touching `package.json`, `pnpm-lock.yaml` or
-`scripts/install.sh`, because a clean-checkout `pnpm install --frozen-lockfile` is
+before cutting a release or after touching `package.json`, `bun.lock` or
+`scripts/install.sh`, because a clean-checkout `bun install --frozen-lockfile` is
 the one thing the local hook cannot reproduce.
 
-- [ ] `pnpm typecheck`
-- [ ] `pnpm lint`
-- [ ] `pnpm test` — vitest unit + integration (280+ tests)
-- [ ] `pnpm build`
+- [ ] `bun run typecheck`
+- [ ] `bun run lint`
+- [ ] `bun run test` — vitest unit + integration (280+ tests)
+- [ ] `bun run build`
 - [ ] (optional) `node scripts/check-cycles.mjs` — no value-level import cycles
 - [ ] (optional) `node scripts/check-slices.mjs` — no slice-boundary violations
-- [ ] (optional) `pnpm smoke` — e2e smoke against a local `pnpm start`
+- [ ] (optional) `bun run smoke` — e2e smoke against a local `bun run start`
 
 ## Conventions (the short version)
 

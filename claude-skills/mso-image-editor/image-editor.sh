@@ -39,9 +39,13 @@ EXEC="$B/api/v1/editor/exec"
 
 login() {
   local code
-  code=$(curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" "${ORIGIN[@]}" -X POST "$B/api/auth/login" \
-    -H 'content-type: application/json' \
-    -d "$(jq -n --arg p "$PASS" --arg d "$DEV" '{password:$p,deviceId:$d,deviceLabel:"os-image-editor cli"}')" || true)
+  # Jar created 0600 before curl touches it (curl -c would make it 0644 & ~umask) —
+  # it holds a live session cookie at a fixed, guessable path. Body goes over stdin
+  # so the cleartext password never lands in curl's argv.
+  [ -f "$JAR" ] || { : > "$JAR"; chmod 600 "$JAR"; }
+  code=$(jq -n --arg p "$PASS" --arg d "$DEV" '{password:$p,deviceId:$d,deviceLabel:"os-image-editor cli"}' \
+    | curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" "${ORIGIN[@]}" -X POST "$B/api/auth/login" \
+    -H 'content-type: application/json' -d @- || true)
   [ "$code" = "200" ] || { echo "login failed ($code). approve device? → node ~/projects/mso/scripts/approve-device.js $DEV" >&2; exit 1; }
 }
 [ -f "$JAR" ] || login

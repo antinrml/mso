@@ -25,7 +25,21 @@ const nextConfig = {
   // node-pty is a native addon (.node binary) — it must be require()'d from
   // node_modules at runtime, never bundled, or the binding fails to load.
   serverExternalPackages: ["node-pty"],
-  deploymentId: process.env.NEXT_DEPLOYMENT_ID || BUILD_ID,
+  // Only ever an EXPLICIT deployment id — never BUILD_ID. This config is evaluated
+  // twice (once by `next build`, once when `next start` boots), so a Date.now()
+  // fallback produced two different ?dpl= values for the same chunk: the HTML
+  // referenced both variants and the browser downloaded, parsed and executed ~160 KB
+  // gzip of entry chunks twice on every cold load. Chunks are content-hashed, so no
+  // ?dpl= at all is correct.
+  //
+  // The key must be ABSENT, not undefined: `deploymentId: undefined` still counts as
+  // set, and Next then appends a literal empty `?dpl=` — which leaves `chunk.js` and
+  // `chunk.js?dpl=` as two distinct URLs and the double download intact. Hence the
+  // conditional spread. BUILD_ID below is unaffected: it is inlined at build time and
+  // the SW cache name + /api/health still need it.
+  ...(process.env.NEXT_DEPLOYMENT_ID
+    ? { deploymentId: process.env.NEXT_DEPLOYMENT_ID }
+    : {}),
   env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   experimental: {
     // proxy.ts clones request bodies; the default clone cap is 10MB, which
@@ -37,7 +51,6 @@ const nextConfig = {
     // Tree-shake heavy icon/radix barrels — keeps the OS shell bundle lean.
     optimizePackageImports: [
       "lucide-react",
-      "radix-ui",
       "@radix-ui/react-dialog",
       "@radix-ui/react-dropdown-menu",
       "@radix-ui/react-tooltip",
@@ -45,6 +58,8 @@ const nextConfig = {
       "@radix-ui/react-select",
       "@radix-ui/react-popover",
       "@radix-ui/react-alert-dialog",
+      "@radix-ui/react-slider",
+      "@radix-ui/react-tabs",
     ],
   },
   // Serve the service worker at /sw.js (stable scope) from the /api/sw route

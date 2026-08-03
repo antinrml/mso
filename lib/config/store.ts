@@ -66,7 +66,7 @@ export async function readConfig(): Promise<OsConfig> {
 export async function writeConfig(patch: OsConfig): Promise<void> {
   const current = await readConfig();
   const next: OsConfig = { ...current, ...patch };
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true, mode: 0o700 });
   const tmp = `${CONFIG_PATH}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(next, null, 2), { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, CONFIG_PATH);

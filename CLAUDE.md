@@ -133,11 +133,11 @@ to `resources/` (rr) and drive any project from one manifest:
 - `mso.service` (:4005, WorkingDir `/home/rahman/projects/mso`) serves
   mso.rahmanef.com via `next start`. Demo `mso-demo.service` (:4006, WorkingDir
   `/home/rahman/projects/mso-demo`, `NEXT_PUBLIC_OS_DEMO=1` → no auth, mock data).
-- **Deploy prod:** `pnpm build` **THEN** `sudo systemctl restart mso.service`. ALWAYS
+- **Deploy prod:** `bun run build` **THEN** `sudo systemctl restart mso.service`. ALWAYS
   build-then-restart, never the reverse, and never rebuild again after restarting
   without restarting once more — `next start` loads the build manifest at boot, so if
   the on-disk `.next/static` chunks don't match the running process's HTML refs, every
-  CSS/JS chunk 404s → unstyled/broken UI. On any chunk mismatch: `rm -rf .next && pnpm
+  CSS/JS chunk 404s → unstyled/broken UI. On any chunk mismatch: `rm -rf .next && bun run
   build && restart` (clean rebuild). Verify with
   `curl -sI :4005/_next/static/chunks/<the-css-the-HTML-refs> | grep content-type` → must be `text/css`.
 - **Service worker** is served from `app/api/sw/route.ts` with a **`beforeFiles`
@@ -148,12 +148,12 @@ to `resources/` (rr) and drive any project from one manifest:
   `public/sw.js` is byte-identical across deploys, so the toast never fired). It
   caches ONLY icons+manifest, never chunks/HTML.
 - **New routes need a clean build.** Adding a new `app/**/route.ts` or page folder
-  may not register under incremental Turbopack — `rm -rf .next && pnpm build`.
+  may not register under incremental Turbopack — `rm -rf .next && bun run build`.
 - **`git add` aborts on a bad pathspec** and stages NOTHING new — after a
   `git rm`, don't re-list the removed file in `git add`; prefer `git add -A` and
   check `git status --short` before committing (a broken commit shipped once this way).
 - **Deploy demo:** from `/home/rahman/projects/mso-demo`: `git fetch origin -q &&
-  git reset --hard origin/main -q && pnpm build && sudo systemctl restart
+  git reset --hard origin/main -q && bun run build && sudo systemctl restart
   mso-demo.service`. Mind the cwd — running the sync from the prod dir is a classic slip.
 - **The Browser app powers a systemd USER unit**, `camoufox-vnc.service` in
   `~/.config/systemd/user/`, whose `ExecStart` points at **`scripts/camoufox-vnc-service`
@@ -201,7 +201,7 @@ to `resources/` (rr) and drive any project from one manifest:
   not hex, mobile-first. Barrel-only cross-slice imports.
 - `/api/v1` host ops go through `lib/host` (bounds + realpath checks) — never call
   `fs`/`child_process` straight from a route.
-- Solo-dev: push direct to `main` once `pnpm typecheck` + `pnpm build` are green.
+- Solo-dev: push direct to `main` once `bun run typecheck` + `bun run build` are green.
   Conventional commits + Claude co-author.
 
 ## CLI (`bin/mso`) — the web UI is only one frontend
@@ -225,9 +225,28 @@ the escape hatch for anything without a named verb.
 
 ## Local dev
 ```bash
-pnpm install
+bun install
 cp .env.example .env.local   # set OS_LOGIN_PASSWORD + OS_SESSION_SECRET
-pnpm typecheck
-pnpm dev                     # OS desktop at :3000 (mock data by default)
+bun run typecheck
+bun run dev                     # OS desktop at :3000 (mock data by default)
 node scripts/approve-device.js <deviceId> "my device"   # approve a login device
 ```
+
+## Package manager: bun installs, Node runs (migrated from pnpm 2026-08-03)
+`bun.lock` is committed; `pnpm-lock.yaml` is gone. **The runtime did NOT migrate** —
+`.nvmrc`/`engines.node` still pin Node 22 and prod's `ExecStart` is still
+`/usr/bin/npm run start`. `next`/`tsc`/`eslint`/`vitest` carry `#!/usr/bin/env node`
+shebangs, which `bun run` honours, so every tool still executes under Node.
+- **`bun run test`, NEVER `bun test`.** The builtin runner shadows the script, ignores
+  `vitest.config.mts`, and exits 0 having run nothing — `verify` goes green testing zero
+  files. Same trap in `.github/workflows/ci.yml`.
+- **`node-pty` must stay in `trustedDependencies`.** No Linux prebuild → it compiles at
+  install; bun skips lifecycle scripts for untrusted packages. It loads eagerly through
+  `lib/host/pty.ts` → `lib/host/index.ts`, which every `/api/v1` route imports, so a
+  skipped build breaks the whole host API, not just Terminal. After ANY dependency
+  change: `node -e "require('node-pty')"` before building.
+- **Never `bunx`/`bun x` in a deploy or CI script** — unlike `pnpm exec` it downloads a
+  missing package and runs it. Call `node_modules/.bin/<tool>` directly.
+- `sharp`/`unrs-resolver`/`protobufjs` postinstalls stay blocked (pnpm blocked the same
+  three; all work from prebuilt binaries). Don't "fix" the `bun pm untrusted` warning.
+- `lib/host/cleanup.ts`'s pnpm-store card stays — other repos on this box still use it.

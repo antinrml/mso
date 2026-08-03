@@ -119,7 +119,7 @@ let _writeChain: Promise<void> = Promise.resolve();
 async function writeLine(line: string): Promise<void> {
   const file = auditPath();
   try {
-    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
     await fs.appendFile(file, line, { mode: 0o600 });
   } catch (e) {
     console.error("[audit] write failed:", e instanceof Error ? e.message : e);

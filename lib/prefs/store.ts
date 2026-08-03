@@ -40,7 +40,7 @@ async function writePrefsUnlocked(patch: Partial<OsPrefs>): Promise<OsPrefs> {
   const file = prefsPath();
   const current = await readPrefs();
   const next: OsPrefs = { ...current, ...patch, updatedAt: Date.now() };
-  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(next, null, 2), { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);

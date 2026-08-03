@@ -51,7 +51,7 @@ async function read(): Promise<DeviceStore> {
 }
 
 async function write(store: DeviceStore): Promise<void> {
-  await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
+  await fs.mkdir(path.dirname(STORE_PATH), { recursive: true, mode: 0o700 });
   const tmp = `${STORE_PATH}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(store, null, 2), { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, STORE_PATH);

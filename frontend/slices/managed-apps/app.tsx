@@ -29,11 +29,21 @@ function useManagedApps() {
   }, []);
 
   useEffect(() => {
+    // Visibility-gated: each refresh detects every managed app on the host (systemd
+    // probes + `--version` forks), so a backgrounded tab must not keep paying for it.
     const initial = window.setTimeout(() => void refresh(), 0);
-    const timer = window.setInterval(refresh, 10_000);
+    const tick = () => {
+      if (!document.hidden) void refresh();
+    };
+    const timer = window.setInterval(tick, 10_000);
+    const onVis = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [refresh]);
 

@@ -7,7 +7,7 @@ const { addMemory, recall, listMemories, removeMemory } = await import("./memory
 
 describe("memory store + recall", () => {
   it("adds, recalls by word overlap, and removes", async () => {
-    const a = await addMemory("I deploy mso with pnpm build then restart");
+    const a = await addMemory("I deploy mso with bun run build then restart");
     await addMemory("My favorite color is blue");
 
     const hits = await recall("how do I deploy?");

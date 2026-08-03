@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { effectiveServerTarget, selectServerTarget, useAppearance } from "@/lib/appearance";
 import { useOsApi } from "@/lib/os-api";
 import { IS_DEMO } from "@/lib/demo";
@@ -41,9 +41,20 @@ function startSharedStats(api: ReturnType<typeof useOsApi>) {
   if (statsStop && statsApi === api) return;
   if (statsStop) statsStop(); // api changed → restart with the new adapter
   statsApi = api;
+  // Disk usage does not move in 3 seconds, and fs.usage() shells out to the host —
+  // so it refreshes every 10th tick (~30s) and is cached in between. sys.stats()
+  // still runs every tick; that's what the sparklines consume.
+  let usageCache: Awaited<ReturnType<typeof api.fs.usage>> | null = null;
+  let tickN = 0;
   const poll = async () => {
     try {
-      const [sys, usage] = await Promise.all([api.sys.stats(), api.fs.usage()]);
+      const needUsage = usageCache === null || tickN % 10 === 0;
+      tickN += 1;
+      const [sys, usage] = await Promise.all([
+        api.sys.stats(),
+        needUsage ? api.fs.usage() : Promise.resolve(usageCache!),
+      ]);
+      usageCache = usage;
       const cpuPct = Math.round(sys.cpu.pct);
       statsHist.cpu = [...statsHist.cpu.slice(-23), cpuPct];
       if (sys.net) statsHist.net = [...statsHist.net.slice(-23), sys.net.rx + sys.net.tx];
@@ -64,6 +75,30 @@ function startSharedStats(api: ReturnType<typeof useOsApi>) {
   statsStop = startVisiblePoll(poll, 3000);
 }
 
+// The ONE subscription to the shared poller. Both the menu-bar CPU chip and the Today
+// widgets read from it. The chip used to run a second, private 4s poller against the
+// same sys.stats endpoint — and since the widget stack defaults ON, a default desktop
+// ran both (~55 req/min against one endpoint, each re-reading auth-devices.json).
+function useSharedStats(): SystemStats | null {
+  const api = useOsApi();
+  const subscribe = useCallback(
+    (l: () => void) => {
+      statsSubs.add(l);
+      startSharedStats(api);
+      return () => {
+        statsSubs.delete(l);
+        if (statsSubs.size === 0 && statsStop) {
+          statsStop();
+          statsStop = null;
+          statsApi = null;
+        }
+      };
+    },
+    [api],
+  );
+  return useSyncExternalStore(subscribe, () => statsState, () => null);
+}
+
 // Adapts mso's appearance store + host API + AI stream to the generic AppShell
 // capability contract, so `appshell` AND its feature slices carry NO dependency on
 // @/lib/*. These run inside os-root's AppearanceProvider + OsApiProvider (AppShell
@@ -82,21 +117,7 @@ export const topsideCapabilities: ShellCapabilities = {
       liveWallpaper: tweaks.liveWallpaper,
     };
   },
-  useCpuPercent: () => {
-    const api = useOsApi();
-    const [cpu, setCpu] = useState<number | null>(null);
-    useEffect(() => {
-      let alive = true;
-      const poll = () =>
-        api.sys.stats().then((s) => alive && setCpu(Math.round(s.cpu.pct))).catch(() => {});
-      const stop = startVisiblePoll(poll, 4000);
-      return () => {
-        alive = false;
-        stop();
-      };
-    }, [api]);
-    return cpu;
-  },
+  useCpuPercent: () => useSharedStats()?.cpu.pct ?? null,
   // Spotlight folder search → ready-to-run hits that open Files at the path.
   // MUST be a stable callback — Spotlight keys its debounce effect on this fn's
   // identity, so a fresh closure each render would spin an endless search loop.
@@ -116,25 +137,7 @@ export const topsideCapabilities: ShellCapabilities = {
   },
   // Today-widget telemetry — sys.stats + fs.usage. All widgets share ONE poll
   // (the module-level shared poller above) instead of each spinning its own.
-  useSystemStats: () => {
-    const api = useOsApi();
-    const subscribe = useCallback(
-      (l: () => void) => {
-        statsSubs.add(l);
-        startSharedStats(api);
-        return () => {
-          statsSubs.delete(l);
-          if (statsSubs.size === 0 && statsStop) {
-            statsStop();
-            statsStop = null;
-            statsApi = null;
-          }
-        };
-      },
-      [api],
-    );
-    return useSyncExternalStore(subscribe, () => statsState, () => null);
-  },
+  useSystemStats: () => useSharedStats(),
   // Scoped Alfa chat — the wire stream passes straight through.
   // Control-center server-mode tile (mock|live; locked + relabelled in demo).
   useServerToggle: () => {

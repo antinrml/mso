@@ -28,7 +28,7 @@
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520.9-3c873a?logo=nodedotjs&logoColor=white" />
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
   <img alt="React" src="https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white" />
-  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-10.32.1-f69220?logo=pnpm&logoColor=white" />
+  <img alt="bun" src="https://img.shields.io/badge/bun-1.3-fbf0df?logo=bun&logoColor=black" />
 </p>
 
 **Manef Shell OS** (**MSO** in the UI) is an open-source, mobile-friendly visual shell for a Linux server you own. It brings a real terminal, file manager, live system metrics, and a BYOK AI assistant into one private browser workspace without running a full remote desktop.
@@ -82,7 +82,7 @@ Move between terminal, files, metrics, browser, and AI without switching between
 The public demo should be deployed from a separate checkout with:
 
 ```bash
-NEXT_PUBLIC_OS_DEMO=1 pnpm build && pnpm start
+NEXT_PUBLIC_OS_DEMO=1 bun run build && bun run start
 ```
 
 Demo mode skips real login, forces mock data, blocks live host API access, and shows a permanent demo banner. Use it for Product Hunt traffic. A real owner deployment should stay behind Tailscale/VPN or a protected HTTPS proxy.
@@ -207,23 +207,23 @@ The tools below have different scopes. This comparison is intended to explain wh
 ## Development
 
 ```bash
-pnpm install
+bun install
 cp .env.example .env.local
-pnpm dev
+bun run dev
 ```
 
 Quality gates:
 
 ```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm check
-pnpm build
+bun run typecheck
+bun run lint
+bun run test
+bun run check
+bun run build
 bash -n scripts/install.sh
 ```
 
-The package manager is pinned in `package.json` as `pnpm@10.32.1`. Use pnpm so the lockfile and native `node-pty` build path stay predictable.
+The package manager is **bun** (`bun.lock` is committed); the **runtime stays Node 22** — `next`, `tsc`, `eslint` and `vitest` all carry a `#!/usr/bin/env node` shebang and bun honours it, and production runs `npm run start`. Use bun so the lockfile and the native `node-pty` build path stay predictable: `node-pty` has no Linux prebuild and is listed under `trustedDependencies`, without which its postinstall is skipped and the whole `/api/v1` surface fails to load.
 
 Full guide: [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md).
 
@@ -254,7 +254,7 @@ Not currently supported:
 |---|---|
 | [docs/INSTALL.md](./docs/INSTALL.md) | Server install, credentials, systemd, TLS/VPN, updates, rollback |
 | [docs/CLI.md](./docs/CLI.md) | The `mso` command-line reference (generated from `mso --help`) |
-| [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Local dev, quality gates, pnpm, deploy hazards |
+| [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Local dev, quality gates, bun, deploy hazards |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | App shell, host layer, slices, routing |
 | [docs/MANAGED-APPS.md](./docs/MANAGED-APPS.md) | Managing Hermes/OpenClaw, per-app origins, workspace modes |
 | [docs/MODELS-INTEGRATION.md](./docs/MODELS-INTEGRATION.md) | Alfa AI and BYOK model providers |

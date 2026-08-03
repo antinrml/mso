@@ -48,7 +48,7 @@ refusal (`X-Content-Type-Options: nosniff` makes that fatal on purpose).
 mismatched:
 
 ```bash
-rm -rf .next && pnpm build && sudo systemctl restart mso.service
+rm -rf .next && bun run build && sudo systemctl restart mso.service
 ```
 
 ### Build runs out of memory ("Ineffective mark-compacts near heap limit")
@@ -56,7 +56,7 @@ rm -rf .next && pnpm build && sudo systemctl restart mso.service
 The Next build wants ~2 GB+. Give Node more heap and/or add swap:
 
 ```bash
-NODE_OPTIONS=--max-old-space-size=4096 pnpm build
+NODE_OPTIONS=--max-old-space-size=4096 bun run build
 ```
 
 ### "Another next build process is already running"
@@ -67,7 +67,7 @@ First confirm nothing is actually building: `ps -eo pid,args | grep "[.]bin/next
 ### A brand-new route/page 404s after deploy
 
 Incremental builds occasionally miss a new `app/**/route.ts`/page folder.
-Clean rebuild: `rm -rf .next && pnpm build`, restart.
+Clean rebuild: `rm -rf .next && bun run build`, restart.
 
 ### "Versi baru" (new version) toast loops or update never arrives
 
@@ -163,7 +163,7 @@ firewall allows the proxy, not the app port.
 
 `journalctl -u mso -n 50` — most common: missing `.env.local`
 (`EnvironmentFile=` path wrong), Node not at `/usr/bin` (adjust `ExecStart`),
-or the build is absent (`pnpm build` never ran in that WorkingDirectory).
+or the build is absent (`bun run build` never ran in that WorkingDirectory).
 
 ## Still stuck?
 

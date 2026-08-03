@@ -8,7 +8,7 @@ the optional browser service, demo mode, updating, and rollback.
 
 - A Linux VPS (any distro with systemd; 1 vCPU / 2 GB RAM works, build wants
   ≥2 GB free — see [Troubleshooting](./TROUBLESHOOTING.md)).
-- **Node.js 20.9+** (22 recommended) and **pnpm 10.32.1** via corepack.
+- **Node.js 20.9+** (22 recommended) — the RUNTIME — and **bun** as the package manager.
 - A **non-root user** that owns the install. Never run mso as root —
   an authenticated session can run shell commands as the process user.
 - Optional: a domain + reverse proxy (Caddy/nginx/Traefik) **or** Tailscale.
@@ -19,7 +19,7 @@ the optional browser service, demo mode, updating, and rollback.
 # as your normal user (NOT root)
 git clone https://github.com/<you>/mso.git ~/mso
 cd ~/mso
-pnpm install
+bun install
 ```
 
 ## 2. Credentials — read this section carefully
@@ -89,8 +89,8 @@ user, `.env.local` never committed, review `~/.mso/audit.log`.
 ## 3. First run
 
 ```bash
-pnpm build
-pnpm start          # serves on :3000, or PORT=4005 pnpm start
+bun run build
+bun run start          # serves on :3000, or PORT=4005 bun run start
 ```
 
 Open it, note the device id on the login screen, approve it (step 2), log in.
@@ -111,7 +111,7 @@ WorkingDirectory=/home/youruser/mso
 EnvironmentFile=/home/youruser/mso/.env.local
 Environment=PORT=4005
 Environment=HOSTNAME=0.0.0.0
-ExecStart=/usr/bin/pnpm start --hostname 0.0.0.0 --port 4005
+ExecStart=/usr/bin/npm run start -- --hostname 0.0.0.0 --port 4005
 Restart=always
 RestartSec=5
 MemoryMax=3G
@@ -129,11 +129,18 @@ sudo systemctl enable --now mso.service
 journalctl -u mso -f        # watch logs
 ```
 
-`pnpm start` runs the `start` script from `package.json` (`next start`). The
-project is pnpm-only — corepack is enabled in step 0 — so don't substitute
-`npm`/`yarn`: lockfile drift defeats the audit trail. Verify pnpm is on PATH
-where systemd looks for it (`which pnpm` → adjust `ExecStart=` accordingly,
-e.g. `/usr/local/bin/pnpm` on most distros).
+That `ExecStart` runs the `start` script from `package.json` (`next start`) — note the
+`--` before the flags, which is what forwards them to `next` rather than to npm.
+
+**npm here is deliberate, and is not a typo for bun.** bun is this project's
+*installer*; the *runtime* stays Node, because `node-pty` is a native addon compiled
+against Node's ABI and `lib/host/index.ts` re-exports it into all 51 `/api/v1` routes.
+npm ships with Node, so `/usr/bin/npm` exists on a box where a bun install path may not
+— and systemd resolves `ExecStart` with no shell and no user PATH. Verify the binary
+really is where the unit says (`command -v npm` → adjust `ExecStart=` accordingly;
+`/usr/local/bin/npm` on some distros). Dependencies are still installed with
+`bun install --frozen-lockfile` from `bun.lock` — don't substitute npm/yarn/pnpm for
+*that* step, or lockfile drift defeats the audit trail.
 
 **Graceful shutdown**: add to the `[Service]` block:
 
@@ -200,7 +207,7 @@ Settings → AI (stored in `~/.mso/config.json`, never in the repo). Unset
 ## 8. Optional — public demo mode
 
 ```bash
-NEXT_PUBLIC_OS_DEMO=1 pnpm build && pnpm start
+NEXT_PUBLIC_OS_DEMO=1 bun run build && bun run start
 ```
 
 Demo builds have **no real login, no host access, no PTY, no shell command
@@ -215,8 +222,8 @@ cd ~/mso
 git status --short          # must be clean before updating
 git fetch origin main
 git merge --ff-only FETCH_HEAD
-pnpm install --frozen-lockfile
-pnpm build                  # ALWAYS build before restarting
+bun install --frozen-lockfile
+bun run build                  # ALWAYS build before restarting
 sudo systemctl restart mso.service
 ./scripts/post-deploy-smoke.sh   # catches the chunk/MIME drift the README warns about
 ```
@@ -235,7 +242,7 @@ If a deploy breaks production:
 
 1. Find the prior good commit: `git log --oneline -10`
 2. Check out the known-good commit: `git switch --detach <good-sha>`
-3. Rebuild: `pnpm build`
+3. Rebuild: `bun run build`
 4. Restart: `sudo systemctl restart mso.service`
 5. Verify: `curl -s http://localhost:4005/api/health | jq .buildId`
 

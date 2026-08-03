@@ -64,10 +64,23 @@ async function health(definition: ManagedAppDefinition): Promise<boolean | null>
   }
 }
 
+// `--version` forks the app's own binary, which is not free (hermes: ~0.44 s of CPU
+// per call on this host) — and the Managed Apps panel re-polls every 10 s, for a
+// string that only changes on upgrade. Cached per app id; performManagedAppAction
+// drops the entry, since an install/restart is the only thing that can move it.
+const VERSION_TTL_MS = 60_000;
+const versionCache = new Map<ManagedAppId, { value: string | null; at: number }>();
+
 async function version(definition: ManagedAppDefinition): Promise<string | null> {
-  if (!(await commandExists(definition.command))) return null;
-  const result = await runProgram(definition.command, ["--version"], 10_000);
-  return result.code === 0 ? result.stdout.trim().split(/\r?\n/)[0]?.slice(0, 160) || null : null;
+  const hit = versionCache.get(definition.id);
+  if (hit && Date.now() - hit.at < VERSION_TTL_MS) return hit.value;
+  let value: string | null = null;
+  if (await commandExists(definition.command)) {
+    const result = await runProgram(definition.command, ["--version"], 10_000);
+    value = result.code === 0 ? result.stdout.trim().split(/\r?\n/)[0]?.slice(0, 160) || null : null;
+  }
+  versionCache.set(definition.id, { value, at: Date.now() });
+  return value;
 }
 
 function actionsFor(installation: Installation): ManagedAppAction[] {
@@ -137,6 +150,9 @@ export async function performManagedAppAction(id: ManagedAppId, action: ManagedA
     else await runLifecycle(installation, action);
   } finally {
     releaseOperation(id);
+    // The action may have installed/upgraded the binary — drop the cached version
+    // so the view returned below reports the new one, not a stale ≤60 s reading.
+    versionCache.delete(id);
   }
   return getManagedApp(id);
 }

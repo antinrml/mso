@@ -158,9 +158,17 @@ ORIGIN=(-H "origin: $B")
 login() {
   local d code; d=$(cli_device)
   [ -n "$PASS" ] || die "no OS_LOGIN_PASSWORD in $ENVF (or export MSO_PASSWORD)"
-  code=$(curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" -X POST "$B/api/auth/login" \
-    "${ORIGIN[@]}" -H 'content-type: application/json' \
-    -d "$(jq -n --arg p "$PASS" --arg d "$d" '{password:$p,deviceId:$d,deviceLabel:"mso cli"}')" || true)
+  # Create the jar 0600 BEFORE curl does. `curl -c` creates it 0644 & ~umask, and it
+  # holds a live session cookie whose path is fully derivable (uid + cksum of base).
+  # Any other account on the host could replay it against /api/v1/exec/run — which is
+  # a shell as this user, bypassing every HttpOnly/Secure/SameSite/HMAC guarantee the
+  # cookie itself carries.
+  [ -f "$JAR" ] || { : > "$JAR"; chmod 600 "$JAR"; }
+  # Body over stdin, never argv: a `-d "$(jq …)"` expansion puts the cleartext
+  # password in curl's /proc/<pid>/cmdline for the life of the request.
+  code=$(jq -n --arg p "$PASS" --arg d "$d" '{password:$p,deviceId:$d,deviceLabel:"mso cli"}' \
+    | curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" -X POST "$B/api/auth/login" \
+    "${ORIGIN[@]}" -H 'content-type: application/json' -d @- || true)
   [ "$code" = "200" ] || die "login failed ($code) — run \`mso doctor\`, or approve this device:
   mso device approve $d \"mso cli\""
 }

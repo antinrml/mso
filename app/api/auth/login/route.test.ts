@@ -115,6 +115,21 @@ describe("rate limiting cannot be turned into a lockout of everyone else", () =>
     expect(owner.status).toBe(403);
   });
 
+  it("keeps serving the owner after a DISTRIBUTED flood fills the process-wide budget", async () => {
+    const POST = await loadRoute();
+    // The variant the single-IP reorder did NOT fix: six fresh addresses, each
+    // staying inside its own 5/min allowance, together spend the whole 30/min
+    // process-wide budget. No per-IP gate ever fires, so under the old code every
+    // one of those 30 charged the global counter and the owner's CORRECT password
+    // from a seventh address came back 429 — an unauthenticated lockout of prod.
+    for (let ip = 0; ip < 6; ip++) {
+      for (let i = 0; i < 5; i++) await POST(post(`198.51.100.${ip}`, "wrong"));
+    }
+    const owner = await POST(post("203.0.113.7", PASSWORD));
+    expect(owner.status).not.toBe(429);
+    expect(owner.status).toBe(403); // device_pending = the password was accepted
+  });
+
   it("still blocks a single IP past its own allowance", async () => {
     const POST = await loadRoute();
     const codes: number[] = [];

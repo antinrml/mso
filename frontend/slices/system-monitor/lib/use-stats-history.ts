@@ -61,11 +61,24 @@ export function useStatsHistory(): StatsHistory {
 
   useEffect(() => {
     aliveRef.current = true;
-    pull();
-    const iv = setInterval(pull, POLL_MS);
+    // Poll only while the tab is visible. Minimizing the window unmounts this, but
+    // BACKGROUNDING the tab does not — and hydrateBoot restores the window on reload,
+    // so an untended cockpit otherwise fires 80 authenticated requests/min at its own
+    // VPS forever, each one spawning host processes and re-reading auth-devices.json.
+    // POLL_MS stays 1500: the sparkline resolution is this app's whole point.
+    const tick = () => {
+      if (!document.hidden) pull();
+    };
+    tick();
+    const iv = setInterval(tick, POLL_MS);
+    const onVis = () => {
+      if (!document.hidden) pull();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       aliveRef.current = false;
       clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [pull]);
 
