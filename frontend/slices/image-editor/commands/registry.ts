@@ -10,7 +10,7 @@ import { exportCommands } from "./export.commands";
 // The single source of truth for every AI-callable editor operation. Add a
 // command = append to its domain file; it flows into the tools schema + invoke
 // with no other wiring. Adding a domain = import + spread it here.
-export const EDITOR_COMMANDS: EditorCommand[] = [
+const EDITOR_COMMANDS: EditorCommand[] = [
   ...documentCommands,
   ...layerCommands,
   ...transformCommands,

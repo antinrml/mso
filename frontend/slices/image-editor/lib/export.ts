@@ -72,7 +72,7 @@ export function stageToDataURL(
   );
 }
 
-export function downloadDataURL(dataURL: string, filename: string) {
+function downloadDataURL(dataURL: string, filename: string) {
   const a = document.createElement("a");
   a.href = dataURL;
   a.download = filename;

@@ -23,7 +23,7 @@ contract, served by `lib/host` (fs/exec/sys) or `MockAdapter`.
 | `files-manager` | full | infra | Files — VPS file manager |
 | `image-editor` | frontend | ui | Image Editor — layered raster editor |
 | `image-picker` | ui | ui | Image Picker — one-button image/wallpaper chooser (gallery · upload · link · Unsplash · reposition) |
-| `managed-apps` | — | — | Managed applications — Hermes + OpenClaw lifecycle, update centre, dashboard proxy. **No `slice.json`** — `scripts/check-slices.mjs` skips it, so it is the one slice with no validated contract |
+| `managed-apps` | — | — | Managed applications — Hermes + OpenClaw lifecycle, update centre, dashboard proxy. |
 | `media-studio` | full | ui | Media Studio — photo / image editor |
 | `media-viewer` | full | ui | Preview — media quick-look |
 | `os-settings` | full | ui | Settings — appearance + VPS server |

@@ -54,12 +54,3 @@ export function useBadge(appId: string): AppIconBadge | undefined {
     () => badges[appId],
   );
 }
-
-/** The whole badge map (Settings/debug surfaces). */
-export function useBadges(): Record<string, AppIconBadge> {
-  return useSyncExternalStore(
-    subscribe,
-    () => badges,
-    () => badges,
-  );
-}

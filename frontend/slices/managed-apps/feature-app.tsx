@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, RefreshCw, TerminalSquare } from "lucide-react";
-import { useCallback, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 import type { AppProps } from "@/features/appshell";
 import { Terminal } from "@/features/os-terminal";
 import type { ManagedAppFeature } from "@/lib/managed-apps/types";
@@ -40,7 +40,11 @@ export function ManagedFeatureApp({ feature }: AppProps & { feature: ManagedAppF
           to "cli" whenever `source` is null and the toggle that could change it only
           renders when `source` is not. */}
       {view === "cli" || !source ? (
-        <div className="min-h-0 flex-1"><Terminal initialCommand={command} /></div>
+        <div className="min-h-0 flex-1">
+          <Suspense fallback={null}>
+            <Terminal initialCommand={command} />
+          </Suspense>
+        </div>
       ) : (
         <iframe
           key={generation}

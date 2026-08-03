@@ -1,7 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import type { AppDescriptor } from "../lib/types";
 import type { ShellCapabilities } from "./capabilities";
-import type { ShellId } from "./shells";
 
 // Named regions a feature can mount into. The surfaces render <Slot region> at a
 // fixed spot; which component fills it comes from the registered features. This
@@ -28,17 +27,12 @@ export type FeatureDescriptor = {
   slots?: Partial<Record<SlotRegion, ComponentType>>;
   /** Optional context provider the feature needs wrapped around the shell. */
   provider?: ComponentType<{ children: ReactNode }>;
-  /** System default (search/inspector/notifications/control-center/widgets) vs
-   *  a custom feature added by the host. Documents provenance; default "system". */
-  kind?: "system" | "custom";
 };
 
 export type Brand = {
   name: string;
   /** Glyph/text/element for the menu-bar logo badge. */
   logo?: ReactNode;
-  /** Default wallpaper key (overrides the appearance default). */
-  wallpaper?: string;
   /** Menu-bar title when no app is focused (macOS shows "Finder"). */
   idleAppName?: string;
 };
@@ -56,9 +50,6 @@ export type ShellManifest = {
   routing?: boolean;
   /** Sync document.title to the focused window ("App — Brand"). Default on. */
   titleSync?: boolean;
-  /** Initial shell (macOS/Windows/Dashboard/…). Unset = responsive auto. The
-   *  user's live choice (Settings → Shell) overrides this and persists. */
-  shell?: ShellId;
 };
 
 /** Identity helper — gives a feature its type + a stable authoring shape. */

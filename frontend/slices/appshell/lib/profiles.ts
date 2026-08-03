@@ -73,19 +73,6 @@ export function listProfiles(): string[] {
   return names;
 }
 
-export function useProfiles(): string[] {
-  return useSyncExternalStore(
-    (cb) => {
-      subs.add(cb);
-      return () => {
-        subs.delete(cb);
-      };
-    },
-    () => names,
-    () => names,
-  );
-}
-
 function syncProfileCommands() {
   registerCommands("profiles", [
     {

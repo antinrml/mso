@@ -1,9 +1,15 @@
 "use client";
 
-// Cross-app drag & drop seam. Sources attach makeDragProps(data) to anything
-// draggable; every window's content area is a drop target that routes the
-// typed payload to the target app's registered drop handler. Payloads ride a
-// custom mime so native browser drags (file uploads) keep working untouched.
+// Cross-app drag & drop seam — the RECEIVING half only. Every window's content
+// area is a drop target that routes a typed payload to the target app's
+// registered drop handler. Payloads ride a custom mime so native browser drags
+// (file uploads) keep working untouched.
+//
+// There is deliberately no producer helper here. One existed (makeDragProps) with
+// zero callers, so nothing in the app ever wrote DND_MIME and this whole path was
+// unreachable outside tests and the ?e2e=1 dev command — files-manager's own drag
+// writes "text/plain" instead. To actually light this up, have a real drag source
+// set DND_MIME; until then the read half is dormant by design, not by accident.
 
 export const DND_MIME = "application/x-shell-payload";
 
@@ -44,20 +50,6 @@ export function deliverDrop(appId: string, data: DragData): boolean {
   if (!h) return false;
   h.onDrop(data);
   return true;
-}
-
-/** Spread these onto any element to make it a cross-app drag source. */
-export function makeDragProps(data: DragData): {
-  draggable: true;
-  onDragStart: (e: React.DragEvent) => void;
-} {
-  return {
-    draggable: true,
-    onDragStart: (e) => {
-      e.dataTransfer.setData(DND_MIME, JSON.stringify(data));
-      e.dataTransfer.effectAllowed = "copy";
-    },
-  };
 }
 
 /** Parse a shell payload off a drag event (null for native/file drags). */

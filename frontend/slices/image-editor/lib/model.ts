@@ -19,7 +19,7 @@ export const ADJ_DEFAULT: Adjustments = {
   sepia: false,
 };
 
-export const STYLE_DEFAULT: LayerStyle = {
+const STYLE_DEFAULT: LayerStyle = {
   blend: "normal",
   shadow: { enabled: false, color: "#000000", opacity: 0.5, angle: 90, distance: 8, size: 10 },
   glow: { enabled: false, color: "#ffd54a", opacity: 0.75, size: 18 },

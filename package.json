@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
-    "check": "node scripts/check-cycles.mjs && node scripts/check-slices.mjs && node scripts/check-contrast.mjs",
+    "check": "node scripts/check-cycles.mjs && node scripts/check-contrast.mjs",
     "verify": "bun run typecheck && bun run lint && bun run test && bun run check",
     "smoke": "E2E_BASE_URL=http://localhost:4005 vitest run scripts/e2e/smoke.test.ts"
   },

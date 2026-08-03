@@ -74,7 +74,6 @@ export type {
 // spaces/window-tabs/clipboard/share/lock/profiles/shortcuts/focus-mode/dnd/quick-look).
 export * from "./lib/commands";
 export * from "./lib/badges";
-export * from "./lib/layouts";
 export * from "./lib/recents";
 export { useDockPrefs, setDockPrefs, DOCK_SIZE_PX, type DockSize, type DockPrefs } from "./lib/dock-prefs";
 export { useShellWallpaper, useShellWallpapers, setShellWallpaper, type ShellWallpapers } from "./lib/wallpaper-prefs";
