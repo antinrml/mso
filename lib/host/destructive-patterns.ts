@@ -23,9 +23,27 @@ export const DESTRUCTIVE: { re: RegExp; why: string }[] = [
   { re: /\bkill\s+(?:-(?:9|KILL|SIGKILL)\s+)?1(?:\s|$)/, why: "kill PID 1" },
 ];
 
+// Shell metacharacters that start a new command, open a subshell, or open/close a
+// quoted string. The patterns above anchor the catastrophic argument on `\s`, `$` or
+// `*`, so a `/` followed by `;`, `)` or `"` used to slip straight past them:
+//   echo hi; rm -rf /; echo bye     `/` then `;`
+//   (rm -rf /) &                    `/` then `)`
+//   bash -c "rm -rf /"              `/` then `"`
+// Splitting on these puts each command on its own, where the trailing `/` lands at
+// end-of-segment and the existing patterns can see it. Widening every regex instead
+// was the alternative and is the wrong shape — a regex over a shell string leaks a
+// new way in for every character you forget.
+const SEPARATORS = /[;&|()"'`\n]+/;
+
 // The reason a command matches the denylist, or null. Pure (no env override —
 // that's exec.ts's job); safe to call from the browser.
 export function matchDestructive(cmd: string): string | null {
-  for (const d of DESTRUCTIVE) if (d.re.test(cmd)) return d.why;
+  // WHOLE STRING FIRST, and it must stay first: the fork-bomb pattern is built out
+  // of `(){}|&;:` — the very characters SEPARATORS splits on — so testing only the
+  // segments would stop detecting it.
+  for (const part of [cmd, ...cmd.split(SEPARATORS)]) {
+    if (!part) continue;
+    for (const d of DESTRUCTIVE) if (d.re.test(part)) return d.why;
+  }
   return null;
 }

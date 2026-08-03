@@ -41,13 +41,26 @@ export function isValidDeviceId(id: unknown): id is string {
   return typeof id === "string" && DEVICE_ID_RE.test(id);
 }
 
+// "No file yet" is the ONLY failure that may look like an empty store. Anything else
+// — corrupt JSON, EACCES, EIO — must throw.
+//
+// This used to `catch { return {…empty} }` for every error, and that was a silent way
+// to lose every approved device: read() feeds a read-modify-write, and two callers
+// (recordPending, approveDevice) write unconditionally. So one unparseable byte in
+// auth-devices.json meant the next login from an unapproved device read "no devices",
+// then PERSISTED that — wiping the allowlist and locking the owner out of their own
+// host. recordPending is reachable from the internet by anyone holding the password.
+// Failing loudly here costs a 500 on login; failing quietly cost the allowlist.
 async function read(): Promise<DeviceStore> {
+  let raw: string;
   try {
-    const parsed = JSON.parse(await fs.readFile(STORE_PATH, "utf8")) as Partial<DeviceStore>;
-    return { approved: parsed.approved ?? {}, pending: parsed.pending ?? {} };
-  } catch {
-    return { approved: {}, pending: {} };
+    raw = await fs.readFile(STORE_PATH, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { approved: {}, pending: {} };
+    throw e;
   }
+  const parsed = JSON.parse(raw) as Partial<DeviceStore>;
+  return { approved: parsed.approved ?? {}, pending: parsed.pending ?? {} };
 }
 
 async function write(store: DeviceStore): Promise<void> {

@@ -96,24 +96,46 @@ describe("destructiveReason — adversarial encodings", () => {
     expect(destructiveReason("\\rm -rf /")).toMatch(/rm -rf on \//);
   });
 
-  // KNOWN GAPS — documented so the next hardening pass knows where to focus.
-  // These slip past the current regex set. Not catastrophic in isolation
-  // because the cockpit is owner-only AND the operator must be aware enough
-  // to wrap a destructive cmd in shell trickery — but real polish targets.
-  // Each `it.fails` PASSES the suite when the assertion fails (Vitest spec),
-  // so when these are fixed the suite turns RED — a built-in regression alarm.
-  it.fails("GAP: chained `;` form — `/` followed by `;` slips past `\\/(?:\\s|$|\\*)`", () => {
+  // These three were `it.fails()` GAPs until 2026-08-03. matchDestructive now splits
+  // the command on shell separators and tests each segment, so a `/` followed by
+  // `;`, `)` or `"` no longer hides the argument from patterns anchored on \s|$|\*.
+  it("blocks the chained `;` form", () => {
     expect(destructiveReason("echo hi; rm -rf /; echo bye")).toMatch(/rm -rf on \//);
   });
 
-  it.fails("GAP: subshell form — `/` followed by `)` slips past `\\/(?:\\s|$|\\*)`", () => {
+  it("blocks the subshell form", () => {
     expect(destructiveReason("(rm -rf /) &")).toMatch(/rm -rf on \//);
   });
 
-  it.fails("GAP: `bash -c \"rm -rf /\"` — `/` followed by `\"` slips past", () => {
+  it("blocks `bash -c \"rm -rf /\"` (quoted payload)", () => {
     expect(destructiveReason('bash -c "rm -rf /"')).toMatch(/rm -rf on \//);
   });
 
+  it("blocks a command-substitution payload", () => {
+    expect(destructiveReason("echo $(rm -rf /)")).toMatch(/rm -rf on \//);
+  });
+
+  it("still detects the fork bomb, which is BUILT from the separator characters", () => {
+    // Regression pin for the ordering inside matchDestructive: this pattern spans
+    // `(){}|&;:`, so it only survives because the WHOLE string is tested before the
+    // split segments. Test segments alone and this silently stops matching.
+    expect(destructiveReason(":(){ :|:& };:")).toMatch(/fork bomb/);
+  });
+
+  it("ACCEPTED FALSE POSITIVE: refuses a destructive string inside quoted prose", () => {
+    // The cost of segment-splitting: a quoted mention is indistinguishable from a
+    // quoted payload, because `bash -c "rm -rf /"` and `git commit -m "rm -rf /"`
+    // differ only in the program name. Deliberately erring toward refusal — the
+    // escape hatch is OS_EXEC_ALLOW_DESTRUCTIVE=1, and the failure mode is an
+    // annoying refusal rather than a wiped disk. Pinned so the trade is a decision
+    // rather than a surprise.
+    expect(destructiveReason('git commit -m "never run rm -rf / on prod"')).toMatch(/rm -rf on \//);
+  });
+
+  // REMAINING GAP, and not fixable by a static filter: the destructive argument
+  // only exists after the shell expands the variable. `it.fails` PASSES while the
+  // assertion fails, so this turns the suite RED if it ever starts being caught —
+  // a built-in alarm that the note below has gone stale.
   it.fails("GAP: variable-expansion form `HOME=/ rm -rf \"$HOME\"` — no literal `/` after -rf", () => {
     expect(destructiveReason('HOME=/ rm -rf "$HOME"')).toMatch(/rm -rf on \//);
   });

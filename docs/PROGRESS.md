@@ -8,6 +8,56 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-03 (later) — the two open items closed, and the health lens finds a silent way to lose the device allowlist (DONE)
+
+Clearing both items the entry below left open.
+
+**Three of the four `rm -rf /` bypasses are closed.** The patterns anchor the catastrophic
+argument on `\s`, `$` or `*`, so a `/` followed by `;`, `)` or `"` walked straight past them.
+Rather than widen each regex — which leaks a new way in for every character you forget —
+`matchDestructive` now splits the command on shell separators (`[;&|()"'\`\n]+`) and tests
+each segment, so `echo hi; rm -rf /`, `(rm -rf /) &`, `bash -c "rm -rf /"` and
+`echo $(rm -rf /)` all land on a segment where the trailing `/` sits at end-of-string.
+**Ordering inside that function is load-bearing and pinned by a test:** the whole string is
+tested BEFORE the segments, because the fork-bomb pattern is built out of `(){}|&;:` — the
+very characters being split on — so segment-only testing would silently stop detecting it.
+
+The fourth (`HOME=/ rm -rf "$HOME"`) stays an `it.fails()`: the destructive argument only
+exists after the shell expands the variable, which no static filter can see. Expected-fails
+went 4 → 1 and the suite turns red if that ever starts being caught.
+
+Accepted cost, pinned as its own test: quoted prose is now refused too —
+`git commit -m "never run rm -rf / on prod"` is indistinguishable from
+`bash -c "rm -rf /"` except by program name. Erring toward refusal; the escape hatch is
+`OS_EXEC_ALLOW_DESTRUCTIVE=1`. Ordinary commands (`ls -la /`, `cd / && ls`, `find / -name x`,
+`systemctl status mso`) were checked and still pass.
+
+**The health lens (the one that died) found a real data-loss path.**
+`lib/auth/device-store.ts`'s `read()` returned an empty store for EVERY failure — and it
+feeds a read-modify-write whose callers `recordPending` and `approveDevice` write
+unconditionally. So one unparseable byte in `~/.mso/auth-devices.json` meant the next login
+attempt from an unapproved device read "no devices", then **persisted that** — wiping every
+approved device and locking the owner out of their own host. `recordPending` is reachable
+from the internet by anyone holding the password. Now only `ENOENT` (legit first run) yields
+an empty store; corrupt JSON or EACCES throws. Costs a 500 on login; the old behaviour cost
+the allowlist. `device-store.test.ts` is new (it had none) and its two key cases were
+verified to fail against the old code.
+
+**`lib/host/fs-upload.ts` had zero tests** despite being a write boundary behind
+`/api/v1/fs/upload`. `fs-upload.test.ts` now pins the two things that matter: a part cannot
+escape the destination (parent/deep/mid-path traversal, absolute paths, segment-only inputs)
+and the 100 MiB cap stops bytes reaching disk, leaving no `.tmp` behind.
+
+**The rest of the health lens came back clean**, and it is worth recording so nobody re-runs
+it: 1 `@ts-expect-error` in total (in a test, justified), **zero** real `any` in non-test code,
+1 empty `catch` (the inline theme script in `app/layout.tsx`, where a corrupt localStorage
+must not block render), and 21 files with `eslint-disable` — all narrow, single-rule, and
+carrying a reason. No secret has ever been committed: the two `OS_SESSION_SECRET=` hits in
+git history are `$(openssl …)`, `$SECRET` and a regex, not values. `exec.ts` is NOT untested
+as a filename scan suggests — `exec-filter.test.ts` covers it.
+
+1136 tests / 115 files (was 1115 / 113).
+
 ## 2026-08-03 — pnpm→bun, a 5-lens audit, and the gates that were never actually gating (DONE)
 
 Four commits: `268747f` (bun + audit fixes), `844eef3` (−836 lines), `674455b` (dependency
@@ -107,6 +157,7 @@ the deleted `check-slices.mjs` line, which would block every push.
 human-approval-gated and an authenticated owner has full shell anyway, so this degrades the
 DANGER badge rather than being RCE — but a regex over shell strings is the wrong shape; the fix
 is to split on shell metacharacters and check each segment. (2) The repo-health lens above.
+→ **Both closed the same day; see the entry above this one.**
 
 ## 2026-07-30 — v0.2.0: Alfa can act on the host, and a release gate that found four reasons it should not ship yet (DONE)
 
