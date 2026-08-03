@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { toast } from "@/features/os-shell";
 
 // One-shot guard (per tab) so recovery never loops.
 const GUARD = "mso_chunk_recover";
@@ -49,10 +48,19 @@ async function recover() {
 
 // New SW is installed + waiting → offer a one-tap reload. The reload clears
 // caches and activates the waiting SW (SKIP_WAITING → controllerchange).
-function promptUpdate(reg: ServiceWorkerRegistration) {
+//
+// `toast` is imported HERE, not at module scope. RegisterSW sits in the ROOT
+// layout, and `@/features/os-shell` re-exports the whole appshell barrel — so a
+// top-level import put the entire OS shell (window manager, 5 shells, 10 shell
+// features) into the static graph of every route, including public pages that
+// render nothing but text. Deferring it to the moment an update actually exists
+// keeps the shell out of the initial load and changes no behaviour: by then the
+// shell is either already loaded, or there is no toast surface to render into.
+async function promptUpdate(reg: ServiceWorkerRegistration) {
   const waiting = reg.waiting;
   if (!waiting || !navigator.serviceWorker.controller) return;
   let reloading = false;
+  const { toast } = await import("@/features/os-shell");
   toast("Versi baru tersedia.", {
     action: {
       label: "Reload",
@@ -108,13 +116,13 @@ export function RegisterSW() {
         .register("/sw.js")
         .then((reg) => {
           // Already-queued update from a prior tab session.
-          if (reg.waiting) promptUpdate(reg);
+          if (reg.waiting) void promptUpdate(reg);
           // A new SW starts installing → toast once it finishes.
           reg.addEventListener("updatefound", () => {
             const sw = reg.installing;
             if (!sw) return;
             sw.addEventListener("statechange", () => {
-              if (sw.state === "installed") promptUpdate(reg);
+              if (sw.state === "installed") void promptUpdate(reg);
             });
           });
           // Mobile PWAs check for SW updates lazily — force it now, on focus, and

@@ -108,6 +108,8 @@ curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install
 curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install.sh | bash -s -- --uninstall
 ```
 
+There is also a no-login install guide you can share: **<https://mso.rahmanef.com/install>** (every MSO instance serves it at `/install`).
+
 Full production setup, TLS/VPN notes, filesystem roots, updates, and rollback steps live in [docs/INSTALL.md](./docs/INSTALL.md).
 
 ## CLI
@@ -131,6 +133,8 @@ mso service restart          # systemd
 mso api GET /api/v1/sys/stats   # escape hatch — any endpoint
 eval "$(mso completion bash)"   # tab completion
 ```
+
+Full command reference: [docs/CLI.md](./docs/CLI.md) (generated from `mso --help`).
 
 Global options: `--base <url>` to target another instance, `--env <file>` to pick a
 different secrets file. Device and service commands work even while the service is
@@ -249,6 +253,7 @@ Not currently supported:
 | Doc | What's in it |
 |---|---|
 | [docs/INSTALL.md](./docs/INSTALL.md) | Server install, credentials, systemd, TLS/VPN, updates, rollback |
+| [docs/CLI.md](./docs/CLI.md) | The `mso` command-line reference (generated from `mso --help`) |
 | [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Local dev, quality gates, pnpm, deploy hazards |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | App shell, host layer, slices, routing |
 | [docs/MANAGED-APPS.md](./docs/MANAGED-APPS.md) | Managing Hermes/OpenClaw, per-app origins, workspace modes |

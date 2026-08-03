@@ -18,10 +18,36 @@ async function cpuSample(): Promise<{ idle: number; total: number }> {
   }
 }
 
+// CPU% needs two /proc/stat samples. Taking both inside one request means every
+// caller pays a 120ms sleep — and the System Monitor polls this every 1500ms, so
+// the handler sat blocked for 8% of wall-clock forever. Keep the last sample
+// instead: a poll that arrives while a usable one is on hand diffs against it and
+// returns immediately.
+//
+// The window has both ends for a reason. Below MIN, the delta is too few jiffies
+// to mean anything (and can read 0 on an idle box). Above MAX, the delta stops
+// being "now" — a sample from ten minutes ago would report the ten-minute average
+// as the current load. Outside the window we fall back to the honest two-sample
+// read, so correctness never depends on how often someone happens to be polling.
+const REUSE_MIN_MS = 200;
+const REUSE_MAX_MS = 10_000;
+let lastSample: { at: number; idle: number; total: number } | null = null;
+
 export async function stats(): Promise<SysStats> {
-  const a = await cpuSample();
-  await new Promise((r) => setTimeout(r, 120));
+  const now = Date.now();
+  const prev = lastSample;
+  const reusable = prev && now - prev.at >= REUSE_MIN_MS && now - prev.at <= REUSE_MAX_MS;
+
+  let a: { idle: number; total: number };
+  if (reusable) {
+    a = prev;
+  } else {
+    a = await cpuSample();
+    await new Promise((r) => setTimeout(r, 120));
+  }
   const b = await cpuSample();
+  lastSample = { at: Date.now(), idle: b.idle, total: b.total };
+
   const dt = b.total - a.total;
   const di = b.idle - a.idle;
   const pct = dt > 0 ? Math.max(0, Math.min(100, Math.round((1 - di / dt) * 100))) : 0;

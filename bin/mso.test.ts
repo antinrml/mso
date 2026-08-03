@@ -41,6 +41,17 @@ describe("bin/mso", () => {
     expect(() => run("definitely-not-a-verb")).toThrow();
   });
 
+  it("keeps docs/CLI.md in sync with the help", () => {
+    // docs/CLI.md is generated from this same help text. A doc that silently
+    // describes an older CLI is worse than no doc, so staleness fails here
+    // rather than being noticed by whoever followed it.
+    expect(() =>
+      execFileSync("node", [path.join(__dirname, "../scripts/gen-cli-docs.mjs"), "--check"], {
+        encoding: "utf8",
+      }),
+    ).not.toThrow();
+  });
+
   // "Covers every need" is only true if it stays true. Every API route must be
   // reachable by a named verb, except the ones a shell genuinely cannot drive.
   it("has a named verb for every API route", () => {
