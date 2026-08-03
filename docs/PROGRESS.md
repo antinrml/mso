@@ -8,6 +8,106 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-03 — pnpm→bun, a 5-lens audit, and the gates that were never actually gating (DONE)
+
+Four commits: `268747f` (bun + audit fixes), `844eef3` (−836 lines), `674455b` (dependency
++ build gates, sharp CVE), `c201e8f` (cleanup). All live on :4005 and pushed.
+
+**bun replaces pnpm as the installer — the runtime did NOT move.** `bun.lock` is committed,
+`pnpm-lock.yaml` is gone, `.nvmrc`/`engines.node` still pin Node 22, and prod's `ExecStart`
+is still `/usr/bin/npm run start`. `next`/`tsc`/`eslint`/`vitest` carry `#!/usr/bin/env node`
+shebangs and `bun run` honours them, so every tool still executes under Node. Measured, not
+assumed: install warm 3.5 s → 2.6 s (marginal), script startup **318 ms → 8 ms** (the actual
+win — `verify` chains four). `pnpm.onlyBuiltDependencies` → `trustedDependencies`,
+`pnpm.overrides` → `overrides`. Two traps now documented in CLAUDE.md and DEVELOPMENT.md:
+`bun test` silently shadows the `test` script and exits 0 having run nothing, and `bunx`
+downloads-and-runs a missing package (so `post-deploy-smoke.sh` calls
+`node_modules/.bin/vitest` directly, never `bunx`).
+
+**A 5-lens audit ran; the 5th lens died and its ground was never covered.** Lenses:
+over-engineering, security, Next16/React19, bun blast-radius, repo health. Each finding was
+handed to an adversarial verifier told to refute it. The **repo-health lens hit a
+StructuredOutput retry cap and returned nothing** — so test-coverage reality, error
+swallowing, eslint gaps and TypeScript escapes remain **unaudited**. The security core came
+back clean under four separate attempts: all 51 routes `verifyAuth` first, path bounds
+realpath before checking, and the CSRF gate in `proxy.ts` is not spoofable.
+
+**The largest real cost was one line.** `next.config.mjs` is evaluated **twice** (once by
+`next build`, once when `next start` boots), so a `Date.now()` `deploymentId` fallback
+emitted two different `?dpl=` values for the same chunk — the HTML referenced both and the
+browser downloaded, parsed and executed ~160 KB gzip of entry chunks **twice on every cold
+load**. Confirmed live, now zero `?dpl=`. Note the key must be **absent**, not `undefined`:
+`undefined` still emits an empty `?dpl=`, which leaves `chunk.js` and `chunk.js?dpl=` as two
+distinct URLs and the double download intact. `env: { NEXT_PUBLIC_BUILD_ID }` is unaffected —
+`env` is inlined at build time for server *and* client, which is why it never had this bug.
+
+Other perf: System Monitor (1.5 s) and Managed Apps (10 s) polled with no visibility gate, so
+a backgrounded tab spent host CPU forever; the menu-bar CPU chip ran a *second* poller against
+the endpoint the shared store already polled (~55 → ~20 req/min); `hermes --version` (0.44 s
+CPU) re-forked every 10 s, now cached 60 s and dropped on any lifecycle action; xterm left the
+entry chunk (340 → 334 KB gzip) — `os-terminal/index.ts` eagerly re-exported the module it
+also code-split, and `shell.manifest.ts` imports that barrel eagerly.
+
+**Security fixed:** the Camoufox profile (live Google `SID`/`__Secure-1PSID`/`SAPISID` +
+LinkedIn `li_at`) and `~/.vnc` were readable through `fs/read` and `fs/zip` — absent from
+`SENSITIVE_HOME` while `OS_FS_READ_ROOTS` is `~`; four live session cookie jars sat `0664` at
+derivable `/tmp` paths (code fixed *and* the existing files chmod'd); a **distributed** login
+lockout where six IPs inside their own 5/min allowance filled the 30/min global budget and the
+owner's *correct* password then got 429 — the global budget is now charged only by a failed
+password compare, with a regression test verified to fail on the old code; `~/.mso` now created
+`mode: 0o700`; the CLI login body moved from argv to stdin.
+
+**−836 net lines.** 20 `slice.json` + `check-slices.mjs` (604 lines; one consumer validating 3
+of 12 fields, and `docs/AUDIT-2026-06-11` had already flagged 8 as describing a Convex auth
+this app does not have), `layouts.ts` (a strict subset of `profiles.ts`), two `CredentialStore`
+impls, `useBadges`/`useProfiles`, three documented-but-unread `ShellManifest`/`Brand`/
+`FeatureDescriptor` fields, three image-editor barrel re-exports, and `makeDragProps` — the
+*producing* half of the DnD seam, which had no callers, meaning nothing ever wrote `DND_MIME`
+and the receiving half was unreachable. `os-browser.service` (retired sidecar, 135 MB, still
+autostarting) stopped + disabled; the directory stays as the repo's only Playwright.
+
+**The gates were theatre; now they are not.** Three discoveries, in order of how badly each was
+believed:
+1. `bun audit` had **never been run**. First run found sharp <0.35.0 HIGH (libvips
+   CVE-2026-33327/33328/35590/35591) sitting transitively under next. next@16.2.12 pins
+   `^0.34.5` and has **no fixed release** — only canary moved — so `overrides` is the only fix.
+   sharp 0.35.3, libvips 8.17.3 → 8.18.3, `/_next/image` still 200. sharp 0.35 also removed its
+   install script, so `bun pm untrusted` is now **two** entries, not three.
+2. Adding `audit` to `verify` **gates nothing**: sc-git's `ci.js` has a hardcoded
+   `STEPS = ['typecheck','lint','test','build']` and never invokes `verify`. The real gate had
+   to go in `.git/hooks/pre-push`.
+3. **"Just remove `--skip build`" would have been an outage on every push.** `ci.js` builds in
+   `process.cwd()`, which for the hook *is* `mso.service`'s WorkingDirectory, and `next build`
+   deletes everything in `distDir` except `/^(cache|dev|lock)/` as its first act — and repeat
+   builds rename every chunk and mint a new `BUILD_ID`, so already-served HTML stays broken
+   afterwards too. `--skip build` is load-bearing safety. `scripts/verify-build.sh` builds a
+   throwaway copy of HEAD in `mktemp` instead; `node_modules` is **copied, not symlinked**
+   (Turbopack hard-fails on a symlink pointing outside the filesystem root) and `.env.local` is
+   deliberately not copied, so no secret lands in `/tmp`.
+
+`scripts/audit.mjs` exists because `bun audit` **fails closed** — offline it exits 1, the same
+code as a real advisory — so wired raw into a hook every network blip becomes a fake security
+failure. The wrapper treats empty stdout as "unreachable, skip"; CI keeps the raw fail-closed
+command on purpose, because a release gate must not pass an audit it could not perform. Also:
+`--json` silently ignores both `--audit-level` and `--ignore`, and bun's JSON carries only an
+opaque numeric id, so the readable GHSA is parsed out of the advisory URL.
+
+**Also fixed: the post-deploy gate was half dead.** `scripts/e2e/smoke.test.ts` probed
+`/api/version` and `/api/v1/sys/cpu` — **neither ever existed in this repo** (no git history for
+either path). It had been asserting `404 == 200` since it was written, which is exactly how a
+gate stops being run. Repointed at `/api/health` + `/api/v1/sys/stats`; 4/4 green.
+
+Push now costs ~70 s (was ~47 s) and prints `audit: clean at high/critical.` +
+`build: HEAD compiles (out-of-tree).` — **if those two lines are missing, the wiring is gone.**
+The hook is untracked, so an sc-git hook reinstall silently reverts all of this *and* re-adds
+the deleted `check-slices.mjs` line, which would block every push.
+
+**Still open:** (1) `lib/host/exec-filter.test.ts` documents four `it.fails()` bypasses of the
+`rm -rf /` guard (`;` chain, subshell, `bash -c "…"`, `HOME=/ rm -rf "$HOME"`). Exec is
+human-approval-gated and an authenticated owner has full shell anyway, so this degrades the
+DANGER badge rather than being RCE — but a regex over shell strings is the wrong shape; the fix
+is to split on shell metacharacters and check each segment. (2) The repo-health lens above.
+
 ## 2026-07-30 — v0.2.0: Alfa can act on the host, and a release gate that found four reasons it should not ship yet (DONE)
 
 An adversarial gate before announcing the agentic harness: five probes (contract vs code,
