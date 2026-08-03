@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# mso — drive the whole Manef Shell OS from the shell.
+#
+# mso.rahmanef.com is only ONE frontend. Everything it can do is a call to the
+# same /api/v1 surface, so this CLI reaches every feature without a browser.
+# Auth = signed session cookie (password + approved device), cached in a jar.
+#
+# FILES      ls [path] · cat <p> · write <p> <text> · mkdir <p> · rm <p>
+#            mv <a> <b> · cp <a> <b> · usage [path] · search <q> [root]
+# HOST       exec <cmd…> · stats · ps · cleanup [--run] · health
+# BROWSER    camoufox status|start|stop|session
+# APPS       apps · mapp list|show <id>|logs <id>|install <id>|update <id>
+#            mapp backups <id>|jobs <id>
+# TERMINAL   term open [cwd] · term input <id> <text> · term close <id>
+# AI         ai <prompt…> · threads [id] · memory
+# CONFIG     config · prefs · models · skills
+# DEVICES    devices · approve <id> [label] · revoke <id>   (local, no login)
+#            whoami · login   (this CLI's own device id + session)
+# SERVICE    service status|start|stop|restart|logs [n] · build · deploy
+# EDITOR     crud list|get|set|del|cmds   (see `mso crud`)
+# ESCAPE     api <METHOD> <path> [json]   — any endpoint, e.g.
+#            mso api GET /api/v1/sys/stats
+#
+# READ = OS_FS_READ_ROOTS; WRITE = home + ~/projects; exec = full host power.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+B="${MSO_BASE:-${OS_BASE:-http://127.0.0.1:4005}}"
+ENVF="${MSO_ENV:-${OS_ENV:-$ROOT/.env.local}}"
+# shellcheck disable=SC1090
+set -a; . "$ENVF" 2>/dev/null || true; set +a
+
+die() { echo "mso: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null || die "missing dependency: $1"; }
+need curl; need jq
+
+# ── local ops (no HTTP, no login) ───────────────────────────────────────────
+dev_script() { node "$ROOT/scripts/approve-device.js" "$@"; }
+
+# ── auth ────────────────────────────────────────────────────────────────────
+PASS="${MSO_PASSWORD:-${OS_PASSWORD:-${OS_LOGIN_PASSWORD:-}}}"
+DEV="${MSO_DEVICE:-${OS_DEVICE:-}}"
+# A stable per-host CLI device id, so `mso approve` only ever has to run once.
+DEVF="${MSO_DEVICE_FILE:-$HOME/.mso/cli.device.id}"
+cli_device() {
+  [ -n "$DEV" ] && { printf '%s' "$DEV"; return; }
+  [ -s "$DEVF" ] || { mkdir -p "$(dirname "$DEVF")"; head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$DEVF"; chmod 600 "$DEVF"; }
+  cat "$DEVF"
+}
+
+JAR="${MSO_JAR:-${TMPDIR:-/tmp}/mso-$(id -u).jar}"
+
+# proxy.ts blocks mutating /api requests that can't prove same-origin. A browser
+# proves it with Sec-Fetch-Site; the documented fallback for non-browser clients
+# is an Origin whose host matches the Host header — which is exactly what $B is.
+# Sent on every call so `login` works before any session cookie exists.
+ORIGIN=(-H "origin: $B")
+
+login() {
+  local d code; d=$(cli_device)
+  [ -n "$PASS" ] || die "no OS_LOGIN_PASSWORD in $ENVF (or export MSO_PASSWORD)"
+  code=$(curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" -X POST "$B/api/auth/login" \
+    "${ORIGIN[@]}" -H 'content-type: application/json' \
+    -d "$(jq -n --arg p "$PASS" --arg d "$d" '{password:$p,deviceId:$d,deviceLabel:"mso cli"}')" || true)
+  [ "$code" = "200" ] || die "login failed ($code) — approve this CLI device:
+  mso approve $d \"mso cli\""
+}
+# Request with the cached cookie; on 401/403 (expired) log in once and retry.
+# Login is lazy on purpose: `mso -h`, `mso approve` and `mso service …` are
+# local-only and must keep working while the service is down or unapproved.
+req() {
+  local out code body
+  [ -f "$JAR" ] || login
+  out=$(curl -sS -b "$JAR" "${ORIGIN[@]}" -w $'\n%{http_code}' "$@" || true)
+  code="${out##*$'\n'}"; body="${out%$'\n'*}"
+  if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+    login
+    out=$(curl -sS -b "$JAR" "${ORIGIN[@]}" -w $'\n%{http_code}' "$@" || true)
+    code="${out##*$'\n'}"; body="${out%$'\n'*}"
+  fi
+  case "$code" in 2*) printf '%s' "$body" ;; *) die "request failed ($code): $body" ;; esac
+}
+enc()   { jq -rn --arg v "$1" '$v|@uri'; }
+jget()  { req "$B$1"; }
+jpost() { req -H 'content-type: application/json' -d "${2:-{\}}" "$B$1"; }
+jdel()  { req -X DELETE -H 'content-type: application/json' -d "${2:-{\}}" "$B$1"; }
+# Build a JSON object from k=v pairs (numbers + booleans coerced).
+kv_args() { local j='{}' kv k v; for kv in "$@"; do k="${kv%%=*}"; v="${kv#*=}"
+  if [[ "$v" =~ ^-?[0-9]+([.][0-9]+)?$ || "$v" == "true" || "$v" == "false" ]]; then
+    j=$(jq -c --arg k "$k" --argjson v "$v" '.+{($k):$v}' <<<"$j")
+  else j=$(jq -c --arg k "$k" --arg v "$v" '.+{($k):$v}' <<<"$j"); fi; done; printf '%s' "$j"; }
+
+# Print the header block verbatim — stops at the first non-comment line, so the
+# help can never drift out of sync with the comment above.
+usage() { awk 'NR>1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"; }
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  # ── files ────────────────────────────────────────────────────────────────
+  ls)     jget "/api/v1/fs/list?path=$(enc "${1:-~}")" ;;
+  cat)    jget "/api/v1/fs/read?path=$(enc "${1:?path}")" | jq -r . ;;
+  usage)  jget "/api/v1/fs/usage?path=$(enc "${1:-~}")" ;;
+  search) jget "/api/v1/fs/search?q=$(enc "${1:?query}")${2:+&root=$(enc "$2")}" ;;
+  write)  jpost "/api/v1/fs/write" "$(jq -n --arg p "${1:?path}" --arg c "${2-}" '{path:$p,content:$c}')" ;;
+  mkdir)  jpost "/api/v1/fs/mkdir" "$(jq -n --arg p "${1:?path}" '{path:$p}')" ;;
+  rm)     jdel  "/api/v1/fs/delete" "$(jq -n --arg p "${1:?path}" '{path:$p}')" ;;
+  mv)     jpost "/api/v1/fs/move" "$(jq -n --arg f "${1:?from}" --arg t "${2:?to}" '{from:$f,to:$t}')" ;;
+  cp)     jpost "/api/v1/fs/copy" "$(jq -n --arg f "${1:?from}" --arg t "${2:?to}" '{from:$f,to:$t}')" ;;
+
+  # ── host ─────────────────────────────────────────────────────────────────
+  exec)   jpost "/api/v1/exec/run" "$(jq -n --arg c "$*" '{cmd:$c}')" ;;
+  stats)  jget "/api/v1/sys/stats" ;;
+  ps)     jget "/api/v1/sys/processes" ;;
+  cleanup) if [ "${1-}" = "--run" ]; then jpost "/api/v1/sys/cleanup"; else jget "/api/v1/sys/cleanup"; fi ;;
+  health) jget "/api/auth/me" ;;
+
+  # ── camoufox (the real browser the Browser app drives) ────────────────────
+  camoufox)
+    case "${1:-status}" in
+      status)  jget "/api/v1/camoufox/service" ;;
+      start)   jpost "/api/v1/camoufox/service" '{"action":"start"}' ;;
+      stop)    jpost "/api/v1/camoufox/service" '{"action":"stop"}' ;;
+      session) jget "/api/v1/camoufox/session" ;;
+      *) die "camoufox: status|start|stop|session" ;;
+    esac ;;
+
+  # ── managed apps (hermes, openclaw…) ─────────────────────────────────────
+  apps) jget "/api/v1/apps" ;;
+  mapp)
+    sub="${1:-list}"; shift || true
+    case "$sub" in
+      list)    jget "/api/v1/managed-apps" ;;
+      show)    jget "/api/v1/managed-apps/$(enc "${1:?id}")" ;;
+      logs)    jget "/api/v1/managed-apps/$(enc "${1:?id}")/logs" ;;
+      backups) jget "/api/v1/managed-apps/$(enc "${1:?id}")/backups" ;;
+      jobs)    jget "/api/v1/managed-apps/$(enc "${1:?id}")/jobs" ;;
+      install) jpost "/api/v1/managed-apps/$(enc "${1:?id}")/install" "$(kv_args "${@:2}")" ;;
+      update)  jpost "/api/v1/managed-apps/$(enc "${1:?id}")/update"  "$(kv_args "${@:2}")" ;;
+      *) die "mapp: list|show <id>|logs <id>|backups <id>|jobs <id>|install <id>|update <id>" ;;
+    esac ;;
+
+  # ── terminal ─────────────────────────────────────────────────────────────
+  term)
+    sub="${1:-open}"; shift || true
+    case "$sub" in
+      open)  jpost "/api/v1/term/open" "$(jq -n --arg c "${1-}" '{cwd:$c}')" ;;
+      input) jpost "/api/v1/term/input" "$(jq -n --arg i "${1:?id}" --arg d "${2:?text}" '{id:$i,data:$d}')" ;;
+      close) jpost "/api/v1/term/close" "$(jq -n --arg i "${1:?id}" '{id:$i}')" ;;
+      *) die "term: open [cwd]|input <id> <text>|close <id>" ;;
+    esac ;;
+
+  # ── assistant / state ────────────────────────────────────────────────────
+  ai)      jpost "/api/assistant" "$(jq -n --arg m "$*" '{messages:[{role:"user",content:$m}]}')" ;;
+  threads) if [ -n "${1-}" ]; then jget "/api/threads?id=$(enc "$1")"; else jget "/api/threads"; fi ;;
+  memory)  jget "/api/memory" ;;
+  config)  jget "/api/config" ;;
+  prefs)   jget "/api/prefs" ;;
+  models)  jget "/api/models" ;;
+  skills)  jget "/api/skills" ;;
+
+  # ── devices (local file, works even when the service is down) ────────────
+  devices) dev_script --list ;;
+  approve) dev_script "${1:?deviceId}" "${@:2}" ;;
+  revoke)  dev_script --revoke "${1:?deviceId}" ;;
+  whoami)  echo "cli device: $(cli_device)"; jget "/api/auth/me" ;;
+  login)   rm -f "$JAR"; login; echo "logged in as device $(cli_device)" ;;
+
+  # ── service (local systemd) ──────────────────────────────────────────────
+  service)
+    case "${1:-status}" in
+      status)  systemctl status --no-pager mso.service ;;
+      start)   sudo systemctl start mso.service ;;
+      stop)    sudo systemctl stop mso.service ;;
+      restart) sudo systemctl restart mso.service ;;
+      logs)    journalctl -u mso.service -n "${2:-50}" --no-pager ;;
+      *) die "service: status|start|stop|restart|logs [n]" ;;
+    esac ;;
+  build)  (cd "$ROOT" && npm run build) ;;
+  deploy) (cd "$ROOT" && npm run build) && sudo systemctl restart mso.service && echo "deployed → $B" ;;
+
+  # ── editor-document CRUD (one pattern, all editor features) ──────────────
+  crud)
+    sub="${1:-help}"; shift || true
+    case "$sub" in
+      list) jget "/api/v1/fs/list?path=$(enc "${1:?path}")" ;;
+      get)  jget "/api/v1/fs/read?path=$(enc "${1:?path}")" | jq -r . ;;
+      del)  jdel "/api/v1/fs/delete" "$(jq -n --arg p "${1:?path}" '{path:$p}')" ;;
+      cmds) jget "/api/v1/editor/exec" | jq -r '.tools[] | "  \(.name)\t\(.description)"' ;;
+      set)
+        path="${1:?path}"; shift; op="${1:?command-or-content}"; shift || true
+        if [[ "$op" =~ ^[a-z]+\.[a-zA-Z]+$ ]]; then
+          # Editor-doc command → ONE atomic server op: the route reads the doc
+          # (or seeds it), applies the command, and writes it back in place.
+          a=$(kv_args "$@")
+          resp=$(jpost "/api/v1/editor/exec" "$(jq -n --arg p "$path" --arg n "$op" --argjson a "$a" '{path:$p,commands:[{name:$n,args:$a}]}')")
+          jq -e '.dimsFallback' >/dev/null 2>&1 <<<"$resp" && echo "  ! image dims unknown → defaulted (AVIF/HEIC/TIFF not probed)" >&2
+          jq -r '.results[]? | "  \(.name) \(if .ok then "ok" else "ERR" end) — \(.result)"' <<<"$resp"
+        else
+          jpost "/api/v1/fs/write" "$(jq -n --arg p "$path" --arg c "$op${*:+ $*}" '{path:$p,content:$c}')"
+        fi ;;
+      *) die "crud: list <dir> | get <path> | set <path> <cmd k=v…|text> | del <path> | cmds" ;;
+    esac ;;
+
+  # ── escape hatch: any endpoint at all ────────────────────────────────────
+  api)
+    m="${1:?METHOD}"; p="${2:?/api/...}"; body="${3-}"
+    if [ -n "$body" ]; then req -X "$m" -H 'content-type: application/json' -d "$body" "$B$p"
+    else req -X "$m" "$B$p"; fi ;;
+
+  help|-h|--help) usage; exit 0 ;;
+  *) usage; exit 1 ;;
+esac
+echo

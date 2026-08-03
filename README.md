@@ -110,6 +110,29 @@ curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install
 
 Full production setup, TLS/VPN notes, filesystem roots, updates, and rollback steps live in [docs/INSTALL.md](./docs/INSTALL.md).
 
+## CLI
+
+The browser UI is one frontend, not the product. The installer also puts `mso` on your
+`PATH`, and it drives the same API:
+
+```bash
+mso -h                       # every verb
+mso devices                  # who can log in
+mso approve <deviceId> "my phone"
+mso ls ~/projects            # files
+mso exec "df -h"             # host shell
+mso stats                    # cpu / mem / disk
+mso camoufox start           # power the anti-detection browser
+mso mapp list                # managed apps (hermes, openclaw…)
+mso service restart          # systemd
+mso api GET /api/v1/sys/stats   # escape hatch — any endpoint
+```
+
+Local verbs (`-h`, `approve`, `devices`, `service`) work even while the service is
+down. If you use [Claude Code](https://claude.com/claude-code), the installer also
+links the agent skills in `claude-skills/` into `~/.claude/skills/` — `/mso`,
+`/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`, `/mso-browser-list`.
+
 ## Security warning
 
 An authenticated MSO session can read allowed files and run commands as the user that owns the process. Treat it like SSH in a browser.

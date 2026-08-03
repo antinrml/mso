@@ -204,6 +204,23 @@ to `resources/` (rr) and drive any project from one manifest:
 - Solo-dev: push direct to `main` once `pnpm typecheck` + `pnpm build` are green.
   Conventional commits + Claude co-author.
 
+## CLI (`bin/mso`) — the web UI is only one frontend
+`bin/mso` reaches the same `/api` surface from a shell; `scripts/install.sh` symlinks
+it to `~/.local/bin/mso` and symlinks `claude-skills/*` into `~/.claude/skills/`
+(`/mso`, `/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`,
+`/mso-browser-list`). `mso -h` lists every verb; `mso api <METHOD> <path> [json]` is
+the escape hatch for anything without a named verb.
+- **Every CLI caller must send `Origin: <base>`.** `proxy.ts` blocks mutating `/api`
+  that cannot prove same-origin; a browser proves it with `Sec-Fetch-Site`, and the
+  documented fallback is an `Origin` whose host matches `Host`. Without it login
+  itself 403s `cross_origin_blocked` — before any device check, so the error looks
+  like an approval problem and is not.
+- One shared CLI device id lives in `~/.mso/cli.device.id` (auto-created, approve
+  once with `mso approve $(cat ~/.mso/cli.device.id)`). `audit.js` and
+  `image-editor.sh` read the same file — do not reintroduce per-script hardcoded ids.
+- Local verbs (`-h`, `approve`, `devices`, `service`, `build`) never log in, so they
+  still work while the service is down.
+
 ## Local dev
 ```bash
 pnpm install

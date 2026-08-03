@@ -22,6 +22,7 @@ export default defineConfig({
       "app/**/*.test.{ts,tsx}",
       "frontend/slices/**/*.test.{ts,tsx}",
       "lib/**/*.test.{ts,tsx}",
+      "bin/**/*.test.{ts,tsx}",
       "scripts/e2e/**/*.test.{ts,tsx}",
       "instrumentation.test.ts",
       // Root-level modules Next requires by name (middleware is `proxy.ts` in 16),

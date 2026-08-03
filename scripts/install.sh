@@ -243,6 +243,33 @@ else
   [ "$DO_SERVICE" -eq 1 ] && warn "no systemctl here — skipping service. Run manually: PORT=$PORT pnpm start"
 fi
 
+# ---- CLI on PATH ----
+# The web UI is one frontend; bin/mso reaches the same /api surface from a shell.
+BIN_DIR="${MSO_BIN_DIR:-$HOME/.local/bin}"
+mkdir -p "$BIN_DIR"
+ln -sfn "$DIR/bin/mso" "$BIN_DIR/mso"
+ok "cli → $BIN_DIR/mso"
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *) warn "$BIN_DIR is not on PATH — add: export PATH=\"\$PATH:$BIN_DIR\"" ;;
+esac
+
+# ---- agent skills (symlinked, so a git pull updates them too) ----
+# Skipped silently when Claude Code isn't installed — mso does not depend on it.
+SKILL_DIR="${MSO_SKILL_DIR:-$HOME/.claude/skills}"
+if [ -d "$DIR/claude-skills" ] && [ -d "$(dirname "$SKILL_DIR")" ]; then
+  mkdir -p "$SKILL_DIR"
+  for s in "$DIR"/claude-skills/*/; do
+    name="$(basename "$s")"
+    if [ -e "$SKILL_DIR/$name" ] && [ ! -L "$SKILL_DIR/$name" ]; then
+      warn "skill $name exists and is not a symlink — left alone"
+      continue
+    fi
+    ln -sfn "${s%/}" "$SKILL_DIR/$name"
+  done
+  ok "skills → $SKILL_DIR (/mso, /mso-camoufox, /mso-apps, /mso-list, …)"
+fi
+
 # ---- next steps ----
 ok "mso installed at $DIR"
 cat <<EOF
