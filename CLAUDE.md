@@ -135,14 +135,18 @@ to `resources/` (rr) and drive any project from one manifest:
   host in `next.config` `images.remotePatterns`). Host-fs images + the live Playwright
   screenshot stream stay raw `<img>` on purpose (dynamic/auth'd bytes).
 
-## Deploy / ops (prod :4005 is systemd, not Dokploy)
+## Deploy / ops (prod :4005 + demo :4006 are systemd, not Dokploy)
 - `mso.service` (:4005, WorkingDir `/home/rahman/projects/mso`) serves
   mso.rahmanef.com via `next start`.
-- **The demo does NOT exist on this host** (checked 2026-08-03): no `mso-demo.service`
-  unit, no `/home/rahman/projects/mso-demo` checkout. The `NEXT_PUBLIC_OS_DEMO=1`
-  build flag is still real and still works — what is gone is the second checkout and
-  the :4006 unit that used to serve it. Anything below describing "the demo" is a
-  recipe to re-create it, not a description of something running.
+- `mso-demo.service` (:4006, WorkingDir `/home/rahman/projects/mso-demo`,
+  `NEXT_PUBLIC_OS_DEMO=1` → no auth, mock data). It had been deleted at some point and
+  was **re-created 2026-08-03** to make UI/UX verification possible without logging in.
+  It binds **127.0.0.1 only, deliberately**: demo mode disables login, so a `0.0.0.0`
+  bind would publish an unauthenticated shell. It is mock-data-only so the blast radius
+  is small, but exposing it is the owner's decision — put it behind the reverse proxy
+  explicitly if you want it public. The checkout is a shallow clone of this repo with
+  `node_modules` copied in; rebuild it with the flag (`NEXT_PUBLIC_OS_DEMO=1` is inlined
+  at BUILD time) whenever you re-deploy it.
 - **Deploy prod:** `bun run build` **THEN** `sudo systemctl restart mso.service`. ALWAYS
   build-then-restart, never the reverse, and never rebuild again after restarting
   without restarting once more — `next start` loads the build manifest at boot, so if

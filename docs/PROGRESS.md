@@ -8,6 +8,65 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-03 (UX) — a real browser pass, a demo instance back, and I broke prod proving it (DONE)
+
+First pass that opened the product in a browser instead of reading the code. Also the
+first time this session damaged production, so that first.
+
+**I broke :4005, with the exact hazard I had documented hours earlier.** Measuring bundle
+output meant running `bun run build` twice in the prod checkout with no restart after.
+`next build` wipes `distDir` first, so the running server was serving 500s with
+`Content-Type: text/plain` for its own chunks and the browser refused to execute them.
+Fixed by a restart; smoke green after. Two lessons worth more than the measurement:
+`scripts/verify-build.sh` exists precisely for this and I did not use it, and **a broken
+deploy silently corrupts whatever you are measuring** — see the retraction below.
+
+**RETRACTED: "the mobile-first product renders the desktop shell on phones."** I reported
+`data-shell=macos` at 390px, 412px and on a real iPhone UA, with a screenshot of a macOS
+menu bar on a phone-sized viewport. It was entirely an artifact of the breakage above:
+React never hydrated (its chunks were refused), so the effect that computes responsive
+state never ran and the deliberate SSR default — desktop — stayed on screen. After the
+restart: **390px → `ios`, 412px → `ios`, 1280px → `macos`, zero horizontal overflow.**
+Responsive shell selection works correctly. Nothing was wrong.
+
+**Measured on a healthy prod** (Playwright, `os-browser/node_modules`):
+
+| | desktop 1280 | mobile 390 |
+|---|---|---|
+| LCP | 380 ms | 160 ms |
+| CLS | 0.008 | 0 |
+| TTFB | 24 ms | 20 ms |
+| transfer / requests | 194 KB / 29 | 231 KB / 30 |
+
+Against a 2500 ms "good" LCP threshold there is nothing meaningful left to win here.
+
+**Fixed: 4 touch targets under the WCAG 2.5.8 24×24 floor, all on mobile** — the three
+iOS home-screen page dots were 19×19 (`p-1.5` around a 7px dot) and the home indicator
+was 17px tall. Both got a `min-h`/`min-w` floor; the dot and the 134px bar are visually
+unchanged, only the hit area grew. Mobile now reports one "tiny" control and it is the
+`sr-only` skip link, which is 1×1 by design and expands on focus.
+
+**A11y came back stronger than expected**, recorded so nobody re-audits it: 77 icon
+buttons, **zero** without an accessible name; the skip link exists and its
+`#main-content` target resolves; the Launchpad overlay is both `inert` and
+`aria-hidden`, so its 16 app links are correctly out of the tab order (a naive
+`querySelectorAll` sweep counts them as unnamed — mine did, wrongly);
+`prefers-reduced-motion` collapses durations to 1ms rather than 0 so `animationend`
+still fires. Two of my own grep-based claims were wrong and the browser corrected both.
+
+**`mso-demo.service` is back**, :4006, loopback-only — see CLAUDE.md. Demo mode disables
+login, so a public bind would publish an unauthenticated shell; mock-data-only keeps the
+blast radius small but exposing it stays the owner's call.
+
+**Hardening:** `/etc/logrotate.d/mso-audit` now rotates `~/.mso/audit.log` (weekly, 5 MB
+cap, 8 generations, `su rahman rahman` since the file is 0600). Growth is only ~88 KB/mo
+today, but it is append-only with no cap in code and this box serves prod.
+
+**STILL OPEN — React hydration error #418**, reproducible on BOTH mobile and desktop with
+clean localStorage, so it is not the theme-restore inline script. A hydration mismatch
+makes React discard and re-render the tree client-side. Identifying the offending node
+needs a non-minified dev build; not chased here rather than guessed at.
+
 ## 2026-08-03 (docs) — reconciling every live doc against what the box actually does (DONE)
 
 A sweep for claims that had quietly become false. History files (`AUDIT-*`,

@@ -117,7 +117,10 @@ export function MobileHome({
             aria-label={`Go to page ${i + 1}`}
             aria-current={i === page}
             onClick={() => pagerRef.current?.scrollTo({ left: i * pagerRef.current.clientWidth, behavior: "smooth" })}
-            className="grid place-items-center p-1.5"
+            // min-h/w-6 = the WCAG 2.5.8 24×24 floor. The DOT stays 7px — only the
+            // hit area grows, so nothing moves visually. `p-1.5` alone gave 19×19,
+            // which is under the floor on the one surface that is touch-only.
+            className="grid min-h-6 min-w-6 place-items-center p-1.5"
           >
             <span className={cn("size-[7px] rounded-full transition-colors", i === page ? "bg-white/90" : "bg-white/40")} />
           </button>
