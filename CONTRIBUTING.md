@@ -15,20 +15,30 @@ without a VPS or any credentials.
 
 ## Before you open a PR
 
-A `pre-push` hook runs typecheck + lint + test + the slice/cycle checks and blocks
-the push if any fail, so this checklist is mostly a description of what already
-happens. `.github/workflows/ci.yml` is **manual** (`gh workflow run CI`) — run it
+A `pre-push` hook blocks the push on failure, so this checklist mostly describes what
+already happens. It runs four guards: typecheck + lint + test (via sc-git's `ci.js`),
+`check-cycles.mjs`, `scripts/audit.mjs`, and `scripts/verify-build.sh`. Budget ~70 s
+per push. `.github/workflows/ci.yml` is **manual** (`gh workflow run CI`) — run it
 before cutting a release or after touching `package.json`, `bun.lock` or
 `scripts/install.sh`, because a clean-checkout `bun install --frozen-lockfile` is
 the one thing the local hook cannot reproduce.
 
-- [ ] `bun run typecheck`
-- [ ] `bun run lint`
-- [ ] `bun run test` — vitest unit + integration (280+ tests)
+Two things about that hook are easy to get wrong:
+
+- **The hook is UNTRACKED** (`.git/hooks/pre-push`), so nothing in this repo can carry
+  it. Re-running an sc-git hook installer overwrites it and silently drops the audit
+  and build guards. A healthy push prints `audit: clean at high/critical.` and
+  `build: HEAD compiles (out-of-tree).` — if those two lines are missing, it is gone.
+- **`ci.js` is invoked with `--skip build`, on purpose.** It would run the build in
+  the current directory, which on the VPS *is* `mso.service`'s WorkingDirectory, and
+  `next build` deletes `distDir` before it compiles. `scripts/verify-build.sh` builds
+  a throwaway copy of `HEAD` in a temp dir instead. Do not "fix" the skip.
+
+- [ ] `bun run verify` — typecheck + lint + test + check + audit, in one command
 - [ ] `bun run build`
-- [ ] (optional) `node scripts/check-cycles.mjs` — no value-level import cycles
-- [ ] (optional) `node scripts/check-slices.mjs` — no slice-boundary violations
-- [ ] (optional) `bun run smoke` — e2e smoke against a local `bun run start`
+- [ ] (optional) `bash scripts/verify-build.sh` — build `HEAD` out-of-tree; safe to
+      run against the prod checkout, unlike a bare `bun run build`
+- [ ] (optional) `bun run smoke` — e2e smoke against a running server
 
 ## Conventions (the short version)
 

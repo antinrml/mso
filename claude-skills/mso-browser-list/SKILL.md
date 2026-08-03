@@ -1,15 +1,29 @@
 ---
 name: mso-browser-list
-description: Status of the mso Browser — a REAL headless Chromium (Playwright) on the VPS. List its functions, check the service renders real sites, and how to drive it from CLI. Trigger on /mso-browser-list, "browser functions", "why doesn't the browser work", "check the os browser", "browser status", "test the browser", "screenshot the browser".
+description: The RETIRED os-browser Playwright sidecar, kept only as dev tooling for e2e/desktop verification — its systemd unit is stopped and disabled, and the mso Browser app does NOT use it. For the actual Browser app use /mso-camoufox. Trigger on /mso-browser-list, "os-browser sidecar", "playwright install for e2e", "start the headless chromium service". Do NOT trigger on "why doesn't the browser work" or "browser status" — those mean Camoufox.
 ---
 
-# /mso-browser-list — Browser app deep check
+# /mso-browser-list — os-browser sidecar deep check
 
-The Browser is a **real headless Chromium** (Playwright) running on the host as
-systemd `os-browser` (loopback :4002, persistent context = cookies/cache/session
-on disk). The mso app shows live screenshots + sends clicks/keys; the CLI drives
-the SAME session. Renders ANY site — no X-Frame-Options/CSP problem. Companion to
-[/mso] and [/mso-list].
+> ## ⚠️ This is NOT the Browser app any more
+>
+> The **Browser app is Camoufox** — a real anti-fingerprinting Firefox on a headless
+> X display, streamed in over noVNC. Use **[/mso-camoufox]** for it.
+>
+> The `os-browser` Playwright sidecar described below was **retired**, and on
+> **2026-08-03 its systemd unit was stopped and `disable`d** — it no longer starts at
+> boot and nothing in the mso app calls it (the only remaining mentions in the code
+> are comments saying it was removed). Do **not** `systemctl restart os-browser` to
+> "fix the Browser"; that starts a service the app does not use.
+>
+> The `os-browser/` directory stays in the repo on purpose as **dev tooling** — it
+> holds the repo's only Playwright install, which `scripts/e2e` and desktop/mobile
+> verification use. This skill is still valid for driving THAT, if you start the
+> service by hand (`sudo systemctl start os-browser`). It is not a user-facing feature.
+
+The sidecar is a **real headless Chromium** (Playwright) on the host as systemd
+`os-browser` (loopback :4002, persistent context = cookies/cache/session on disk).
+Renders ANY site — no X-Frame-Options/CSP problem. Companion to [/mso] and [/mso-list].
 
 ## 1. Live check (run first)
 
@@ -17,51 +31,57 @@ the SAME session. Renders ANY site — no X-Frame-Options/CSP problem. Companion
 node ~/.claude/skills/mso-browser-list/browser-check.js
 ```
 Navigates several sites via the service and reports title + screenshot bytes +
-text length. If the service is DOWN: `sudo systemctl status os-browser`.
+text length. If the service is DOWN that is now the DEFAULT (see the banner) — `sudo systemctl start os-browser` to run these checks, and stop it again after.
 
-## 2. Drive it from CLI (you can SEE the page)
+## 2. Drive it from CLI
+
+`~/.claude/skills/mso/browser.sh` still exists, but it talks to `/api/v1/browser/*`,
+and **those routes were deleted with the sidecar** — `app/api/v1/` today is
+`apps camoufox editor exec fs managed-apps stock sys term`. So the CLI path below is
+DEAD until/unless someone re-adds the routes. Talk to the service directly instead:
 
 ```bash
-SH=/home/rahman/.claude/skills/mso/browser.sh
-$SH go <url> ; $SH shot /tmp/b.png   # then Read /tmp/b.png to view
-$SH content ; $SH click X Y ; $SH type "…" ; $SH key Enter ; $SH scroll 600
+sudo systemctl start os-browser                     # it is disabled; start by hand
+curl -s -H "x-os-browser-secret: $(grep -oP '(?<=^OS_BROWSER_SECRET=).*' \
+  /home/rahman/projects/mso/os-browser/.env)" \
+  -X POST 127.0.0.1:4002/goto -d '{"url":"https://example.com"}'
+sudo systemctl stop os-browser                      # leave it off
 ```
 
-## 3. Browser functions
+## 3. What still works, and what does not
 
-| Function | How | Status |
-|---|---|---|
-| Navigate (omnibar) | POST `/api/v1/browser/navigate` → service `goto` | works (any site) |
-| Render | live screenshot `<img>` from `/api/v1/browser/screenshot` | works |
-| Click / type / key / scroll | mouse/keyboard mapped to 1280×800 viewport | works |
-| Back / Forward / Reload | service history | works |
-| Bookmarks / history | localStorage | works |
-| Persistent session/cache | Playwright `launchPersistentContext(~/.mso/chrome-profile)` | works — logins stick |
-| AI Inspector (browser) | url/title + actions + scoped chat | works (chat needs key) |
-| CLI access (screenshot/content/drive) | `browser.sh` + the service API | works |
+| | Status |
+|---|---|
+| The service itself (Playwright Chromium, loopback :4002, secret-gated) | works when started by hand |
+| `os-browser/node_modules/playwright` — the repo's ONLY Playwright | works; this is why the dir is kept |
+| `scripts/e2e` + desktop/mobile verification | works (uses the Playwright install, not the service) |
+| mso Browser app rendering through it | **gone** — the app is Camoufox now |
+| `/api/v1/browser/*` routes | **deleted** |
+| `OS_BROWSER_URL` / `OS_BROWSER_SECRET` wired into the app | **gone** — the only mention left in app code is a comment in `lib/agent/server.ts` saying it was retired |
+| Bookmarks / AI Inspector / omnibar for it | **gone** with the app integration |
 
-## 4. Architecture
+## 4. Architecture (what is left)
 
 ```
-mso Browser app  ──Bearer──▶  /api/v1/browser/*  ──secret──▶  172.18.0.1:4002
-CLI (browser.sh) ──secret──▶  127.0.0.1:4002        (systemd os-browser)
-                                   └ Playwright Chromium, 1 persistent context (shared session)
+you ──secret──▶ 127.0.0.1:4002   (systemd os-browser, DISABLED — start by hand)
+                     └ Playwright Chromium, one persistent context
 ```
-Env (Dokploy mso): `OS_BROWSER_URL=http://172.18.0.1:4002`, `OS_BROWSER_SECRET`.
-Service secret: `/home/rahman/projects/os-browser/.env`. Code: `…/os-browser/server.mjs`.
+Service secret: `/home/rahman/projects/mso/os-browser/.env`.
+Code: `/home/rahman/projects/mso/os-browser/server.mjs`.
+Prod is **systemd on this box, not Dokploy** — ignore any `172.18.0.1` /
+docker-bridge address in older notes; that was the Dokploy era.
 
 ## 5. Known limits
 
-- **One shared page** (single context) — the web app + CLI share ONE browser tab.
-  Multi-tab would need multiple pages/contexts (future).
-- Screenshot view is interactive via click-mapping, not native scrolling — use the
-  scroll action. Video/canvas update only on screenshot refresh.
-- Heavy/slow pages: increase the refresh poll if a load is still settling.
+- One shared page (single context) — no multi-tab.
+- Chromium only. It is exactly what could NOT render sites that block automation,
+  which is why the Browser app moved to Camoufox.
 
-## 6. If blank / not working
+## 6. If something is "broken"
 
-1. `node ~/.claude/skills/mso-browser-list/browser-check.js` — is the service up + rendering?
-2. Service down → `sudo systemctl restart os-browser` (check chromium/deps).
-3. Web app blank but service OK → `OS_BROWSER_URL`/`OS_BROWSER_SECRET` not set in the
-   Dokploy env, or container can't reach `172.18.0.1:4002` (ufw on docker_gwbridge).
-4. "Establishing session…" → not signed in / token expired.
+1. **Is this even the right skill?** If the user means the Browser app in mso, it is
+   Camoufox → use [/mso-camoufox]. This skill cannot help with that.
+2. Service not running → expected, it is `disable`d. `sudo systemctl start os-browser`
+   for a one-off. **Never `enable` it** — that re-arms boot autostart.
+3. e2e/Playwright failing → check `os-browser/node_modules/playwright` exists; the
+   service does not need to be running for that.

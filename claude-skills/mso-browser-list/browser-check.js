@@ -35,5 +35,5 @@ const SITES = ["https://example.com", "https://news.ycombinator.com", "https://w
       console.log(`ERR ${url}  ${e.message}`);
     }
   }
-  console.log("\nWeb path: /api/v1/browser/* (Convex-auth) → 172.18.0.1:4002. CLI: ~/.claude/skills/mso/browser.sh");
+  console.log("\nNOTE: this service is RETIRED and its unit is disabled. The mso Browser app is Camoufox (/mso-camoufox); /api/v1/browser/* no longer exists. This dir is kept for its Playwright install, used by scripts/e2e.");
 })();

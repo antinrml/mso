@@ -20,8 +20,14 @@ agent — it runs AS a host process and controls its own machine.
   read the top few and you know the current state. Everything else in `docs/` is
   history or a plan, and history goes stale.
 - `README.md` — what it is, features, security model, quickstart.
-- `.env.example` — most env vars. NOT all: it is missing several that only appear in
-  `.env.local` and in code, so grep `process.env` before assuming one does not exist.
+- `.env.example` — every var you can actually set. Reconciled against `process.env`
+  in code on 2026-08-03 (Camoufox, memory/threads paths, `NEXT_DEPLOYMENT_ID`,
+  `NEXT_PUBLIC_COMMIT_SHA` were all missing and were added). What is still deliberately
+  absent is what you never set by hand: framework vars (`NEXT_RUNTIME`,
+  `NEXT_PUBLIC_BUILD_ID` — injected by `next.config`), systemd's (`NOTIFY_SOCKET`,
+  `WATCHDOG_USEC`), the OS's (`PATH`, `SHELL`), test-only ones (`E2E_BASE_URL`,
+  `OPENCLAW_HOME`), and `OS_BROWSER_*`, which belong to the retired `os-browser/`
+  sidecar and not to this app. Still grep `process.env` before adding a new one.
 - **The code wins over any doc.** `docs/ARCHITECTURE.md` is HISTORY, not current — it
   still describes a retired Playwright browser sidecar, a managed-app "single-origin
   mode" that was removed for security, and workspace modes that were reversed. It is
@@ -129,10 +135,14 @@ to `resources/` (rr) and drive any project from one manifest:
   host in `next.config` `images.remotePatterns`). Host-fs images + the live Playwright
   screenshot stream stay raw `<img>` on purpose (dynamic/auth'd bytes).
 
-## Deploy / ops (prod :4005 + demo :4006 are systemd, not Dokploy)
+## Deploy / ops (prod :4005 is systemd, not Dokploy)
 - `mso.service` (:4005, WorkingDir `/home/rahman/projects/mso`) serves
-  mso.rahmanef.com via `next start`. Demo `mso-demo.service` (:4006, WorkingDir
-  `/home/rahman/projects/mso-demo`, `NEXT_PUBLIC_OS_DEMO=1` → no auth, mock data).
+  mso.rahmanef.com via `next start`.
+- **The demo does NOT exist on this host** (checked 2026-08-03): no `mso-demo.service`
+  unit, no `/home/rahman/projects/mso-demo` checkout. The `NEXT_PUBLIC_OS_DEMO=1`
+  build flag is still real and still works — what is gone is the second checkout and
+  the :4006 unit that used to serve it. Anything below describing "the demo" is a
+  recipe to re-create it, not a description of something running.
 - **Deploy prod:** `bun run build` **THEN** `sudo systemctl restart mso.service`. ALWAYS
   build-then-restart, never the reverse, and never rebuild again after restarting
   without restarting once more — `next start` loads the build manifest at boot, so if
@@ -152,9 +162,18 @@ to `resources/` (rr) and drive any project from one manifest:
 - **`git add` aborts on a bad pathspec** and stages NOTHING new — after a
   `git rm`, don't re-list the removed file in `git add`; prefer `git add -A` and
   check `git status --short` before committing (a broken commit shipped once this way).
-- **Deploy demo:** from `/home/rahman/projects/mso-demo`: `git fetch origin -q &&
-  git reset --hard origin/main -q && bun run build && sudo systemctl restart
-  mso-demo.service`. Mind the cwd — running the sync from the prod dir is a classic slip.
+- **Deploy demo (only if you re-create it — see above, it is not running):** from
+  `/home/rahman/projects/mso-demo`: `git fetch origin -q && git reset --hard
+  origin/main -q && bun run build && sudo systemctl restart mso-demo.service`.
+  Mind the cwd — running the sync from the prod dir is a classic slip.
+- **Never `bun run build` in this checkout just to CHECK a change** — it is
+  `mso.service`'s WorkingDirectory, and `next build` deletes `distDir` before it
+  compiles, so the live site 404s every chunk until a restart. Worse, repeat builds
+  rename every chunk and mint a new `BUILD_ID`, so already-served HTML stays broken
+  afterwards. Use `bash scripts/verify-build.sh`, which builds a throwaway copy of
+  `HEAD` in a temp dir (node_modules is COPIED, not symlinked — Turbopack hard-fails
+  on a symlink pointing outside the filesystem root). A real deploy still builds in
+  place, which is fine because a restart immediately follows.
 - **The Browser app powers a systemd USER unit**, `camoufox-vnc.service` in
   `~/.config/systemd/user/`, whose `ExecStart` points at **`scripts/camoufox-vnc-service`
   in THIS repo** (it used to live untracked under `~/.openclaw/workspace/`, so a fresh
@@ -183,11 +202,15 @@ to `resources/` (rr) and drive any project from one manifest:
   (3 generations, 0700). Restore after an accidental wipe: stop the unit,
   `cp -p ~/.local/state/camoufox/session-backup/1/* <profile>/`, start. Roll back to `2`
   or `3` if generation `1` already captured the logged-out state.
-- Verify shell behaviour on the demo (no auth): desktop via os-browser at 1280, mobile
-  via Playwright (`os-browser/node_modules/playwright`, CommonJS) at 390. Drive Spotlight
-  with Meta+k; click the dock by the BOTTOM-most `a[href="/<slug>"]` (the centre ones are
-  the hidden Launchpad). `X-Content-Type-Options: nosniff` is set on all routes, so wrong
-  MIME is fatal — keep static Content-Types correct.
+- Verify shell behaviour with **Playwright directly** — `os-browser/node_modules/playwright`
+  (CommonJS) is the repo's only install — at 1280 for desktop and 390 for mobile. (This
+  used to say "on the demo, via os-browser"; both are gone. There is no demo instance on
+  this host, and the `os-browser` SERVICE is stopped + disabled — only its Playwright
+  install is still used. Point Playwright at :4005 and log in, or build a throwaway with
+  `NEXT_PUBLIC_OS_DEMO=1` on another port.) Drive Spotlight with Meta+k; click the dock by
+  the BOTTOM-most `a[href="/<slug>"]` (the centre ones are the hidden Launchpad).
+  `X-Content-Type-Options: nosniff` is set on all routes, so wrong MIME is fatal — keep
+  static Content-Types correct.
 
 ## Rules in force
 - **Only ONE session edits mso at a time.** One checkout, one `HEAD`, one index.
@@ -201,8 +224,26 @@ to `resources/` (rr) and drive any project from one manifest:
   not hex, mobile-first. Barrel-only cross-slice imports.
 - `/api/v1` host ops go through `lib/host` (bounds + realpath checks) — never call
   `fs`/`child_process` straight from a route.
-- Solo-dev: push direct to `main` once `bun run typecheck` + `bun run build` are green.
-  Conventional commits + Claude co-author.
+- Solo-dev: push direct to `main` once `bun run verify` is green (typecheck + lint +
+  test + check + audit). Conventional commits + Claude co-author.
+- **The gates live in an UNTRACKED `.git/hooks/pre-push`**, so no commit can carry
+  them and an sc-git hook reinstall silently drops them. Four guards run, ~70 s per
+  push: sc-git `ci.js --skip build` (typecheck/lint/test, Guard 1), `check-cycles.mjs`
+  (1b), `scripts/audit.mjs` (1c), `scripts/verify-build.sh` (1d). A fifth, Guard 2, is
+  a self-hosted-Convex auto-deploy that is a silent no-op here — there is no `convex/`
+  dir — so don't be surprised to find it in the file. A healthy push prints
+  `audit: clean at high/critical.` and `build: HEAD compiles (out-of-tree).` — **if
+  those two lines are missing, the wiring is gone.** The `--skip build` is deliberate
+  safety, not laziness (see Deploy/ops). A reinstall also re-adds a
+  `scripts/check-slices.mjs` line; that script was deleted, so it blocks every push.
+- **`bun run audit` ≠ `bun audit`.** The script is `scripts/audit.mjs`, which wraps
+  `bun audit --json` because raw `bun audit` fails CLOSED — offline it exits 1, the
+  same code as a real advisory, which would turn every network blip into a fake
+  security failure. It skips when the registry is unreachable, applies a high/critical
+  floor, and keeps an `IGNORE` map (keyed by GHSA, with a reason and a date) for
+  advisories with no upstream fix. `--json` ignores `--audit-level`/`--ignore`, so the
+  filtering is done in the script. `ci.yml` runs the raw fail-closed command on
+  purpose: a release gate must not pass an audit it could not perform.
 
 ## CLI (`bin/mso`) — the web UI is only one frontend
 `bin/mso` reaches the same `/api` surface from a shell — every route has a named verb

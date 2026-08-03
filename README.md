@@ -215,11 +215,9 @@ bun run dev
 Quality gates:
 
 ```bash
-bun run typecheck
-bun run lint
-bun run test
-bun run check
+bun run verify              # typecheck + lint + test + check + audit
 bun run build
+bash scripts/verify-build.sh   # build HEAD out-of-tree — safe on the prod checkout
 bash -n scripts/install.sh
 ```
 

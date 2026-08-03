@@ -8,6 +8,47 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-03 (docs) — reconciling every live doc against what the box actually does (DONE)
+
+A sweep for claims that had quietly become false. History files (`AUDIT-*`,
+`SCORECARD-*`, dated plans, this log's older entries) were left alone on purpose —
+they describe what was true then. Only *live instructional* docs were touched.
+
+What was actually wrong:
+
+- **`.env.example` was missing 6 settable vars.** Reconciled against `process.env` in
+  code: `CAMOUFOX_NOVNC_URL`, `CAMOUFOX_VNC_PASSWD_TEXT`, `OS_MEMORY_STORE`,
+  `OS_THREADS_DIR`, `NEXT_PUBLIC_COMMIT_SHA`, `NEXT_DEPLOYMENT_ID`. CLAUDE.md's
+  standing caveat ("it is missing several… grep `process.env`") is now a precise list
+  of what stays out and why: framework-injected (`NEXT_RUNTIME`,
+  `NEXT_PUBLIC_BUILD_ID`), systemd's (`NOTIFY_SOCKET`, `WATCHDOG_USEC`), the OS's
+  (`PATH`, `SHELL`), test-only (`E2E_BASE_URL`, `OPENCLAW_HOME`), and `OS_BROWSER_*`,
+  which belong to the retired sidecar rather than this app.
+- **`CONTRIBUTING.md` told contributors to run `scripts/check-slices.mjs`** — deleted
+  earlier the same day — and claimed "280+ tests" (1136). Its checklist now matches the
+  four guards that really run, and warns that the hook is untracked and that
+  `--skip build` is deliberate.
+- **The `/mso-browser-list` skill was the worst offender.** It described `os-browser` as
+  *the* Browser app, triggered on "why doesn't the browser work" and "browser status",
+  and told the reader to `systemctl restart os-browser`. All false: the Browser app is
+  Camoufox, the unit is stopped + `disable`d, `/api/v1/browser/*` was deleted, the
+  `OS_BROWSER_URL`/`172.18.0.1` wiring is Dokploy-era (prod is systemd), and its `.env`
+  path pointed at `~/projects/os-browser` instead of `~/projects/mso/os-browser`.
+  Rewritten, and its `description` now explicitly routes those trigger phrases to
+  `/mso-camoufox`. `browser-check.js` printed the same dead architecture line; fixed.
+- **`CLAUDE.md` documented a demo that does not exist** — no `mso-demo.service`, no
+  `/home/rahman/projects/mso-demo`. The `NEXT_PUBLIC_OS_DEMO=1` flag is still real; the
+  second checkout and :4006 unit are not. Its verification recipe also said to drive the
+  demo "via os-browser", which is doubly gone — now points at Playwright directly.
+- **`docs/SLICE-CATALOG.md` listed 20 slices; there are 21** (`docs` was missing).
+- `docs/FAQ.md` still advertised "280+ vitest tests" and only two audit passes.
+- `os-browser/README.md` opened "headless Chromium service for the Browser app".
+
+Every claim written in this pass was checked against the box rather than assumed —
+including one of my own: I wrote "four guards" and the hook has five `# Guard` lines.
+Four run; the fifth is a Convex auto-deploy that no-ops here because there is no
+`convex/` dir. Said so rather than rounding.
+
 ## 2026-08-03 (later) — the two open items closed, and the health lens finds a silent way to lose the device allowlist (DONE)
 
 Clearing both items the entry below left open.

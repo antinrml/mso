@@ -9,7 +9,7 @@ Every OS app is a vertical slice. Slices are authored lift-ready (props-driven, 
 hardcoded consumer URLs/env/roles). Slices read the host through the `lib/os-api`
 contract, served by `lib/host` (fs/exec/sys) or `MockAdapter`.
 
-## Slices (20)
+## Slices (21)
 
 | Slug | Kind | Category | Purpose |
 |---|---|---|---|
@@ -20,6 +20,7 @@ contract, served by `lib/host` (fs/exec/sys) or `MockAdapter`.
 | `camoufox-browser` | full | ui | Browser — real Firefox over VNC |
 | `code-editor` | full | ui | Code — overlay syntax editor |
 | `create-app` | frontend | ui | Create App — author an os-rr app from a manifest |
+| `docs` | frontend | ui | Docs — in-app documentation browser |
 | `files-manager` | full | infra | Files — VPS file manager |
 | `image-editor` | frontend | ui | Image Editor — layered raster editor |
 | `image-picker` | ui | ui | Image Picker — one-button image/wallpaper chooser (gallery · upload · link · Unsplash · reposition) |

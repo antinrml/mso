@@ -1,11 +1,24 @@
-# os-browser — headless Chromium service for the Browser app
+# os-browser — RETIRED sidecar, kept for its Playwright install
 
-A tiny HTTP wrapper around a REAL Playwright Chromium running on the VPS.
-The mso Browser app proxies to it server-to-server, so any site renders
-(no `X-Frame-Options` problem — it's a browser, not an iframe). One
+> **This is no longer the Browser app.** The Browser app is **Camoufox** — a real
+> anti-fingerprinting Firefox on a headless X display, streamed in over noVNC and
+> gated in `proxy.ts` by the same verified-session check that guards `/api/v1/exec`.
+> Chromium-behind-a-screenshot could not get past sites that block automation, which
+> is exactly why it was replaced.
+>
+> What that means concretely, as of **2026-08-03**:
+> - The `os-browser` systemd unit is **stopped and `disable`d** — it does not start at boot.
+> - The `/api/v1/browser/*` routes it proxied through **no longer exist**.
+> - No app code calls it; the only mention left is a comment in `lib/agent/server.ts`
+>   recording that the bridge was retired.
+>
+> **This directory is kept on purpose anyway**: `os-browser/node_modules` holds the
+> repo's ONLY Playwright install, which `scripts/e2e` and desktop/mobile verification
+> use. Deleting it breaks those until reinstalled. The service below still runs if you
+> start it by hand — just never `enable` it.
+
+A tiny HTTP wrapper around a REAL Playwright Chromium running on the VPS. One
 persistent profile (`~/.mso/chrome-profile`) keeps logins across restarts.
-
-Optional: without it, every other mso app still works.
 
 ## Run
 

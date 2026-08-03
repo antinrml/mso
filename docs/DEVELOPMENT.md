@@ -26,8 +26,17 @@ Every feature is a self-contained **vertical slice** under `frontend/slices/<slu
 bun run verify   # typecheck + lint + test + check + audit (high/critical only)
 ```
 
-A **pre-push hook** runs the same CI locally and blocks the push on failure. None of
-these touch `.next`, so they're safe to run against the prod checkout.
+A **pre-push hook** blocks the push on failure. Four guards, ~70 s: sc-git's `ci.js`
+(typecheck + lint + test), `check-cycles.mjs`, `scripts/audit.mjs`, and
+`scripts/verify-build.sh`. None of them touch this checkout's `.next` — the build
+guard compiles a throwaway copy of `HEAD` in a temp dir — so all of it is safe to run
+against the prod checkout. A healthy push prints `audit: clean at high/critical.` and
+`build: HEAD compiles (out-of-tree).`
+
+The hook is **untracked**, so nothing in this repo can carry it: re-running an sc-git
+hook installer overwrites the file and silently drops the audit and build guards (and
+re-adds a `check-slices.mjs` line for a script that no longer exists, which blocks
+every push). If those two lines stop appearing, the wiring is gone.
 
 ## Deploy — and the build hazard ⚠️
 

@@ -92,8 +92,11 @@ adds the usual browser footprint — skip it on tiny boxes.
 Two passes by the maintainer: `docs/AUDIT-2026-06-11.md` (initial cross-cutting
 sweep — security, perf, a11y, slice boundaries) and `docs/AUDIT-2026-06-14.md`
 (follow-up after the first round of fixes). The score trajectory across both
-passes lives in `docs/SCORECARD-2026-06-14.md`. Quality gates (typecheck, lint,
-280+ vitest tests, build) run on every push via the pre-push hook.
+passes lives in `docs/SCORECARD-2026-06-14.md`. A third pass on 2026-08-03 ran five
+adversarially-verified lenses (over-engineering, security, Next 16/React 19,
+package-manager migration, repo health) — see the top of `docs/PROGRESS.md`. Quality
+gates run on every push via the pre-push hook: typecheck, lint, 1100+ vitest tests,
+import-cycle check, a high/critical dependency audit, and an out-of-tree build.
 
 ### Phone support?
 
