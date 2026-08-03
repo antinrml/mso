@@ -18,6 +18,7 @@ import { assistantApp } from "@/features/assistant";
 import { hermesApp, openclawApp } from "@/features/managed-apps";
 import { osSettingsApp } from "@/features/os-settings";
 import { quicklinksApp } from "@/features/quicklinks";
+import { docsApp } from "@/features/docs";
 import { themeQuickPickerFeature } from "./theme-quick-picker";
 import { CamoufoxMark, HermesMark, OpenClawMark } from "./brand-marks";
 
@@ -60,6 +61,9 @@ export const BUILTIN_APPS: AppDescriptor[] = [
   withSlug(withMark(hermesApp, HermesMark), "hermes"),
   withSlug(withMark(openclawApp, OpenClawMark), "openclaw"),
   withSlug(quicklinksApp, "links"),
+  // Docs is deliberately dockable, not noDock: for a signed-out visitor it is the
+  // only app that explains what they are looking at and how to get their own.
+  withSlug(docsApp, "docs"),
   pin(withSlug(osSettingsApp, "settings")),
 ];
 

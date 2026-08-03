@@ -15,7 +15,7 @@ import { AppearanceProvider } from "@/lib/appearance";
 import { QuicklinksProvider } from "@/lib/quicklinks";
 import "@/features/os-shell/integrations"; // side-effect: lock guard + Quick Look + DnD wiring
 import { OsApiProvider } from "@/lib/os-api";
-import { AuthGate, SessionProvider, type SessionStatus } from "@/features/auth";
+import { AuthGate, SessionProvider, useSession, type SessionStatus } from "@/features/auth";
 import { useInstalledApps, useDisabledIds } from "@/features/app-store";
 
 // Inside the auth boundary so it can read the owner's installed runtime apps and
@@ -26,16 +26,31 @@ import { useInstalledApps, useDisabledIds } from "@/features/app-store";
 function Shell() {
   const dynamic = useInstalledApps();
   const disabled = useDisabledIds();
+  const { status } = useSession();
   const manifest: ShellManifest = useMemo(() => {
     const off = new Set(disabled);
+    const apps = [...BUILTIN_APPS, ...dynamic].filter((app) => !off.has(app.id));
+    // The shell looks identical signed in or out, but it is NOT the same thing:
+    // signed out every host call is mock, so most apps are showing fixtures. The
+    // one app that explains that — and offers the two real next steps, sign in or
+    // install your own — is Docs, so it gets promoted to the front of the dock and
+    // the mobile quick row while signed out. Signed in it drops back to its normal
+    // place; by then you are on your own box and the docs are just reference.
+    const ordered =
+      status === "out"
+        ? [
+            ...apps.filter((a) => a.id === "docs").map((a) => ({ ...a, pinned: true })),
+            ...apps.filter((a) => a.id !== "docs"),
+          ]
+        : apps;
     return {
       brand: TOPSIDE_BRAND,
-      apps: [...BUILTIN_APPS, ...dynamic].filter((app) => !off.has(app.id)),
+      apps: ordered,
       features: TOPSIDE_FEATURES.filter((f) => !off.has(f.id)),
       persistKey: TOPSIDE_PERSIST_KEY,
       capabilities: topsideCapabilities,
     };
-  }, [dynamic, disabled]);
+  }, [dynamic, disabled, status]);
   return <AppShell manifest={manifest} />;
 }
 

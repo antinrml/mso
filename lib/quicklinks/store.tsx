@@ -21,13 +21,22 @@ export type Quicklink = { id: string; title: string; url: string };
 const KEY = "mso:quicklinks";
 
 // Seed for a fresh visitor (localStorage/server-synced edits win once present).
-// Keep defaults generic: the public demo should not look connected to a real
-// personal account or private server.
+//
+// These are the INSTANCE OWNER'S links, not the project's. They used to be four
+// GitHub file URLs, which made a personal shortcut rail into a second, worse copy
+// of the docs — those moved to the Docs app (`@/features/docs`), which is where a
+// visitor looking for documentation actually goes.
+//
+// ⚠️ If you installed MSO on your own server, change these — they are the
+// maintainer's accounts, not yours. They are all that is here so the list is one
+// edit, and nothing else in the codebase reads them.
 const DEFAULTS: Quicklink[] = [
-  { id: "repo", title: "MSO GitHub", url: "https://github.com/rahmanef63/mso" },
-  { id: "docs", title: "Install docs", url: "https://github.com/rahmanef63/mso/blob/main/docs/INSTALL.md" },
-  { id: "demo", title: "Demo script", url: "https://github.com/rahmanef63/mso/blob/main/docs/DEMO-SCRIPT.md" },
-  { id: "security", title: "Security policy", url: "https://github.com/rahmanef63/mso/blob/main/SECURITY.md" },
+  { id: "gh", title: "GitHub", url: "https://github.com/rahmanef63" },
+  { id: "li", title: "LinkedIn", url: "https://www.linkedin.com/in/rahmanfakhrul" },
+  { id: "ig", title: "Instagram", url: "https://www.instagram.com/rahmanef_" },
+  { id: "x", title: "X", url: "https://x.com/rahmanef" },
+  { id: "yt", title: "YouTube", url: "https://www.youtube.com/@rahmanef" },
+  { id: "tt", title: "TikTok", url: "https://www.tiktok.com/@rahmanef" },
 ];
 
 type Ctx = {
