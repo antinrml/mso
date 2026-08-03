@@ -14,8 +14,8 @@
 # TERMINAL   term open [cwd] · term input <id> <text> · term close <id>
 # AI         ai <prompt…> · threads [id] · memory
 # CONFIG     config · prefs · models · skills
-# DEVICES    devices · approve <id> [label] · revoke <id>   (local, no login)
-#            whoami · login   (this CLI's own device id + session)
+# DEVICES    device list|approve <id> [label]|revoke <id>   (local, no login)
+#            devices = device list · whoami · login   (this CLI's id + session)
 # SERVICE    service status|start|stop|restart|logs [n] · build · deploy
 # EDITOR     crud list|get|set|del|cmds   (see `mso crud`)
 # ESCAPE     api <METHOD> <path> [json]   — any endpoint, e.g.
@@ -94,6 +94,15 @@ kv_args() { local j='{}' kv k v; for kv in "$@"; do k="${kv%%=*}"; v="${kv#*=}"
 # help can never drift out of sync with the comment above.
 usage() { awk 'NR>1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"; }
 
+# Every verb the dispatch table implements, one per line, aliases split out. Read
+# from the table itself so a new arm can never be missing from did-you-mean.
+verbs() {
+  awk '/^cmd="/ { on = 1 }
+       on && match($0, /^  [a-z|h-]+\)/) {
+         s = substr($0, 3, RLENGTH - 3); gsub(/\|/, "\n", s); print s
+       }' "$0"
+}
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   # ── files ────────────────────────────────────────────────────────────────
@@ -159,9 +168,21 @@ case "$cmd" in
   skills)  jget "/api/skills" ;;
 
   # ── devices (local file, works even when the service is down) ────────────
-  devices) dev_script --list ;;
-  approve) dev_script "${1:?deviceId}" "${@:2}" ;;
-  revoke)  dev_script --revoke "${1:?deviceId}" ;;
+  # Both shapes work: `mso devices` reads as a noun, `mso device list` matches the
+  # subcommand-group habit every other area here uses (mapp/term/camoufox/service).
+  devices|device)
+    case "${1:-list}" in
+      list)    dev_script --list ;;
+      approve) [ -n "${2-}" ] || die "usage: mso device approve <deviceId> [label]"
+               dev_script "$2" "${@:3}" ;;
+      revoke)  [ -n "${2-}" ] || die "usage: mso device revoke <deviceId>"
+               dev_script --revoke "$2" ;;
+      *) die "device: list|approve <id> [label]|revoke <id>" ;;
+    esac ;;
+  approve) [ -n "${1-}" ] || die "usage: mso approve <deviceId> [label]  (ids: mso device list)"
+           dev_script "$1" "${@:2}" ;;
+  revoke)  [ -n "${1-}" ] || die "usage: mso revoke <deviceId>  (ids: mso device list)"
+           dev_script --revoke "$1" ;;
   whoami)  echo "cli device: $(cli_device)"; jget "/api/auth/me" ;;
   login)   rm -f "$JAR"; login; echo "logged in as device $(cli_device)" ;;
 
@@ -208,6 +229,17 @@ case "$cmd" in
     else req -X "$m" "$B$p"; fi ;;
 
   help|-h|--help) usage; exit 0 ;;
-  *) usage; exit 1 ;;
+  *)
+    # Dumping the help with no error line reads like the command worked and just
+    # printed something — say what was rejected, and guess before showing the wall.
+    echo "mso: unknown command '$cmd'" >&2
+    # Match on a 3-char prefix as well as containment, so a transposition or a
+    # dropped letter ("servce", "camofox") still finds its verb.
+    head3="${cmd:0:3}"
+    near=$(verbs | while read -r v; do
+      case "$v" in "$cmd"*|*"$cmd"*|"$head3"*) echo "  $v" ;; esac
+    done)
+    [ -n "$near" ] && { echo "did you mean:" >&2; echo "$near" >&2; }
+    echo >&2; usage >&2; exit 1 ;;
 esac
 echo

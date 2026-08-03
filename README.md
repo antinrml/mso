@@ -117,7 +117,7 @@ The browser UI is one frontend, not the product. The installer also puts `mso` o
 
 ```bash
 mso -h                       # every verb
-mso devices                  # who can log in
+mso device list              # who can log in
 mso approve <deviceId> "my phone"
 mso ls ~/projects            # files
 mso exec "df -h"             # host shell

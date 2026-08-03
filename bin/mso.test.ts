@@ -22,11 +22,17 @@ describe("bin/mso", () => {
   it("documents every verb the dispatch table implements", () => {
     const src = require("node:fs").readFileSync(CLI, "utf8") as string;
     const body = src.slice(src.indexOf('cmd="${1:-help}"'));
-    // Case arms look like `  ls)` / `  camoufox)` / `  help|-h|--help)`.
-    const verbs = [...body.matchAll(/^ {2}([a-z][a-z-]*)\)/gm)].map((m) => m[1]);
+    // Case arms look like `  ls)` / `  camoufox)` / `  devices|device)`. Aliases
+    // are split out too — an alias absent from the help is just as unfindable.
+    const verbs = [...body.matchAll(/^ {2}([a-z][a-z|-]*)\)/gm)].flatMap((m) => m[1].split("|"));
     expect(verbs.length).toBeGreaterThan(20);
+    expect(verbs).toContain("device");
     const help = run("-h");
-    const undocumented = verbs.filter((v) => v !== "help" && !help.includes(v));
+    // `help`/`-h`/`--help` are the conventional flags every CLI has; they don't
+    // need a line in the very help they print.
+    const undocumented = verbs.filter(
+      (v) => v !== "help" && !v.startsWith("-") && !help.includes(v),
+    );
     expect(undocumented).toEqual([]);
   });
 
