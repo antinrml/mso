@@ -95,7 +95,45 @@ describe("bin/mso", () => {
     expect(() => withStore("device", "revoke", "all")).toThrow();
     expect(fs.readFileSync(store, "utf8")).toBe(before);
 
+    // "-yes" is one character from "--yes"; a near miss must not silently count
+    // as confirmation, and must say which flag was actually seen.
+    let stderr = "";
+    try {
+      withStore("device", "revoke", "all", "-yes");
+    } catch (e) {
+      stderr = String((e as { stderr?: Buffer }).stderr ?? "");
+    }
+    expect(stderr).toContain('you passed "-yes"');
+    expect(fs.readFileSync(store, "utf8")).toBe(before);
+
     withStore("device", "revoke", "all", "--yes");
     expect(JSON.parse(fs.readFileSync(store, "utf8")).approved).toEqual({});
+  });
+
+  it("accepts -y as confirmation and reports what is left after a single revoke", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const os = require("node:os") as typeof import("node:os");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mso-dev-"));
+    const store = path.join(dir, "devices.json");
+    const ids = ["a".repeat(32), "b".repeat(32)];
+    const seed = () =>
+      fs.writeFileSync(
+        store,
+        JSON.stringify({ approved: { [ids[0]]: { label: "one" }, [ids[1]]: { label: "two" } }, pending: {} }),
+      );
+    const withStore = (...args: string[]) =>
+      execFileSync(CLI, args, {
+        encoding: "utf8",
+        env: { ...process.env, MSO_ENV: "/dev/null", OS_DEVICE_STORE: store },
+      });
+
+    seed();
+    withStore("device", "revoke", "all", "-y");
+    expect(JSON.parse(fs.readFileSync(store, "utf8")).approved).toEqual({});
+
+    // Revoking your last device locks you out of the UI — that has to be loud.
+    seed();
+    expect(withStore("revoke", ids[0])).toContain("1 device(s) still approved");
+    expect(withStore("revoke", ids[1])).toContain("NO devices approved");
   });
 });

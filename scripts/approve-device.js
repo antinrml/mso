@@ -65,8 +65,12 @@ if (args[0] === "--revoke-all") {
   const s = read();
   const ids = Object.keys(s.approved);
   if (!ids.length) { console.log("nothing to revoke — no approved devices"); process.exit(0); }
-  if (args[1] !== "--yes") {
+  const confirm = args[1];
+  if (confirm !== "--yes" && confirm !== "-y") {
     console.error(`refusing: this revokes ALL ${ids.length} approved devices and signs every browser out.`);
+    // Naming what they actually typed: "-yes" and "--yes" are one character apart
+    // and a bare "re-run with --yes" leaves them re-reading their own line.
+    if (confirm) console.error(`(you passed "${confirm}" — the flag is --yes or -y)`);
     console.error("re-run with --yes if that is what you want. Re-approve later with:");
     console.error("  mso device approve <deviceId> \"label\"");
     process.exit(1);
@@ -88,9 +92,14 @@ if (args[0] === "--revoke") {
     if (id === "all") console.error("to revoke every device: mso device revoke all --yes");
     process.exit(1);
   }
+  const label = s.approved[id].label;
   delete s.approved[id];
   write(s);
-  console.log(`revoked ${id}`);
+  const left = Object.keys(s.approved).length;
+  // Say what is left, so the obvious follow-up (`device list`) isn't needed — and
+  // so revoking your last device is impossible to do without noticing.
+  console.log(`revoked ${id}  "${label}"`);
+  console.log(left ? `${left} device(s) still approved.` : "NO devices approved now — nothing can sign in until you approve one.");
   process.exit(0);
 }
 

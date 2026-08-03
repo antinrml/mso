@@ -58,7 +58,7 @@
 #   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)
 #
 #  Devices  (a local file — these work while the service is down)
-#   device *             list | pending | approve | revoke | revoke all
+#   device *             list | pending | approve | revoke | revoke all --yes
 #   devices              Alias for `device list`
 #   approve <id> [label] Approve a device id
 #   revoke <id>          Revoke one device
