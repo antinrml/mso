@@ -33,28 +33,42 @@ function write(store) {
 }
 const ts = (t) => (t ? new Date(t).toISOString() : "—");
 
+// Two ways to act on a device: copy the bare id (compose your own command), or
+// copy the whole line below it and paste it. JSON.stringify does the quoting, so
+// a label containing a quote or a space still pastes as ONE argument.
+const approveCmd = (id, label) => `    mso device approve ${id} ${JSON.stringify(label || "my device")}`;
+const revokeCmd = (id) => `    mso device revoke ${id}`;
+
+const listApproved = (ap) => {
+  if (!ap.length) return void console.log("  (none)");
+  for (const [id, d] of ap) {
+    console.log(`  ${id}  "${d.label}"  approved=${ts(d.approvedAt)} lastSeen=${ts(d.lastSeen)}`);
+    console.log(revokeCmd(id));
+  }
+};
+const listPending = (pd) => {
+  if (!pd.length) return void console.log("  (none)");
+  for (const [id, d] of pd) {
+    console.log(`  ${id}  "${d.label}"  ip=${d.ip} attempts=${d.attempts} last=${ts(d.lastSeen)}`);
+    console.log(approveCmd(id, d.label));
+  }
+};
+
 const args = process.argv.slice(2);
 
 if (args[0] === "--list") {
   const s = read();
   console.log(`store: ${STORE}\n\nAPPROVED:`);
-  const ap = Object.entries(s.approved);
-  if (!ap.length) console.log("  (none)");
-  for (const [id, d] of ap) console.log(`  ${id}  "${d.label}"  approved=${ts(d.approvedAt)} lastSeen=${ts(d.lastSeen)}`);
+  listApproved(Object.entries(s.approved));
   console.log("\nPENDING (typed correct password, awaiting approval):");
-  const pd = Object.entries(s.pending);
-  if (!pd.length) console.log("  (none)");
-  for (const [id, d] of pd) console.log(`  ${id}  "${d.label}"  ip=${d.ip} attempts=${d.attempts} last=${ts(d.lastSeen)}`);
+  listPending(Object.entries(s.pending));
   process.exit(0);
 }
 
 if (args[0] === "--pending") {
   const s = read();
-  const pd = Object.entries(s.pending);
   console.log(`store: ${STORE}\n\nPENDING (typed correct password, awaiting approval):`);
-  if (!pd.length) console.log("  (none)");
-  for (const [id, d] of pd) console.log(`  ${id}  "${d.label}"  ip=${d.ip} attempts=${d.attempts} last=${ts(d.lastSeen)}`);
-  if (pd.length) console.log(`\napprove: mso device approve ${pd[0][0]} "a label"`);
+  listPending(Object.entries(s.pending));
   process.exit(0);
 }
 

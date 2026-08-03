@@ -110,6 +110,39 @@ describe("bin/mso", () => {
     expect(JSON.parse(fs.readFileSync(store, "utf8")).approved).toEqual({});
   });
 
+  it("prints a paste-ready command under every device, quoted safely", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const os = require("node:os") as typeof import("node:os");
+    const store = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mso-dev-")), "devices.json");
+    const pendingId = "c".repeat(32);
+    const approvedId = "d".repeat(32);
+    // A label with a quote AND a space is the case that breaks naive `"${label}"`
+    // interpolation — the pasted line would split into several arguments.
+    const nasty = 'Chrome "work" laptop';
+    fs.writeFileSync(
+      store,
+      JSON.stringify({
+        approved: { [approvedId]: { label: "phone" } },
+        pending: { [pendingId]: { label: nasty, ip: "10.0.0.1", attempts: 1 } },
+      }),
+    );
+    const withStore = (...args: string[]) =>
+      execFileSync(CLI, args, {
+        encoding: "utf8",
+        env: { ...process.env, MSO_ENV: "/dev/null", OS_DEVICE_STORE: store },
+      });
+
+    const list = withStore("device", "list");
+    expect(list).toContain(`mso device approve ${pendingId} ${JSON.stringify(nasty)}`);
+    expect(list).toContain(`mso device revoke ${approvedId}`);
+    // The bare id stays on its own line — way (1) still works.
+    expect(list).toMatch(new RegExp(`^ {2}${pendingId} `, "m"));
+
+    expect(withStore("device", "pending")).toContain(
+      `mso device approve ${pendingId} ${JSON.stringify(nasty)}`,
+    );
+  });
+
   it("accepts -y as confirmation and reports what is left after a single revoke", () => {
     const fs = require("node:fs") as typeof import("node:fs");
     const os = require("node:os") as typeof import("node:os");
