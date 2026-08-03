@@ -92,7 +92,7 @@ fi
 # one display silently opened THREE listeners: 127.0.0.1:$VNC_PORT, [::1]:$VNC_PORT and
 # [::1]:5900. The v6 pair bypasses websockify, noVNC and the session gate in proxy.ts
 # entirely — reachable with a plain `ssh -L` — which is the one thing "only through
-# os-vps" forbids. -noipv6 alone drops [::1]:$VNC_PORT but NOT [::1]:5900: that one is
+# mso" forbids. -noipv6 alone drops [::1]:$VNC_PORT but NOT [::1]:5900: that one is
 # libvncserver's own IPv6 port, which x11vnc does not route through its noipv6 flag, so it
 # has to be disabled by hand with -rfbportv6 -1 (verified against this build: with only
 # -noipv6, ss still showed [::1]:5900). websockify below dials the IPv4 literal, so

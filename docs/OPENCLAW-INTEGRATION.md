@@ -42,7 +42,7 @@ view.
 | State dir | `~/.openclaw` (1.7 GB — **separate from the install**, unlike Hermes) | `catalog.ts:37`, `du -sh` |
 | Gateway port | `18789`, bound `0.0.0.0` (because `gateway.bind: "lan"`) | `ss -tlnp`, `~/.openclaw/openclaw.json` |
 | Public today | **yes** — `oc.rahmanef.com` (`200`) | `/etc/dokploy/traefik/dynamic/oc-openclaw.yml` → `http://172.17.0.1:18789`, `passHostHeader: true` |
-| MSO app host | `openclaw.os.rahmanef.com` → os-vps `:4005` → proxy → `127.0.0.1:18789` | `os-vps-managed-apps.yml`, `curl` in §5 |
+| MSO app host | `openclaw.mso.rahmanef.com` → mso `:4005` → proxy → `127.0.0.1:18789` | `mso-managed-apps.yml`, `curl` in §5 |
 
 One **user** systemd unit, `~/.config/systemd/user/openclaw-gateway.service`. There is no
 system-scope unit, and no `openclaw.service` — that name does not exist on this host, which is why
@@ -163,7 +163,7 @@ HTTP/1.1 101 Switching Protocols
 The upgrade is **not** origin-gated: it returns the same `101` and challenge with `Origin:
 https://evil.example`, and gates at the protocol layer instead. `allowedOrigins` and
 `allowInsecureAuth` govern the Control UI's own checks — and that allowlist names
-`oc.rahmanef.com` only, **not** `openclaw.os.rahmanef.com`. Costs nothing today (no socket
+`oc.rahmanef.com` only, **not** `openclaw.mso.rahmanef.com`. Costs nothing today (no socket
 crosses the proxy); first thing to add if a socket proxy lands.
 
 **Where the token lives client-side.** The SPA reads it from the URL **fragment**
@@ -175,7 +175,7 @@ query parameter (?token=). Use URL fragment instead: #token=<token>. Query param
 appear in server logs."* The supported way to get a URL is `openclaw dashboard --no-open`.
 
 **MSO never mints, reads or injects that token.** `featureSource()` (`feature-cli.ts:102`)
-builds the iframe `src` as `https://openclaw.os.rahmanef.com/<route>` — origin plus path, no
+builds the iframe `src` as `https://openclaw.mso.rahmanef.com/<route>` — origin plus path, no
 fragment — and nothing in `lib/managed-apps/` reads `openclaw.json` (grep: the only upstream
 reads are the control-UI assets and the gateway's HTTP surface). So the framed SPA starts with
 **no gateway token** — the second independent reason its panels are empty (§4 is the first).
@@ -212,7 +212,7 @@ is `'none'` too (§5), so it is closed twice.
 
 **Every panel in the Control UI is driven by the gateway WebSocket.** The client builds its URL
 from `location` — `${https ? 'wss' : 'ws'}://${location.host}<basePath>` — so on
-`openclaw.os.rahmanef.com` it targets that host, which is os-vps. **A Next route handler cannot
+`openclaw.mso.rahmanef.com` it targets that host, which is mso. **A Next route handler cannot
 service an `Upgrade`**: it is handed a `Request` and returns a `Response`, and the proxy's
 transport is `fetch()`. So the frame loads its chrome, HTML, CSS and JS — and sits with no data.
 
@@ -287,8 +287,8 @@ default-src O; script-src O 'sha256-xlWU9W5…' 'sha256-YE++OxiP…';
 style-src O 'unsafe-inline' https://fonts.googleapis.com; img-src O data: blob:;
 font-src O https://fonts.gstatic.com; media-src O data: blob:; worker-src 'none';
 connect-src O https://api.openai.com https://tweakcn.com; frame-src O; form-action O;
-base-uri 'none'; frame-ancestors 'self' https://os.rahmanef.com; object-src 'none'
-        …where O = https://openclaw.os.rahmanef.com/
+base-uri 'none'; frame-ancestors 'self' https://mso.rahmanef.com; object-src 'none'
+        …where O = https://openclaw.mso.rahmanef.com/
 ```
 
 Six things the intersection did, and why each is the right answer:
@@ -297,7 +297,7 @@ Six things the intersection did, and why each is the right answer:
 |---|---|---|
 | `script-src` | lost `'unsafe-inline'`, gained OpenClaw's two `sha256-` | upstream grants no `'unsafe-inline'`, so the tighter side wins and its own inline scripts survive on the hashes it authored. Hashes copy, **nonces never** (`proxy-csp.ts:134`) — a nonce matches an element whatever its URL, re-opening origin scoping. Root-mounted MSO injects and pins nothing (`:233`); single-origin adds a third hash for its shim |
 | `worker-src` | `'none'` | ours `blob:`-only ∩ theirs `'self'` = ∅ — this is what stops §4's service worker outliving the window |
-| `connect-src` | kept `api.openai.com`, `tweakcn.com`; dropped bare `ws:`/`wss:` | a host the upstream *declares* is honoured, but only `https://`, no wildcards, and **never the cockpit** (`:174`) — `connect-src https://os.rahmanef.com` from a compromised upstream is the reach scoping removes. This is not what kills its own socket — §4's missing `Upgrade` is: nothing on the app host answers one, so no `wss://` request is ever made for a policy to judge. What is gone is a socket to any *other* host |
+| `connect-src` | kept `api.openai.com`, `tweakcn.com`; dropped bare `ws:`/`wss:` | a host the upstream *declares* is honoured, but only `https://`, no wildcards, and **never the cockpit** (`:174`) — `connect-src https://mso.rahmanef.com` from a compromised upstream is the reach scoping removes. This is not what kills its own socket — §4's missing `Upgrade` is: nothing on the app host answers one, so no `wss://` request is ever made for a policy to judge. What is gone is a socket to any *other* host |
 | `style-src`, `font-src` | kept `fonts.googleapis.com`, `fonts.gstatic.com` | declared upstream, so honoured — OpenClaw keeps its webfonts where Hermes, declaring nothing, does not |
 | `base-uri` | `'none'` honoured | root-mounted nothing injects `<base href>`, so upstream's stricter value can win (`:104`); single-origin ours must win or relative URLs escape the prefix |
 | `frame-ancestors` | overridden to `'self' <cockpit>` | always ours — being framed by the cockpit is the point. The origin is deployment env only (`origin.ts:101`); resolving to nothing emits `'none'`, so a misconfiguration refuses visibly instead of naming a guessed framer |
@@ -308,8 +308,8 @@ blocked in OpenClaw's own deployment too. It is the one OpenClaw entry in
 `PROXY_BLOCKED_EXTERNALS` (`proxy-headers.ts:228`) and the window says *"The Gemini live-audio
 socket in chat cannot connect."*
 
-Live, unauthenticated, `curl -sI https://openclaw.os.rahmanef.com/` returns `401` with
-`content-security-policy: default-src 'none'; frame-ancestors 'self' https://os.rahmanef.com`
+Live, unauthenticated, `curl -sI https://openclaw.mso.rahmanef.com/` returns `401` with
+`content-security-policy: default-src 'none'; frame-ancestors 'self' https://mso.rahmanef.com`
 and `x-middleware-rewrite: /api/v1/managed-apps/openclaw/proxy` — the host gating and the
 framing grant both working, before auth. Full verification set:
 [MANAGED-APPS.md §5](./MANAGED-APPS.md).

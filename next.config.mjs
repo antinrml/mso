@@ -9,7 +9,7 @@ const nextConfig = {
   // Don't advertise the framework/version — the shell is now public; minimize
   // the fingerprint an unauthenticated visitor can use for CVE matching.
   poweredByHeader: false,
-  // Cache Components off: os-vps is a fully dynamic app (auth-gated OS shell,
+  // Cache Components off: mso is a fully dynamic app (auth-gated OS shell,
   // no SSG marketing pages), so static prerendering adds no value and conflicts
   // with the auth provider's cookie reads. Re-enable only if static routes land.
   cacheComponents: false,

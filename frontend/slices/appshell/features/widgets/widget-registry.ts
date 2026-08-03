@@ -35,7 +35,7 @@ export const WIDGET_META: WidgetMeta[] = [
   { id: "shell", title: "Shell" },
 ];
 
-const KEY = "os-vps:desktop-widgets"; // { on, enabled[], sizes{} }
+const KEY = "mso:desktop-widgets"; // { on, enabled[], sizes{} }
 const LEGACY_KEY = "sv:desktop-widgets"; // old "1"/"0" on-flag (pre-registry)
 const DEFAULT_ENABLED = ["cpu", "mem", "disk"];
 

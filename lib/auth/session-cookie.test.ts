@@ -11,7 +11,7 @@ const req = (host: string, forwarded?: string) =>
     headers: { host, ...(forwarded ? { "x-forwarded-host": forwarded } : {}) },
   });
 
-const domainFor = (value: string | undefined, host = "os.rahmanef.com") => {
+const domainFor = (value: string | undefined, host = "mso.rahmanef.com") => {
   if (value === undefined) delete process.env.OS_SESSION_COOKIE_DOMAIN;
   else process.env.OS_SESSION_COOKIE_DOMAIN = value;
   return sessionCookieDomain(req(host));
@@ -29,21 +29,21 @@ describe("sessionCookieDomain", () => {
   });
 
   it("widens to the configured domain on the cockpit host", () => {
-    expect(domainFor("os.rahmanef.com")).toBe("os.rahmanef.com");
+    expect(domainFor("mso.rahmanef.com")).toBe("mso.rahmanef.com");
   });
 
   it("widens on the split-origin app hosts (the whole point)", () => {
-    expect(domainFor("os.rahmanef.com", "hermes.os.rahmanef.com")).toBe("os.rahmanef.com");
-    expect(domainFor("os.rahmanef.com", "openclaw.os.rahmanef.com")).toBe("os.rahmanef.com");
+    expect(domainFor("mso.rahmanef.com", "hermes.mso.rahmanef.com")).toBe("mso.rahmanef.com");
+    expect(domainFor("mso.rahmanef.com", "openclaw.mso.rahmanef.com")).toBe("mso.rahmanef.com");
   });
 
   it("normalises a leading dot, casing, port and trailing dot", () => {
-    expect(domainFor(".OS.Rahmanef.com", "HERMES.os.rahmanef.com.:4005")).toBe("os.rahmanef.com");
+    expect(domainFor(".MSO.Rahmanef.com", "HERMES.mso.rahmanef.com.:4005")).toBe("mso.rahmanef.com");
   });
 
   it.each([
-    ["os.rahmanef.com; Path=/", "attribute smuggling"],
-    ["os.rahmanef.com Path=/", "space"],
+    ["mso.rahmanef.com; Path=/", "attribute smuggling"],
+    ["mso.rahmanef.com Path=/", "space"],
     ["os_rahmanef.com", "underscore"],
     ["-bad.com", "leading hyphen"],
     ["bad-.com", "trailing hyphen"],
@@ -54,11 +54,11 @@ describe("sessionCookieDomain", () => {
     ["os.rah\nmanef.com", "interior control char"],
     ["ötzi.rahmanef.com", "non-ASCII (must be punycode)"],
   ])("fails closed to host-only for %s (%s)", (value) => {
-    expect(domainFor(value, "hermes.os.rahmanef.com")).toBeUndefined();
+    expect(domainFor(value, "hermes.mso.rahmanef.com")).toBeUndefined();
   });
 
   it("tolerates surrounding whitespace from a hand-edited env file", () => {
-    expect(domainFor(" os.rahmanef.com\n")).toBe("os.rahmanef.com");
+    expect(domainFor(" mso.rahmanef.com\n")).toBe("mso.rahmanef.com");
   });
 
   it("fails closed when a label or the whole name is over length", () => {
@@ -72,23 +72,23 @@ describe("sessionCookieDomain", () => {
   it("fails closed when the request host does not domain-match", () => {
     // Otherwise the browser drops the whole Set-Cookie and login 200s with no
     // session — a login loop with no error anywhere.
-    expect(domainFor("os.rahmanef.com", "76.13.23.37")).toBeUndefined();
-    expect(domainFor("os.rahmanef.com", "localhost")).toBeUndefined();
+    expect(domainFor("mso.rahmanef.com", "76.13.23.37")).toBeUndefined();
+    expect(domainFor("mso.rahmanef.com", "localhost")).toBeUndefined();
     // Suffix without a dot boundary is NOT a subdomain (RFC 6265 §5.1.3).
-    expect(domainFor("os.rahmanef.com", "notos.rahmanef.com")).toBeUndefined();
+    expect(domainFor("mso.rahmanef.com", "notos.rahmanef.com")).toBeUndefined();
   });
 
   it("ignores x-forwarded-host while a real Host header is present", () => {
     // Host wins, so a client-settable header cannot steer the decision.
-    process.env.OS_SESSION_COOKIE_DOMAIN = "os.rahmanef.com";
-    expect(sessionCookieDomain(req("os.rahmanef.com", "evil.example"))).toBe("os.rahmanef.com");
+    process.env.OS_SESSION_COOKIE_DOMAIN = "mso.rahmanef.com";
+    expect(sessionCookieDomain(req("mso.rahmanef.com", "evil.example"))).toBe("mso.rahmanef.com");
   });
 });
 
 describe("sessionCookieAttrs", () => {
   it("keeps the host-only attribute set unchanged when no domain is configured", () => {
     delete process.env.OS_SESSION_COOKIE_DOMAIN;
-    expect(sessionCookieAttrs(req("os.rahmanef.com"), 86_400)).toEqual({
+    expect(sessionCookieAttrs(req("mso.rahmanef.com"), 86_400)).toEqual({
       httpOnly: true,
       secure: true,
       sameSite: "strict",
@@ -99,15 +99,15 @@ describe("sessionCookieAttrs", () => {
 
   it("adds only the Domain when configured — SameSite stays strict", () => {
     // Strict is correct across the app hosts: SameSite is per SITE (registrable
-    // domain), and os.rahmanef.com / hermes.os.rahmanef.com share rahmanef.com.
-    process.env.OS_SESSION_COOKIE_DOMAIN = "os.rahmanef.com";
-    expect(sessionCookieAttrs(req("os.rahmanef.com"), 0)).toEqual({
+    // domain), and mso.rahmanef.com / hermes.mso.rahmanef.com share rahmanef.com.
+    process.env.OS_SESSION_COOKIE_DOMAIN = "mso.rahmanef.com";
+    expect(sessionCookieAttrs(req("mso.rahmanef.com"), 0)).toEqual({
       httpOnly: true,
       secure: true,
       sameSite: "strict",
       path: "/",
       maxAge: 0,
-      domain: "os.rahmanef.com",
+      domain: "mso.rahmanef.com",
     });
   });
 });

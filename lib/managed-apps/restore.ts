@@ -146,12 +146,12 @@ export async function restoreManagedAppBackup(id: ManagedAppId, backupId: string
   const { dir, source } = await resolveSource(id, backupId);
   const target = await resolveTarget(definition, source);
   await assertNoSymlinkCollisions(dir, target);
-  append(`[os-vps] restoring ${backupId} into ${target}\n`);
+  append(`[mso] restoring ${backupId} into ${target}\n`);
 
   // The undo. Taken AFTER the gates so a refused restore does not litter, and
   // before the first write so the current state is always recoverable.
   const safety = await createBackup(definition, "pre-restore");
-  append(`[os-vps] current state saved as ${safety.id} (${safety.files ?? "?"} files) before overwriting\n`);
+  append(`[mso] current state saved as ${safety.id} (${safety.files ?? "?"} files) before overwriting\n`);
 
   const manifestFile = path.join(dir, "manifest.json");
   let filesRestored = 0;
@@ -191,9 +191,9 @@ export async function restoreManagedAppBackup(id: ManagedAppId, backupId: string
   }
 
   const notRestored = [...BACKUP_SKIPPED_DIRS];
-  append(`[os-vps] restored ${filesRestored} files (${(bytesRestored / 1024 / 1024).toFixed(1)} MB)\n`);
-  append(`[os-vps] NOT restored (never in a snapshot): ${notRestored.join(", ")}\n`);
-  append("[os-vps] files created since the snapshot were left in place - a restore overwrites, it does not delete\n");
-  append(`[os-vps] undo this with backup ${safety.id}\n`);
+  append(`[mso] restored ${filesRestored} files (${(bytesRestored / 1024 / 1024).toFixed(1)} MB)\n`);
+  append(`[mso] NOT restored (never in a snapshot): ${notRestored.join(", ")}\n`);
+  append("[mso] files created since the snapshot were left in place - a restore overwrites, it does not delete\n");
+  append(`[mso] undo this with backup ${safety.id}\n`);
   return { applicationId: id, backupId, target, filesRestored, bytesRestored, safetyBackupId: safety.id, notRestored, overwriteOnly: true };
 }

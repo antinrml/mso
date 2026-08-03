@@ -7,7 +7,7 @@ import { Bar, Card, Row, Sparkline, gb } from "./widget-cards";
 import { CalendarWidget, TasksWidget } from "./widgets-defs-apps";
 import { VPS_WIDGETS } from "./widgets-defs-vps";
 
-const NOTES_KEY = "os-vps:widget:notes";
+const NOTES_KEY = "mso:widget:notes";
 
 // Inlined (appshell is brand-free — can't import @/lib/os-api/format).
 function fmtUptime(ms: number): string {

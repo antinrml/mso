@@ -28,7 +28,7 @@ already-approved device, or from the server with `node scripts/approve-device.js
 
 SSH to the box. Either approve your current device id (shown on the login
 screen) with `scripts/approve-device.js`, or inspect
-`~/.os-vps/auth-devices.json` directly. Deleting an entry revokes a device.
+`~/.mso/auth-devices.json` directly. Deleting an entry revokes a device.
 
 ### Can multiple people use it?
 
@@ -39,8 +39,8 @@ It's single-owner by design: one password, one trust level, every session is
 
 Nothing needs one. Sessions are stateless signed cookies; the device
 allowlist, BYOK key and audit log are small JSON/JSONL files under
-`~/.os-vps/`; window layout lives in the browser's localStorage. One process,
-no migrations, nothing to back up except `~/.os-vps`.
+`~/.mso/`; window layout lives in the browser's localStorage. One process,
+no migrations, nothing to back up except `~/.mso`.
 
 ### Can I run it as root so it can manage the whole box?
 
@@ -65,18 +65,18 @@ contributed through the same manifest. See
 [ARCHITECTURE.md](./ARCHITECTURE.md) and the slice list in
 [SLICE-CATALOG.md](./SLICE-CATALOG.md).
 
-### Can I reuse the apps outside os-vps?
+### Can I reuse the apps outside mso?
 
 Yes — that's deliberate. The shell framework (`appshell`) and several apps
 (image editor, video editor, file explorer, media viewer, code editor) are
 published as copy-in slices in the [Rahman Resources](https://resource.rahmanef.com)
 catalog (`npx rr add <slug>`). Each slice's only host coupling is a small
 `lib/host.ts` seam with injectable adapters, so the same code runs inside
-os-vps or standalone in any Next.js app.
+mso or standalone in any Next.js app.
 
-### Why is the repo called `os-vps` but the product is "Manef Shell OS"?
+### Why is the repo called `mso` but the product is "Manef Shell OS"?
 
-Three names, three jobs: **`os-vps`** is the repo/service/deploy slug (stable
+Three names, three jobs: **`mso`** is the repo/service/deploy slug (stable
 for paths, systemd units and the domain); **Manef Shell OS** is the product
 name; **MSO** is the short mark shown in the UI chrome. Renaming the slug would
 break every deploy path, so it stays.

@@ -1,10 +1,10 @@
-# os-vps — Progress Log
+# mso — Progress Log
 
 Running log of what shipped each phase. Newest at top.
 
 > **Architecture note:** Phases 0–14 below were built on **Convex self-hosted +
 > a Control-Room host-agent bridge**. That stack was **removed** in Phase 15 —
-> os-vps is now a self-contained Next.js app (`lib/host` + signed-cookie auth).
+> mso is now a self-contained Next.js app (`lib/host` + signed-cookie auth).
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
@@ -112,7 +112,7 @@ win that costs a 258 KB lockfile regeneration on the eve of a release).
 
 Deleted docs and trees are recoverable with `git show bccd0b1:<path>`; the untracked ones —
 `mock-os/Apple-clone-app/`, `public/MSO_Brand_Assets_Current/`, 13 one-shot June probe
-scripts — are in `~/archive/os-vps-cleanup-2026-07-30/`, since git could never bring those
+scripts — are in `~/archive/mso-cleanup-2026-07-30/`, since git could never bring those
 back. Net: 1,047 → 930 tracked files, −6.3k lines, −9 MB. typecheck + lint + 1,095 tests +
 build + cycles + slices green.
 
@@ -268,7 +268,7 @@ per-call approval card is a better lock); the `Skill` → `Playbook` rename; wir
 MSO becomes the **control plane** for applications that stay separate. Hermes and OpenClaw keep
 their own runtime, config, data, versions, health, logs and backups; nothing is copied, forked or
 merged into this repo, no DOM is scraped, and nothing under `~/.hermes/` or `~/.openclaw/` is ever
-written — the only writes land in `~/.os-vps/`. Everything goes through their own CLIs, their own
+written — the only writes land in `~/.mso/`. Everything goes through their own CLIs, their own
 loopback HTTP surfaces, and systemd/docker. Shipped as `c411187` → `52cfff5` → `0feaab4` →
 `5b4b5c9` → `d1fbd85` → `c597d08` → `d880f68`. (`3b45b8e`, same session, closed an unrelated
 hole: the camoufox VNC rewrite was gated only by the *presence* of a cookie named `session`, so it
@@ -281,11 +281,11 @@ is commented out and answers 403 until a real check can run in the nodejs middle
   `shell: false`, argv arrays, 128 KB cap, timeouts — no string ever reaches a shell). Four routes
   under `/api/v1/managed-apps`, every one `verifyAuth()` first; actions are demo-blocked,
   rate-limited 12/min and audited as `managed-app.action`. Backup copies `~/<stateDir>` into
-  `~/.os-vps/backups/<id>/<stamp>/` and (as first shipped) refused a tree containing symlinks —
+  `~/.mso/backups/<id>/<stamp>/` and (as first shipped) refused a tree containing symlinks —
   replaced later this phase, see the fix bullet; logs are journalctl / `docker logs` with
   bearer/token/secret/password redaction.
 - **Workspace modes + real feature discovery** — **REVERSED in `a2c3882`, all of this is deleted.** (`52cfff5`, `0feaab4`, `5b4b5c9`) — `plain | hermes
-  | openclaw` in `localStorage` (`os-vps:workspace-mode`), orthogonal to Shell Style, with a
+  | openclaw` in `localStorage` (`mso:workspace-mode`), orthogonal to Shell Style, with a
   right-click Workspace submenu on all five shells sharing one store with the Dashboard select.
   Each app's navigation is parsed from **its own installed bundle + plugin API**, not hard-coded:
   Hermes 18 nav entries + 2 plugin tabs (verified against `web_dist/assets/index-*.js` and
@@ -293,7 +293,7 @@ is commented out and answers 403 until a real check can run in the nodejs middle
   offered (`workboard`/`plugin` are flag-gated → `available:false`). 60 s cache, min-length parse
   guard, and an unreachable upstream yields nothing rather than tiles that 404.
 - **Proxy hardening** (`5b4b5c9`, `c597d08`) — upstream must be loopback; cookies namespaced
-  `mapp_<id>_` and pinned to the mount so the os-vps `session` never crosses; `authorization` /
+  `mapp_<id>_` and pinned to the mount so the mso `session` never crosses; `authorization` /
   `www-authenticate` never relayed; off-origin redirects refused (open redirect **and** a CSP
   path-matching bypass); upstream service workers 404'd; request bodies counted as they stream
   (a chunked body has no `content-length`); route errors carry `frame-ancestors` or the browser
@@ -307,7 +307,7 @@ is commented out and answers 403 until a real check can run in the nodejs middle
   on the cockpit origin that made upstream JS same-origin *with the cockpit*: `window.top.fetch`
   → `/api/v1/exec/run` with the user's session, which no CSP can stop (a policy binds a realm, not
   a reference across realms). Each dashboard now has its **own host on this same process**
-  (`{id}.os.rahmanef.com`, DNS + `/etc/dokploy/traefik/dynamic/os-vps-managed-apps.yml`), so
+  (`{id}.mso.rahmanef.com`, DNS + `/etc/dokploy/traefik/dynamic/mso-managed-apps.yml`), so
   `window.top` is opaque — measured in Chromium 148, with a same-origin control that still breaks
   through. `proxy.ts` rewrites every path on an app host into that app's proxy and 404s the rest
   (matcher widened to `/(.*)`, CSRF check moved ahead of the rewrite, `Host` authoritative over
@@ -318,7 +318,7 @@ is commented out and answers 403 until a real check can run in the nodejs middle
   wildcard (the widened cookie would make `new Image().src` an existence oracle). The session
   cookie gained an optional `Domain` and is cleared with **and** without it; `SameSite=Strict` is
   unchanged and still correct because the app hosts share the registrable domain.
-- **Verified live**, not just unit-tested: `https://hermes.os.rahmanef.com/` and
+- **Verified live**, not just unit-tested: `https://hermes.mso.rahmanef.com/` and
   `openclaw.…` answer over TLS with a valid cert; `/api/v1/exec/run` and `/api/v1/sys/stats` on an
   app host come back as the proxy's own 401 with `x-middleware-rewrite:
   /api/v1/managed-apps/<id>/proxy/…` (the cockpit route is not reachable there); `staging.os.…`
@@ -341,7 +341,7 @@ is commented out and answers 403 until a real check can run in the nodejs middle
   correctness. Live after the fix, both apps through the real `listManagedApps()`: `hermes | systemd
   | running | healthy=true | dash=true` and `openclaw | systemd | running | healthy=true |
   dash=true`. (2) **Backup** walked the tree and threw on the first symlink; `~/.hermes` has 58 and
-  `~/.openclaw` 2063, so the action failed for every real install and `~/.os-vps/backups/` was never
+  `~/.openclaw` 2063, so the action failed for every real install and `~/.mso/backups/` was never
   created (a success would have copied 2.7 GB + 1.7 GB). The guard is gone; `fs.cp` now takes a
   filter that skips `node_modules`/`.venv`/`venv`/`__pycache__`/`.git`/`.cache`/`backups` — the last
   being the app's *own* 1.1 GB backup dir — and skips symlinks (neither followed, which would copy
@@ -402,7 +402,7 @@ Alfa can now save facts to memory itself, not just via Settings: a `memory.remem
 host-tool (read-tier — runs immediately, no approval card, since it's a benign owner-scoped
 write) that POSTs to `/api/memory`. One catalog entry (`host-tools/catalog.ts`) + a HOST_SYSTEM
 guidance line; the registry test covers it as a read tool. tsc + lint + vitest green. It
-complements the manual Settings → Alfa memory panel (both write the same `~/.os-vps/memory.json`).
+complements the manual Settings → Alfa memory panel (both write the same `~/.mso/memory.json`).
 **Not redeployed** — build + restart to activate.
 
 ## 2026-07-16 (round 4) — Alfa chat history (YAML threads) + cross-session memory (DONE)
@@ -412,13 +412,13 @@ tests) green. Store logic is unit-tested; the full UI click-through (send → pe
 add fact → Alfa recalls it) is best exercised on the deploy (it needs a real provider key to stream).
 
 - **Chat history** — Alfa was stateless; now every completed turn persists to a YAML thread under
-  `~/.os-vps/threads/` (`lib/ai/threads.ts` — path-jailed filenames, atomic write). `/api/threads`
+  `~/.mso/threads/` (`lib/ai/threads.ts` — path-jailed filenames, atomic write). `/api/threads`
   (list/get/save/delete). A History drawer (`thread-list.tsx`) in the Alfa header lists saved chats;
   resume restores BOTH the display bubbles and the wire history so the chat continues; New starts
   fresh. Persistence factored into a `use-thread-persistence` hook. YAML (not JSON) per the owner's
   request — readable session files (`yaml` dep added).
 - **Cross-session memory** — durable facts recalled into Alfa's system prompt, matched to the latest
-  user turn by word overlap (`lib/ai/memory.ts`; `~/.os-vps/memory.json`). `/api/memory`
+  user turn by word overlap (`lib/ai/memory.ts`; `~/.mso/memory.json`). `/api/memory`
   (list/add/delete). The assistant route recalls + injects for EVERY provider path (codex/anthropic/openai).
 - **Token savers** — Settings → AI → Output style: Normal / Caveman (terse) / Ponytail (lazy senior
   dev) → appended to the system prompt (`OsConfig.tokenSaver`).
@@ -462,7 +462,7 @@ ChatGPT authorization to exercise.
   provider's key row + Test hide for OAuth providers.
 - **Caveats (documented):** Codex is a reverse-engineered CONSUMER endpoint — needs a ChatGPT
   Plus/Pro subscription, can break if OpenAI changes it, and is **chat-only (no Alfa tools)**.
-  Tokens are stored plaintext in the 0600 host file (os-vps's existing posture; at-rest
+  Tokens are stored plaintext in the 0600 host file (mso's existing posture; at-rest
   encryption is a later pass). **Not redeployed** — build + restart to activate.
 
 ## 2026-07-16 — Shell action contract (drawer + OS menu) + BYOK add-provider (DONE)
@@ -492,11 +492,11 @@ behaviorally verified on an isolated `:4011` dev server (prod never touched).
 - Guards: iOS/Android edits live in their single-mount shells; the desktop menu addition is
   additive (empty actions → nothing renders); a null custom conn keeps built-ins registry-pinned
   → macOS/Windows/Dashboard byte-unchanged. **Not redeployed** — `pnpm build` + `sudo systemctl
-  restart os-vps.service` to activate.
+  restart mso.service` to activate.
 
 ## 2026-06-15 — upload-DoS P0 closed (independent QA loop)
 
-An independent QA `/loop` rated os-vps and shipped the one **P0 a parallel audit
+An independent QA `/loop` rated mso and shipped the one **P0 a parallel audit
 session missed** — an authenticated DoS in `/api/v1/fs/upload`. Both on `origin/main`:
 
 - **`b4b90c5`** — `fs/upload` no longer buffers every multipart part into RAM
@@ -508,9 +508,9 @@ session missed** — an authenticated DoS in `/api/v1/fs/upload`. Both on `origi
   grow the buffer unbounded) + `lib/host/multipart.test.ts` (6 tests incl. both
   bypass vectors). `tsc` clean, vitest 293 passing.
 
-**Not redeployed** — `pnpm build` + `sudo systemctl restart os-vps.service` to
+**Not redeployed** — `pnpm build` + `sudo systemctl restart mso.service` to
 activate. The concurrent-session collision lesson from that handoff is now a standing
-rule in `CLAUDE.md` ("only ONE session edits os-vps at a time"); the handoff note
+rule in `CLAUDE.md` ("only ONE session edits mso at a time"); the handoff note
 itself was deleted on 2026-07-28 once its remaining content had expired.
 
 ## Where things stand (2026-06-11) — recovery anchor
@@ -670,7 +670,7 @@ lib + security done by hand. Prod rebuilt + restarted.
 
 ## 2026-06-10 (round 3) — Full upstream sync into rr: shell framework + every OS app slice (DONE)
 
-- **rr (`resources`) is no longer "basic"** — the whole os-vps feature set is
+- **rr (`resources`) is no longer "basic"** — the whole mso feature set is
   now consumable from the catalog by any project (`npx rr add <slug>`):
   - **appshell 1.4.0** in rr = byte-synced to this repo's framework (Android
     Material-You rebuild, macOS dock behaviour, window store + snap geometry,
@@ -680,7 +680,7 @@ lib + security done by hand. Prod rebuilt + restarted.
     notifications/control-center/widgets/clipboard/share/quick-look/
     shortcut-help/lock-screen) synced into rr's bundled `appshell/features/*`.
   - **Dashboard shell LIFTED into the framework** (rr bundles it; brand via
-    `useBrand`, stats via the capability seam) — os-vps keeps its consumer copy.
+    `useBrand`, stats via the capability seam) — mso keeps its consumer copy.
   - **12 app slices upgraded** in rr via per-slice 3-way merges that keep rr's
     self-contained `lib/host.ts` seams (mock adapters + `configure*()` for real
     wiring): browser (multitab/screencast/AI panel), os-terminal (exec emulator
@@ -777,11 +777,11 @@ Phone testing surfaced the real gaps — everything below e2e-verified on prod
 
 - **Cross-device prefs sync** (`4b7cf04`): phone no longer boots to fresh
   defaults (wrong wallpaper/theme, empty quicklinks, mock mode). Appearance
-  tweaks + quicklinks persist to `~/.os-vps/prefs.json` (atomic 0600) via
+  tweaks + quicklinks persist to `~/.mso/prefs.json` (atomic 0600) via
   session-gated `/api/prefs` (mirrors `/api/config`). localStorage hydrates
   first, server wins on initial GET, changes debounce 1.5 s POST per section,
   last-write-wins. POSTs disabled until a GET succeeds (pre-auth defaults can
-  never clobber server prefs); login fires `os-vps:authed` to re-pull without a
+  never clobber server prefs); login fires `mso:authed` to re-pull without a
   reload. `wallpaperStyle` is computed → stripped both sides. Demo: zero calls.
   Device-specific state (window layout, clipboard, profiles, recents) stays
   local on purpose.
@@ -797,7 +797,7 @@ Phone testing surfaced the real gaps — everything below e2e-verified on prod
   dismiss → `replaceState("/")`, deep-link onto a minimized app restores it.
   Also covers the Android shell home button.
 - **Persisted layout vs deep links** (`29bc59b`, found by e2e): boot
-  `hydrate()` rebuilt the store from `os-vps:layout` AFTER UrlSync opened the
+  `hydrate()` rebuilt the store from `mso:layout` AFTER UrlSync opened the
   deep-linked window — returning devices got the grid or a stale URL rewrite.
   New `hydrateBoot()` merges (live windows keep id/payload/focus on top,
   persisted single-instance dupes drop, multi apps coexist via id remap);
@@ -919,7 +919,7 @@ Lift-prep done (Phase F `ee2b7a9`): de-genericised appshell's last consumer
 literals (persist key + idle name → manifest), de-Convex'd os-shell metadata,
 added trios. Capability injection done (Phase G `b16ac0a`): appshell core no
 longer imports `@/lib/{appearance,os-api}` — appearance + CPU readout come via
-`manifest.capabilities`; os-vps adapts its store/host in `os-shell/capabilities.ts`.
+`manifest.capabilities`; mso adapts its store/host in `os-shell/capabilities.ts`.
 The framework core is now brand- AND consumer-free (only the universal `cn`
 helper remains). Verified behaviour-neutral (theme toggle, CPU chip, wallpaper,
 device detection, mobile surface all intact).
@@ -928,7 +928,7 @@ Feature-slice capability injection done (`eb671fa`): the `shell-*` slices no lon
 import `@/lib/*` either (except the universal `cn`). Their data deps now arrive via
 `ShellCapabilities` — `useSearch` (Spotlight → `SearchHit[]`), `useSystemStats`
 (Today widgets), `useChat` (scoped AI stream), `useServerToggle` (optional control-
-center server tile). os-vps wires the real `@/lib` sources in `os-shell/capabilities.ts`.
+center server tile). mso wires the real `@/lib` sources in `os-shell/capabilities.ts`.
 The **entire shell** (core + features) is now consumer-free. Verified behaviour-neutral
 (Spotlight search + theme command, mobile Today telemetry "CPU 61% 8 cores").
 
@@ -959,7 +959,7 @@ brought current. `MOBILE-RESPONSIVE-PLAN` flagged as not-yet-built (DRY primitiv
   skips node_modules/.git/…) + `/api/v1/fs/search`; Spotlight opens apps AND folders.
 - **Rename pre-selects the name** (`37c699c`) — typing replaces, Finder-style.
 - **Demo FS persists to localStorage** (`2fee6a1`) — mock tree mirrored to
-  `os-vps:demo-fs` so a visitor's sandbox survives reload (structure, not bytes).
+  `mso:demo-fs` so a visitor's sandbox survives reload (structure, not bytes).
 - **Whole-window drop zone** (`15ace18`) — the entire Files window is a drop target
   (drops on toolbar/padding no longer fall through to the browser), with a "Drop files
   & folders" overlay + Uploading/Uploaded toasts + a flat-file fallback.
@@ -969,17 +969,17 @@ brought current. `MOBILE-RESPONSIVE-PLAN` flagged as not-yet-built (DRY primitiv
 ## 2026-05-30 — Phase 15: Self-contained pivot + security + MSO rebrand (DONE)
 
 The big architecture change: **dropped Convex + the external Control-Room agent.**
-os-vps now runs AS a host process and controls its own machine directly.
+mso now runs AS a host process and controls its own machine directly.
 
 - **Self-contained host layer** — `lib/host/` (fs/exec/sys/paths) is the single
   facade for `/api/v1`; signed-cookie auth (`lib/auth/`, HMAC `OS_SESSION_SECRET` +
   password + device approval) replaced `@convex-dev/auth`. Layout/registry →
-  localStorage; device allowlist + BYOK config → `~/.os-vps/*.json`. No Convex, no agent.
+  localStorage; device allowlist + BYOK config → `~/.mso/*.json`. No Convex, no agent.
 - **Security pass** (`4a293cd`) — append-only JSONL audit (`lib/host/audit.ts`,
-  `~/.os-vps/audit.log`); exec destructive-command guard (`rm -rf /`, mkfs, dd,
+  `~/.mso/audit.log`); exec destructive-command guard (`rm -rf /`, mkfs, dd,
   fork bomb…) bypass via `OS_EXEC_ALLOW_DESTRUCTIVE`; exec rate-limit; tight default
   FS scope (read+write = home + ~/projects); 24h sessions; README threat model.
-- **Rebrand os-vps → MSO** (`56b3707`) — dropped the "OS" overclaim in all
+- **Rebrand mso → MSO** (`56b3707`) — dropped the "OS" overclaim in all
   user-facing strings (it's a cockpit/utility, not an OS). Repo/service/domain slug
   unchanged.
 - **os-browser to loopback** — Playwright service rebound 127.0.0.1:4002 (was 0.0.0.0);
@@ -995,10 +995,10 @@ the CLI, with a persistent session/cache so logins stick + no per-site API neede
 
 - **Host service** `os-browser` (new repo `/home/rahman/projects/os-browser`,
   systemd, loopback :4002, secret-gated): `chromium.launchPersistentContext`
-  (userDataDir `~/.os-vps/chrome-profile` = cookies/cache/session on disk). HTTP
+  (userDataDir `~/.mso/chrome-profile` = cookies/cache/session on disk). HTTP
   API: navigate/screenshot/state/content/click/type/key/scroll/back/forward/reload.
   ufw: docker0 + docker_gwbridge on 4002 (non-public).
-- **os-vps**: `lib/agent/server.ts` `browserConfigured()`+`browserFetch()`; 11
+- **mso**: `lib/agent/server.ts` `browserConfigured()`+`browserFetch()`; 11
   `app/api/v1/browser/*` routes (Convex-auth-gated → `172.18.0.1:4002`). Browser
   slice rewritten to a single REMOTE view: live screenshot `<img>`, click mapped to
   the 1280×800 viewport, keyboard/wheel forwarded, settle-poll after actions.
@@ -1106,7 +1106,7 @@ touched:
   (bounds hold), no-auth→401, real `whoami`/disk. Agent still 0.0.0.0:4001,
   CR frontend `active`, container→172.18.0.1:4001/health 200.
 
-**os-vps frontend:**
+**mso frontend:**
 - OsApi `exec` simplified to one-shot `run(cmd, cwd?) => {stdout,stderr,code}`
   (dropped unused pid/stream/kill) across types + mock + http adapters.
 - 9 new `app/api/v1` proxy routes (fs read/write/mkdir/delete/move/copy/usage,
@@ -1216,17 +1216,17 @@ Raised feature parity across the 6 thinnest apps (parallel re-author from
   `AGENT_HEALTH_HOST=0.0.0.0` (keeps loopback for the CR frontend, which calls
   127.0.0.1:4001 — CR NOT broken) + restarted. ufw INPUT policy is DROP, so
   4001 stays blocked from the public iface.
-- The os-vps swarm task egresses via `docker_gwbridge` (172.18.0.x); added
+- The mso swarm task egresses via `docker_gwbridge` (172.18.0.x); added
   `ufw allow in on docker_gwbridge to any port 4001`. Verified from inside the
   live container: `http://172.18.0.1:4001/health` → 200.
-- Set Dokploy os-vps env `OS_AGENT_URL=http://172.18.0.1:4001` + `OS_AGENT_SECRET`
+- Set Dokploy mso env `OS_AGENT_URL=http://172.18.0.1:4001` + `OS_AGENT_SECRET`
   (existing env preserved). Flip Settings → Server → **Live** to list the real
   VPS tree. Agent fs is **read-only** (only `/fs/list`) — listing is real,
   mutations stay mock/local.
 
 Security: agent reachable from host containers + tailnet, NOT public (ufw DROP +
 only docker0/docker_gwbridge allowed on 4001); every call still gated by the
-os-vps Convex-auth route + the agent's `x-control-room-secret`.
+mso Convex-auth route + the agent's `x-control-room-secret`.
 
 ---
 
@@ -1391,11 +1391,11 @@ deployment only — NOT in the repo. Rotating = re-issue all sessions.
 
 ## 2026-05-29 — Phase 3: Ship (DONE)
 
-Live: https://os.rahmanef.com + Convex self-hosted https://api-os.rahmanef.com
-(+ site-os / dash-os), all HTTP 200. Repo `git@github.com:rahmanef63/os-vps.git`.
+Live: https://mso.rahmanef.com + Convex self-hosted https://api-mso.rahmanef.com
+(+ site-os / dash-os), all HTTP 200. Repo `git@github.com:rahmanef63/mso.git`.
 
 - Canonical `si-coder deploy.js`: GitHub repo + push, Dokploy project/app
-  `os-vps` + compose `os-vps-db` (Convex template), admin-key gen, schema push
+  `mso` + compose `mso-db` (Convex template), admin-key gen, schema push
   (auth + windows + systemMonitor indexes), Hostinger DNS (os/api-os/site-os/
   dash-os), frontend build → `done`.
 - pnpm Dockerfile (`ARG NEXT_PUBLIC_CONVEX_URL` build-arg inlining).

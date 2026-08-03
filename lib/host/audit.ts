@@ -3,7 +3,7 @@
 // commands MUST keep a tamper-evident record — if something goes wrong, this is
 // the only forensic trail. JSONL, one event per line, flushed best-effort.
 //
-// Location: $OS_AUDIT_LOG, else ~/.os-vps/audit.log. Reads are NOT audited
+// Location: $OS_AUDIT_LOG, else ~/.mso/audit.log. Reads are NOT audited
 // (bounded + high-volume); only state-changing actions are.
 import { promises as fs } from "fs";
 import os from "os";
@@ -52,7 +52,7 @@ export interface AuditEntry {
 function auditPath(): string {
   const env = process.env.OS_AUDIT_LOG;
   if (env && env.trim()) return env.replace(/^~(?=$|\/)/, os.homedir());
-  return path.join(os.homedir(), ".os-vps", "audit.log");
+  return path.join(os.homedir(), ".mso", "audit.log");
 }
 
 function trunc(s: string | undefined, max = 512): string | undefined {

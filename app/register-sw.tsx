@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { toast } from "@/features/os-shell";
 
 // One-shot guard (per tab) so recovery never loops.
-const GUARD = "osvps_chunk_recover";
+const GUARD = "mso_chunk_recover";
 
 // A failed dynamic import (new deploy → old chunk ref a stale cache/SW still
 // points at) throws ChunkLoadError. Detect it broadly.

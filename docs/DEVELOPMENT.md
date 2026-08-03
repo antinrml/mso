@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git clone git@github.com:rahmanef63/os-vps.git && cd os-vps
+git clone git@github.com:rahmanef63/mso.git && cd mso
 corepack enable pnpm      # uses the pinned pnpm (see "pnpm version" below)
 pnpm install
 cp .env.example .env.local   # set OS_LOGIN_PASSWORD + OS_SESSION_SECRET (openssl rand -hex 32)
@@ -31,11 +31,11 @@ these touch `.next`, so they're safe to run against the prod checkout.
 
 ## Deploy — and the build hazard ⚠️
 
-os-vps deploys via **systemd on the VPS**, not `git push` (no webhook, no Dokploy/
+mso deploys via **systemd on the VPS**, not `git push` (no webhook, no Dokploy/
 Vercel). A deploy is:
 
 ```bash
-pnpm build && sudo systemctl restart os-vps.service   # build THEN restart, in that order
+pnpm build && sudo systemctl restart mso.service   # build THEN restart, in that order
 ```
 
 **Never run `pnpm build` inside the running prod checkout just to "verify" a change.**
@@ -48,7 +48,7 @@ instance** on a different port — e.g. a build with `NEXT_PUBLIC_OS_DEMO=1` (no
 no host access, forced mock data), served on `:4006` via its own systemd unit. For a
 non-destructive static check, `pnpm typecheck && pnpm lint` is the cheap gate.
 
-Recovery if a chunk mismatch is live: `sudo systemctl restart os-vps.service`.
+Recovery if a chunk mismatch is live: `sudo systemctl restart mso.service`.
 
 ## pnpm version
 

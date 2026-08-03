@@ -21,7 +21,7 @@
 //
 // SameSite stays "strict" and the cross-origin iframe does NOT need it loosened:
 // SameSite is evaluated per SITE — scheme + registrable domain — not per origin.
-// `os.rahmanef.com` and `hermes.os.rahmanef.com` share the registrable domain
+// `mso.rahmanef.com` and `hermes.mso.rahmanef.com` share the registrable domain
 // `rahmanef.com` on the same scheme, so the frame's navigation and every
 // subresource it fetches are same-site (RFC 6265bis §5.2); for a nested document
 // the "site for cookies" is non-null when the top-level document and every

@@ -4,8 +4,8 @@
 // id, so the device isn't re-minted (no needless re-approval). A full "clear
 // all site data" wipes both → a new id, by design (the device's stored secret
 // is gone, so it's correctly treated as a new device).
-const KEY = "os-vps.device.id";
-const COOKIE = "os-vps-device";
+const KEY = "mso.device.id";
+const COOKIE = "mso-device";
 const RE = /^[a-f0-9]{16,128}$/i;
 const MAX_AGE = 60 * 60 * 24 * 365 * 2; // 2 years (refreshed on every read)
 

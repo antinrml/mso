@@ -30,7 +30,7 @@ that owns the process. Treat it like SSH in a browser.
 - If using a public domain, put HTTPS, firewall rules, and strict access control
   in front of the app.
 - Do not expose the raw app port directly to the public internet.
-- Do not commit `.env.local`, API keys, or data from `~/.os-vps`.
+- Do not commit `.env.local`, API keys, or data from `~/.mso`.
 - Use demo mode (`NEXT_PUBLIC_OS_DEMO=1`) for public showcases.
 
 ## Managed applications and per-app origins
@@ -77,7 +77,7 @@ Operational rules for anyone maintaining a split-origin deployment:
 - **MSO expects HTTPS** (or `localhost`). The session cookie is `Secure`, so a plain-http
   deployment on an IP cannot log in at all — that is deliberate, not a bug to work around.
 - A managed-app **backup** copies that application's state directory into
-  `~/.os-vps/backups/<app>/<timestamp>/`, including any credentials the application keeps there —
+  `~/.mso/backups/<app>/<timestamp>/`, including any credentials the application keeps there —
   `~/.openclaw/credentials/` and `identity/` are in scope, and so is anything secret in
   `openclaw.json` or under `~/.hermes`. Treat those copies exactly like the application's own
   config: never publish them, and include them when you rotate that application's secrets. The
@@ -92,7 +92,7 @@ Operational rules for anyone maintaining a split-origin deployment:
   bypass, or rate-limit defeat that enables practical brute force.
 - Filesystem jail escape: reading or writing outside `OS_FS_READ_ROOTS` /
   `OS_FS_WRITE_ROOTS`, or reaching denied credential material such as `.env*` or
-  `~/.os-vps/*` through the file APIs.
+  `~/.mso/*` through the file APIs.
 - Unauthenticated access to live host routes such as `/api/v1/*`,
   `/api/assistant`, `/api/config`, or `/api/auth/devices`.
 - CSRF or clickjacking that triggers host actions cross-origin.
@@ -117,7 +117,7 @@ Operational rules for anyone maintaining a split-origin deployment:
 
 ## Key rotation
 
-BYOK AI credentials are stored server-side in `~/.os-vps/config.json`, never in
+BYOK AI credentials are stored server-side in `~/.mso/config.json`, never in
 the client bundle. To rotate a key, stop MSO, edit the config file or remove the
 provider from Settings → AI, then restart/sign in again.
 
@@ -125,11 +125,11 @@ To rotate auth secrets:
 
 - Change `OS_SESSION_SECRET` and restart to invalidate sessions.
 - Change `OS_LOGIN_PASSWORD` and restart to require the new password.
-- Remove entries from `~/.os-vps/auth-devices.json` to revoke devices.
+- Remove entries from `~/.mso/auth-devices.json` to revoke devices.
 
 ## Audit log retention
 
-The JSONL audit trail defaults to `~/.os-vps/audit.log` and can grow over time.
+The JSONL audit trail defaults to `~/.mso/audit.log` and can grow over time.
 Use logrotate or your normal host log retention system. Do not publish audit
 logs without checking for private paths, command names, or other sensitive
 context.

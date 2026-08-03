@@ -1,4 +1,4 @@
-// SERVER-ONLY. Path resolution + bounds for host filesystem access. os-vps runs
+// SERVER-ONLY. Path resolution + bounds for host filesystem access. mso runs
 // as a host process, so /api/v1 talks to the FS directly (no agent). READ and
 // WRITE roots are separate: reads can be wide (browse), writes are narrow so the
 // browser shell can't clobber system files. Symlinks are realpath-resolved BEFORE the
@@ -45,7 +45,7 @@ export function isUnderRoot(target: string, root: string): boolean {
 // Credential denylist: even inside a legal root, the app's OWN secret files are
 // off-limits to the FS API. Reading .env.local would leak OS_SESSION_SECRET —
 // turning one stolen session into the ability to mint cookies forever — and
-// ~/.os-vps holds the device allowlist, BYOK key and browser profile (cookies).
+// ~/.mso holds the device allowlist, BYOK key and browser profile (cookies).
 // Other projects' .env files stay readable (session = owner, their call).
 const APP_DIR = (() => {
   try {
@@ -100,7 +100,7 @@ export function isAppSecret(real: string): boolean {
 }
 
 function isCredentialPath(real: string): boolean {
-  const store = path.join(homeDir(), ".os-vps");
+  const store = path.join(homeDir(), ".mso");
   if (real === store || isUnderRoot(real, store)) return true;
   if (isSensitivePath(real)) return true;
   const base = path.basename(real);
@@ -133,7 +133,7 @@ function appSecretsUnder(realBase: string): string[] {
 function sensitiveUnder(realBase: string): string[] {
   if (process.env.OS_FS_ALLOW_SENSITIVE === "1") return [];
   const h = homeDir();
-  return [...SENSITIVE_HOME, ".os-vps"]
+  return [...SENSITIVE_HOME, ".mso"]
     .map((n) => path.join(h, n))
     .filter((p) => p !== realBase && isUnderRoot(p, realBase) && existsSync(p));
 }
@@ -198,7 +198,7 @@ function assertNotCredential(real: string): void {
 // intermediate dir can't redirect the write outside), and (3) `full` is not a
 // credential/sensitive file — the same denylist writeFile/move/copy enforce but
 // the upload path was skipping (a session could otherwise drop
-// ~/.ssh/authorized_keys or ~/.os-vps/auth-devices.json via /api/v1/fs/upload).
+// ~/.ssh/authorized_keys or ~/.mso/auth-devices.json via /api/v1/fs/upload).
 export async function assertUploadTarget(full: string, destReal: string): Promise<void> {
   if (!isUnderRoot(full, destReal)) throw new HostError("Upload path escapes destination");
   for (let anc = path.dirname(full); ; ) {

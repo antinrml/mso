@@ -25,7 +25,7 @@ export type ImageEditorProps = {
    * Optional URL to a saved document/project JSON to load on mount — either a
    * full Project ({v:1,doc,paint}) or a bare Doc ({width,height,layers}). This
    * is how a headless-CRUD'd `.doc.json` (built via /api/v1/editor/exec) renders
-   * in the REAL editor: "render = open in os-vps".
+   * in the REAL editor: "render = open in mso".
    */
   projectSrc?: string;
   /**

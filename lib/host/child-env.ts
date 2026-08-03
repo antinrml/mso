@@ -6,7 +6,7 @@
 // pass through unchanged (a real login shell still works).
 //
 // Residual (documented in SECURITY.md): a same-uid process can still read
-// /proc/<pid>/environ of the os-vps process itself — the boundary is the OS
+// /proc/<pid>/environ of the mso process itself — the boundary is the OS
 // user, not this scrub. This only stops the trivial in-terminal `printenv`.
 const SECRET_VARS = new Set([
   "OS_SESSION_SECRET",

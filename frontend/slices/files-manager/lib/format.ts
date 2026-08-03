@@ -24,7 +24,7 @@ export const parentPath = (p: string): string => {
 };
 
 // Breadcrumb segments for a path, including the synthetic root.
-export function crumbsFor(path: string, root = "os-vps"): { name: string; path: string }[] {
+export function crumbsFor(path: string, root = "mso"): { name: string; path: string }[] {
   const head = { name: root, path: "/" };
   if (path === "/") return [head];
   const parts = path.split("/").filter(Boolean);

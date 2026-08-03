@@ -12,7 +12,7 @@ import {
 } from "./proxy-headers";
 
 const PREFIX = proxyPrefix("hermes");
-const PREFIX_URL = `https://os.rahmanef.com${PREFIX}/`;
+const PREFIX_URL = `https://mso.rahmanef.com${PREFIX}/`;
 
 describe("publicProxyUrl", () => {
   afterEach(() => {
@@ -20,7 +20,7 @@ describe("publicProxyUrl", () => {
   });
 
   it("prefers OS_PUBLIC_ORIGIN over anything a request can carry", () => {
-    process.env.OS_PUBLIC_ORIGIN = "https://os.rahmanef.com";
+    process.env.OS_PUBLIC_ORIGIN = "https://mso.rahmanef.com";
     const spoofed = new Request(`http://localhost:4005${PREFIX}/chat`, {
       headers: { "x-forwarded-host": "evil.example", "x-forwarded-proto": "https", host: "evil.example" },
     });
@@ -28,14 +28,14 @@ describe("publicProxyUrl", () => {
   });
 
   it("ignores a malformed OS_PUBLIC_ORIGIN instead of emitting junk", () => {
-    process.env.OS_PUBLIC_ORIGIN = "os.rahmanef.com";
-    const req = new Request(`http://localhost:4005${PREFIX}/chat`, { headers: { host: "os.rahmanef.com" } });
-    expect(publicProxyUrl(req, "hermes")).toBe(`http://os.rahmanef.com${PREFIX}/`);
+    process.env.OS_PUBLIC_ORIGIN = "mso.rahmanef.com";
+    const req = new Request(`http://localhost:4005${PREFIX}/chat`, { headers: { host: "mso.rahmanef.com" } });
+    expect(publicProxyUrl(req, "hermes")).toBe(`http://mso.rahmanef.com${PREFIX}/`);
   });
 
   it("trusts the real Host header over a client-settable X-Forwarded-Host", () => {
     const spoofed = new Request(`http://localhost:4005${PREFIX}/chat`, {
-      headers: { host: "os.rahmanef.com", "x-forwarded-host": "evil.example", "x-forwarded-proto": "https" },
+      headers: { host: "mso.rahmanef.com", "x-forwarded-host": "evil.example", "x-forwarded-proto": "https" },
     });
     // The host decides which origin the whole policy is scoped to.
     expect(publicProxyUrl(spoofed, "hermes")).toBe(PREFIX_URL);
@@ -43,14 +43,14 @@ describe("publicProxyUrl", () => {
 
   it("uses the hop the browser made, not the plain-http hop from Traefik", () => {
     const req = new Request(`http://localhost:4005${PREFIX}/chat`, {
-      headers: { "x-forwarded-proto": "https,http", "x-forwarded-host": "os.rahmanef.com" },
+      headers: { "x-forwarded-proto": "https,http", "x-forwarded-host": "mso.rahmanef.com" },
     });
     expect(publicProxyUrl(req, "hermes")).toBe(PREFIX_URL);
   });
 
   it("falls back to the Host header, then to the request URL", () => {
-    const withHost = new Request(`http://localhost:4005${PREFIX}/chat`, { headers: { host: "os.rahmanef.com" } });
-    expect(publicProxyUrl(withHost, "hermes")).toBe(`http://os.rahmanef.com${PREFIX}/`);
+    const withHost = new Request(`http://localhost:4005${PREFIX}/chat`, { headers: { host: "mso.rahmanef.com" } });
+    expect(publicProxyUrl(withHost, "hermes")).toBe(`http://mso.rahmanef.com${PREFIX}/`);
     expect(publicProxyUrl(new Request(`http://localhost:4005${PREFIX}/chat`), "hermes")).toBe(
       `http://localhost:4005${PREFIX}/`,
     );
@@ -60,7 +60,7 @@ describe("publicProxyUrl", () => {
 describe("buildUpstreamHeaders", () => {
   const base = new URL("http://127.0.0.1:9119");
   const withHeaders = (init: Record<string, string>) =>
-    new Request("https://hermes.os.rahmanef.com/api/config", { headers: init });
+    new Request("https://hermes.mso.rahmanef.com/api/config", { headers: init });
 
   it("forwards Hermes' own session token, because dropping it 401s every fetch", () => {
     // Loopback Hermes injects an ephemeral token into the SPA HTML and requires it

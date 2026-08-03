@@ -18,16 +18,16 @@ import { usePrefsSync } from "@/lib/prefs/use-prefs-sync";
 // pops a new native browser tab.
 export type Quicklink = { id: string; title: string; url: string };
 
-const KEY = "os-vps:quicklinks";
+const KEY = "mso:quicklinks";
 
 // Seed for a fresh visitor (localStorage/server-synced edits win once present).
 // Keep defaults generic: the public demo should not look connected to a real
 // personal account or private server.
 const DEFAULTS: Quicklink[] = [
-  { id: "repo", title: "MSO GitHub", url: "https://github.com/rahmanef63/os-vps" },
-  { id: "docs", title: "Install docs", url: "https://github.com/rahmanef63/os-vps/blob/main/docs/INSTALL.md" },
-  { id: "demo", title: "Demo script", url: "https://github.com/rahmanef63/os-vps/blob/main/docs/DEMO-SCRIPT.md" },
-  { id: "security", title: "Security policy", url: "https://github.com/rahmanef63/os-vps/blob/main/SECURITY.md" },
+  { id: "repo", title: "MSO GitHub", url: "https://github.com/rahmanef63/mso" },
+  { id: "docs", title: "Install docs", url: "https://github.com/rahmanef63/mso/blob/main/docs/INSTALL.md" },
+  { id: "demo", title: "Demo script", url: "https://github.com/rahmanef63/mso/blob/main/docs/DEMO-SCRIPT.md" },
+  { id: "security", title: "Security policy", url: "https://github.com/rahmanef63/mso/blob/main/SECURITY.md" },
 ];
 
 type Ctx = {

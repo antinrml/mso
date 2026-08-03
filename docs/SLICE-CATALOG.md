@@ -1,4 +1,4 @@
-# os-vps — Slice Catalog
+# mso — Slice Catalog
 
 > **Generated from `frontend/slices/` on 2026-07-28.** The previous version listed six
 > slices that no longer existed (`browser` and five `shell-*` slices that converged into

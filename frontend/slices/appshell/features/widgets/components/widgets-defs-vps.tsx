@@ -12,9 +12,9 @@ import { mdToHtml } from "./md";
 // and a theme toggle. Split out to keep widgets-defs.tsx under the line ceiling.
 // All are interactive (opt back into pointer events).
 
-const EMBED_KEY = "os-vps:widget:embed";
-const HTML_KEY = "os-vps:widget:html";
-const MD_KEY = "os-vps:widget:markdown";
+const EMBED_KEY = "mso:widget:embed";
+const HTML_KEY = "mso:widget:html";
+const MD_KEY = "mso:widget:markdown";
 const ls = (k: string) => (typeof localStorage !== "undefined" ? localStorage.getItem(k) ?? "" : "");
 const btn = "rounded-lg border border-white/10 bg-black/10 px-2 py-1 text-xs hover:bg-white/10";
 

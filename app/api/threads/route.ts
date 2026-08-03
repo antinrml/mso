@@ -5,7 +5,7 @@ import { listThreads, getThread, saveThread, deleteThread, type ChatThread } fro
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Persistent Alfa chat threads (YAML files in ~/.os-vps/threads/). Session-gated.
+// Persistent Alfa chat threads (YAML files in ~/.mso/threads/). Session-gated.
 //   GET            → list summaries
 //   GET  ?id=<id>  → one full thread
 //   POST { id, title?, createdAt?, messages[], history[] } → save (create/update)

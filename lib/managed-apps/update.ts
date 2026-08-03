@@ -111,7 +111,7 @@ const exists = (target: string): Promise<boolean> =>
  *  update" (jobs.ts `prepare`). Null = there was nothing to snapshot. */
 async function snapshot(definition: ManagedAppDefinition, reason: ManagedAppBackup["reason"], append: (text: string) => void): Promise<ManagedAppBackup | null> {
   const source = stateDirFor(definition);
-  append(`[os-vps] ${reason} backup of ${source}\n`);
+  append(`[mso] ${reason} backup of ${source}\n`);
   // UNINSTALL only: a missing state dir left an app whose data was already
   // removed by hand permanently un-uninstallable — the job died here and the
   // uninstall never ran, with no way out through the UI. There is nothing left to
@@ -119,7 +119,7 @@ async function snapshot(definition: ManagedAppDefinition, reason: ManagedAppBack
   // dir is also the install (Hermes' is a git checkout), so its absence means
   // something is wrong that an update should not paper over.
   if (reason === "pre-uninstall" && !(await exists(source))) {
-    append(`[os-vps] nothing to back up - ${source} does not exist\n`);
+    append(`[mso] nothing to back up - ${source} does not exist\n`);
     return null;
   }
   let backup: ManagedAppBackup;
@@ -129,11 +129,11 @@ async function snapshot(definition: ManagedAppDefinition, reason: ManagedAppBack
     throw new Error(`${reason} backup failed, nothing was run: ${message(error)}`);
   }
   const mb = backup.bytes === null ? "?" : (backup.bytes / 1024 / 1024).toFixed(1);
-  append(`[os-vps] backup ${backup.id} - ${backup.files ?? "?"} files, ${mb} MB\n`);
+  append(`[mso] backup ${backup.id} - ${backup.files ?? "?"} files, ${mb} MB\n`);
   // Said out loud every time, because it is what makes this a STATE snapshot
   // rather than an install image: restoring it will not rebuild a git checkout
   // or a node_modules tree.
-  append(`[os-vps] not in the backup (and not restorable from it): ${backup.skipped.dirNames.join(", ")}\n`);
+  append(`[mso] not in the backup (and not restorable from it): ${backup.skipped.dirNames.join(", ")}\n`);
   return backup;
 }
 

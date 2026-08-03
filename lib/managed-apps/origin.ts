@@ -5,7 +5,7 @@
 // made them same-origin with the cockpit: upstream JS could reach `window.top` and
 // call /api/v1/exec with the user's session, and no CSP can stop it (CSP binds a
 // realm, not a reference across realms). So each app gets its OWN host, pointed at
-// this same process: `hermes.os.rahmanef.com`, `openclaw.os.rahmanef.com`.
+// this same process: `hermes.mso.rahmanef.com`, `openclaw.mso.rahmanef.com`.
 // `window.top` is then cross-origin and opaque.
 //
 // One host PER APP, not one shared host: a shared one would put Hermes and
@@ -21,7 +21,7 @@
 // node:os). NEXT_PUBLIC_ because the iframe `src` is built in the browser.
 import { MANAGED_APP_IDS, type ManagedAppId } from "./types";
 
-/** e.g. `{id}.os.rahmanef.com`. Empty/unset = single-origin mode. */
+/** e.g. `{id}.mso.rahmanef.com`. Empty/unset = single-origin mode. */
 const TEMPLATE = process.env.NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE?.trim() ?? "";
 
 const TOKEN = "{id}";
@@ -47,7 +47,7 @@ export function managedAppIdForHost(host: string | null | undefined): ManagedApp
   return MANAGED_APP_IDS.find((id) => managedAppHost(id) === bare) ?? null;
 }
 
-/** The name the app hosts live under (`{id}.os.rahmanef.com` → `os.rahmanef.com`).
+/** The name the app hosts live under (`{id}.mso.rahmanef.com` → `mso.rahmanef.com`).
  *  Deployment-owned; null in single-origin mode or when the leftover is a single
  *  label ("com", ""), which is nobody's deployment. */
 function templateParent(): string | null {
@@ -59,10 +59,10 @@ function templateParent(): string | null {
 }
 
 /** A host INSIDE the app namespace that is not one of the apps — e.g. someone adds
- *  `staging.os.rahmanef.com` pointing at this port, or a `*.os` wildcard appears.
+ *  `staging.mso.rahmanef.com` pointing at this port, or a `*.os` wildcard appears.
  *
  *  Such a host must 404, not serve the cockpit: the session cookie is widened to
- *  `Domain=os.rahmanef.com` so it is sent there, and a page on it would be
+ *  `Domain=mso.rahmanef.com` so it is sent there, and a page on it would be
  *  same-origin with a full cockpit — the exact reach the split removes, handed back
  *  by a DNS edit nobody connected to this file. Only the namespace is refused, never
  *  the parent itself, so this cannot lock the operator out of the cockpit.
@@ -93,8 +93,8 @@ export const MANAGED_APP_HOST_HEADER = "x-os-managed-app-host";
  *  OS_PUBLIC_ORIGIN is not NEXT_PUBLIC — in the browser only the fallback
  *  resolves, and every caller is server-side.
  *
- *  Fallback is the template's parent name (`{id}.os.rahmanef.com` →
- *  `https://os.rahmanef.com`), which is deployment-owned too. A wrong value fails
+ *  Fallback is the template's parent name (`{id}.mso.rahmanef.com` →
+ *  `https://mso.rahmanef.com`), which is deployment-owned too. A wrong value fails
  *  CLOSED — naming the wrong origin means the frame is refused, which is visible.
  *  null when nothing resolves, and the caller must then refuse framing outright
  *  rather than guess. */

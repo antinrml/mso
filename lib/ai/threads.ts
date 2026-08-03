@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { parse, stringify } from "yaml";
 
-// Persistent Alfa chat threads — one YAML file per thread under ~/.os-vps/threads/.
+// Persistent Alfa chat threads — one YAML file per thread under ~/.mso/threads/.
 // YAML (not JSON) so the session files stay human-readable (owner's call). `messages`
 // = the display bubbles; `history` = the wire turns needed to CONTINUE the chat.
 // Both are opaque to the server (stored/restored verbatim); the client owns the shape.
@@ -18,7 +18,7 @@ export interface ChatThread {
 
 export type ThreadSummary = Pick<ChatThread, "id" | "title" | "createdAt" | "updatedAt">;
 
-const DIR = process.env.OS_THREADS_DIR || path.join(os.homedir(), ".os-vps", "threads");
+const DIR = process.env.OS_THREADS_DIR || path.join(os.homedir(), ".mso", "threads");
 // ids are app-generated but jail them anyway (path-traversal guard): alnum + -_ only.
 const safeId = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
 const fileFor = (id: string) => path.join(DIR, `${safeId(id)}.yml`);

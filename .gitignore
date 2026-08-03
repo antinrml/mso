@@ -16,7 +16,7 @@ os-browser/*
 !os-browser/package-lock.json
 !os-browser/README.md
 convex-backend/
-.os-vps/
+.mso/
 # local session progress log (not tracked)
 progress.md
 

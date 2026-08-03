@@ -61,7 +61,7 @@ export function RollbackPanel({ appId, centre }: { appId: ManagedAppId; centre: 
       {!supported ? (
         <p className="text-[11px] leading-relaxed text-muted-foreground">
           This build has no backups endpoint. Snapshots taken by the Backup action still live in
-          <span className="font-mono"> ~/.os-vps/backups/{appId}/</span>.
+          <span className="font-mono"> ~/.mso/backups/{appId}/</span>.
         </p>
       ) : backups === null ? (
         <p className="text-[11px] text-muted-foreground">Loading snapshots…</p>

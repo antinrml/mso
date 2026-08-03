@@ -35,7 +35,7 @@ export async function GET(req: Request, context: { params: Promise<{ id: string;
 // a terminal status, so anything that leaves one running — a leaked grandchild
 // keeping the pipes open past its own reaper, a CLI that hangs below its timeout —
 // makes every later start/stop/restart/update/backup on that app answer 409. The
-// only other cure is restarting os-vps, which is precisely what an operator must
+// only other cure is restarting mso, which is precisely what an operator must
 // not do mid-update. It cannot end a healthy job by accident: the exact 24-hex id
 // AND its owning app are required, the outcome is always `failed` and never
 // `succeeded`, and cancelManagedAppJob refuses (false, never throws) while the job

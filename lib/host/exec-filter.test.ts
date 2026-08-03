@@ -20,8 +20,8 @@ describe("destructiveReason blocks catastrophic commands", () => {
     ["chmod -R 777 /", /recursive chmod\/chown/],
     ["chown -R nobody /", /recursive chmod\/chown/],
     ["systemctl stop nginx", /systemctl/],
-    ["systemctl restart os-vps.service", /systemctl/],
-    ["sudo systemctl disable os-vps", /systemctl/],
+    ["systemctl restart mso.service", /systemctl/],
+    ["sudo systemctl disable mso", /systemctl/],
     ["service nginx restart", /service stop\/restart/],
     ["service ssh stop", /service stop\/restart/],
     ["shutdown -h now", /shutdown\/reboot\/poweroff/],
@@ -128,7 +128,7 @@ describe("runCommand", () => {
   });
 
   it("refuses systemctl stop with a pointer to SSH", async () => {
-    const res = await runCommand("systemctl stop os-vps.service");
+    const res = await runCommand("systemctl stop mso.service");
     expect(res.code).toBe(126);
     expect(res.stderr).toMatch(/refused/);
     expect(res.stderr).toMatch(/SSH/);

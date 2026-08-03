@@ -12,24 +12,24 @@
 
 ## 0. Constraints
 
-1. **Do NOT rebuild os-vps to the mock's `prepare(ctx)→os` merge model.** os-vps apps are React
+1. **Do NOT rebuild mso to the mock's `prepare(ctx)→os` merge model.** mso apps are React
    components in a window store; that model is fine. Reuse the **existing live bus**, don't fork the shell.
 2. **VPS essence** — no fabricated hardware in any new chrome.
 3. **Two-seam safety** — mobile changes ride `mobile-shell.tsx` (iOS-only mount) + `android-shell.tsx`
    (Android-only mount); shared primitives gate on `useActiveShell().id`, never `surface`.
-4. os-vps rules: shadcn primitives, tokens-not-hex, ≤200 lines/file, barrel imports, no new deps.
+4. mso rules: shadcn primitives, tokens-not-hex, ≤200 lines/file, barrel imports, no new deps.
 5. BYOK: SSRF-guard any user base URL; single-owner host-JSON store (no Convex); key stays 0600.
 
 ## 1. Findings (probe-verified, file:line)
 
 ### Menu / drawer — the plumbing is ~80% present; only *population* + *in-app trigger* missing
 - **Mock desktop menu bar** = generic-by-app-**name** template `{apple, app, File, Edit, View, Window, Help}`,
-  hover-to-switch, `action`-string dispatch. **os-vps already matches this** — `menu-bar.tsx:40-77`
+  hover-to-switch, `action`-string dispatch. **mso already matches this** — `menu-bar.tsx:40-77`
   renders logo · brand · app-name · (File/Edit/View) · Window · Help, and `DefaultMenus`
   (`menu-bar-menus.tsx:71-118`) are **functional** (New Window, Cut/Copy/Paste, Full Screen, Spotlight, Inspector).
 - **Mock app contract** = each slice's `prepare(ctx)` returns shell-slot fields (`navTrailing/onTrailing`,
   `showTabBar/tabItems`, `toolbarActions`, `windowTitle`) + raises drawers via `ctx.act.open*`.
-  **os-vps apps feed the shell nothing** — each renders its own in-window chrome.
+  **mso apps feed the shell nothing** — each renders its own in-window chrome.
 - **`AppDescriptor.menus`** exists (`lib/types.ts:85`) and both the desktop bar (`menu-bar.tsx:69`) and the
   home long-press sheet (`mobile-home-parts.tsx:21`, `AppActionSheet`) already consume it — but **no app populates it**.
 - **The live data already exists:** the AI-Inspector bus (`appshell/lib/inspector.ts`) publishes per-app
@@ -39,8 +39,8 @@
   (`android-shell.tsx` ~155-161) = back · title. **No per-app action affordance while an app runs** ← the "drawer belum diterapkan".
 
 ### BYOK — streaming is already custom-baseUrl-ready; gap is storage + UI
-- os-vps BYOK (`os-settings/components/ai-section.tsx`) = one active provider+model+key, **8 hardcoded**
-  providers, plaintext `~/.os-vps/config.json` (0600), **no** custom endpoint / key-test / list-delete / OAuth.
+- mso BYOK (`os-settings/components/ai-section.tsx`) = one active provider+model+key, **8 hardcoded**
+  providers, plaintext `~/.mso/config.json` (0600), **no** custom endpoint / key-test / list-delete / OAuth.
 - **Enabler:** streaming already consumes `resolved.baseUrl`+`resolved.protocol` (`lib/ai/openai-stream.ts`,
   `app/api/assistant/route.ts:100`); `lib/models/resolve.js:47` honors a caller `baseUrl` **for non-built-in slugs**.
   So custom-provider = **storage + UI + one wiring line**, not a streaming rebuild.

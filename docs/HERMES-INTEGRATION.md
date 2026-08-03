@@ -39,7 +39,7 @@ one status card, its own dashboard pages as MSO app tiles, and a read-only CLI v
 | State dir | `~/.hermes` (2.7 GB — **the install lives inside the state dir**) | `catalog.ts:22`, `du -sh` |
 | Dashboard port | `9119`, bound `0.0.0.0` | `ss -tlnp`, unit `--host 0.0.0.0` |
 | Public today | **yes** — `ai.rahmanef.com` | `/etc/dokploy/traefik/dynamic/ai-hermes.yml` → `http://172.17.0.1:9119`, `passHostHeader: true` |
-| MSO app host | `hermes.os.rahmanef.com` → os-vps `:4005` → proxy → `127.0.0.1:9119` | `os-vps-managed-apps.yml`, `curl` below |
+| MSO app host | `hermes.mso.rahmanef.com` → mso `:4005` → proxy → `127.0.0.1:9119` | `mso-managed-apps.yml`, `curl` below |
 
 Two **user** systemd units, both in `~/.config/systemd/user/`, both `Restart=always`. There
 is no system-scope unit for either.
@@ -87,7 +87,7 @@ the system scope only if that fails (`manager.ts:121`) — always via `execFile`
   restart, and MSO offers no control over it at all. The dashboard reports the gateway's state in its
   own `/api/status` (`gateway_running`, `gateway_state`, `gateway_platforms`) — look there after one.
 - **`backup` follows `HERMES_HOME`** (`manager.ts:142`). It is not set in the *cockpit's* process —
-  the dashboard unit exports it for itself and that env does not reach os-vps — so the source falls
+  the dashboard unit exports it for itself and that env does not reach mso — so the source falls
   back to `~/.hermes`, the same path; a relocated install would now be copied instead of missed.
   With the exclusions in [MANAGED-APPS.md §6](./MANAGED-APPS.md) the copy is **366 MB** rather than
   2.7 GB: the venv and `hermes-agent/node_modules` are pruned, and so is `~/.hermes/backups` — 1.1 GB
@@ -201,7 +201,7 @@ refuses to display it — an opaque, blank frame. `proxy-html.ts:63` still rebas
 treats a bare `/` as the fallback it is by sending the window to its own route instead of
 the dashboard home. Three escapes in a row raises a "stuck" panel rather than looping.
 
-In **origin-split mode** — production — the mount is `/` on `hermes.os.rahmanef.com`, `next`
+In **origin-split mode** — production — the mount is `/` on `hermes.mso.rahmanef.com`, `next`
 is a plain path Hermes accepts, and the whole workaround is inert: `reentryTarget()` returns
 `null` without touching `frame.contentWindow.location` (`feature-cli.ts:122`), which it must,
 because that read throws cross-origin and a throw is the "it escaped" branch.
@@ -225,7 +225,7 @@ The shell is minimal and **root-absolute**:
   `/fonts-terminal/JetBrainsMono-*.woff2`), which is why `text/css` is rewritten too in
   single-origin mode (`proxy-html.ts:11`).
 
-Root-mounted on `hermes.os.rahmanef.com` those root-absolute URLs already resolve, so the
+Root-mounted on `hermes.mso.rahmanef.com` those root-absolute URLs already resolve, so the
 proxy rewrites the document **not at all** — no `<base href>`, no rebasing, no fetch shim,
 nothing to hash-pin.
 
@@ -266,14 +266,14 @@ else; `/` and `/health` answer a bare `302 Found` carrying only `date`, `server`
 to `curl -sI`.) No `content-security-policy`, no `x-frame-options`, no `permissions-policy`
 anywhere, so Hermes is framable as shipped and `contentSecurityPolicy()` (`proxy-csp.ts:214`)
 has nothing to intersect — every directive stays as MSO wrote it. What the browser gets on
-`hermes.os.rahmanef.com`, computed from the live headers:
+`hermes.mso.rahmanef.com`, computed from the live headers:
 
 ```
 default-src H; script-src H 'unsafe-inline' blob:; style-src H 'unsafe-inline';
 img-src H data: blob:; font-src H data: https:; media-src H data: blob:;
 worker-src blob:; connect-src H data: blob:; frame-src H; form-action H;
-base-uri H; frame-ancestors 'self' https://os.rahmanef.com; object-src 'none'
-        …where H = https://hermes.os.rahmanef.com/
+base-uri H; frame-ancestors 'self' https://mso.rahmanef.com; object-src 'none'
+        …where H = https://hermes.mso.rahmanef.com/
 ```
 
 Three consequences specific to Hermes:
@@ -298,9 +298,9 @@ Three consequences specific to Hermes:
 whole point. Live check, unauthenticated, so `401` is the success signal:
 
 ```
-$ curl -sI https://hermes.os.rahmanef.com/
+$ curl -sI https://hermes.mso.rahmanef.com/
 HTTP/2 401
-content-security-policy: default-src 'none'; frame-ancestors 'self' https://os.rahmanef.com
+content-security-policy: default-src 'none'; frame-ancestors 'self' https://mso.rahmanef.com
 x-middleware-rewrite: /api/v1/managed-apps/hermes/proxy
 ```
 

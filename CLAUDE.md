@@ -1,8 +1,8 @@
-# os-vps (product name: **MSO**)
+# mso (product name: **MSO**)
 
 Mobile-first web cockpit for a headless VPS, from any browser. Desktop-style UI
 metaphor over a vertical-slice stack; value is utility (terminal/files/monitor/
-browser), not an OS. Repo/service/domain keep the `os-vps` slug; "MSO" is the
+browser), not an OS. Repo/service/domain keep the `mso` slug; "MSO" is the
 UI brand. **Self-contained**: a single Next.js app, no database, no external
 agent — it runs AS a host process and controls its own machine.
 
@@ -44,7 +44,7 @@ decision). Both recoverable with `git show bccd0b1:docs/<name>`.
 
 ## Architecture
 ```
-browser ──https──> os-vps (Next.js :4005) ──── lib/host → Node fs/child_process (host)
+browser ──https──> mso (Next.js :4005) ──── lib/host → Node fs/child_process (host)
               signed-cookie auth (lib/auth)
 ```
 The Browser app is **Camoufox** — a real anti-fingerprinting Firefox on a headless
@@ -60,7 +60,7 @@ install). See the Browser/camoufox note further down for the systemd user unit.
   Client picks mock (default) vs live in Settings → Server.
 - `/api/auth/*` = login/logout/me/devices. `/api/config` = BYOK AI key.
 - Persistence is local: window layout + app registry in localStorage; device
-  allowlist + config in `~/.os-vps/*.json`.
+  allowlist + config in `~/.mso/*.json`.
 
 ## AppShell framework (the shell is generic + rr-liftable)
 The shell is NOT one slice. It is split so the whole desktop+mobile shell can lift
@@ -69,7 +69,7 @@ to `resources/` (rr) and drive any project from one manifest:
   + desktop/mobile surfaces, app/feature/brand registries, `<Slot region>`,
   `ResponsiveProvider`/`useResponsive` + the 4 DRY primitives, the pub/sub buses
   (toast/activity/inspector), and `<AppShell manifest>` (the one entry point). It
-  imports NO brand/feature and NO os-vps `@/lib/*` — only the universal `@/lib/utils`
+  imports NO brand/feature and NO mso `@/lib/*` — only the universal `@/lib/utils`
   (`cn`). Everything project-specific arrives via `manifest.capabilities`.
 - `appshell/features/{search,inspector,notifications,control-center,widgets,quick-look,
   clipboard,share,shortcut-help,lock-screen}` — each shell **feature** lives NESTED inside
@@ -80,7 +80,7 @@ to `resources/` (rr) and drive any project from one manifest:
   `features: DEFAULT_FEATURES`); the barrel re-exports it LAST so the `defineFeature`
   ES-cycle resolves. Buses live in core so apps fire them without depending on a feature
   slice. (`shell-settings` stays a flat UI-primitives slice — not a feature unit.)
-- `os-shell` — the thin os-vps **consumer**: `shell.manifest.ts` (MSO brand + app
+- `os-shell` — the thin mso **consumer**: `shell.manifest.ts` (MSO brand + app
   list + slugs + features) + `capabilities.ts` (adapts `@/lib/appearance`+`os-api`+
   `ai/stream` to `ShellCapabilities`) + a re-export barrel (`@/features/os-shell`
   re-exports appshell verbatim, so all app slices stay unedited).
@@ -130,10 +130,10 @@ to `resources/` (rr) and drive any project from one manifest:
   screenshot stream stay raw `<img>` on purpose (dynamic/auth'd bytes).
 
 ## Deploy / ops (prod :4005 + demo :4006 are systemd, not Dokploy)
-- `os-vps.service` (:4005, WorkingDir `/home/rahman/projects/os-vps`) serves
-  os.rahmanef.com via `next start`. Demo `os-vps-demo.service` (:4006, WorkingDir
-  `/home/rahman/projects/os-vps-demo`, `NEXT_PUBLIC_OS_DEMO=1` → no auth, mock data).
-- **Deploy prod:** `pnpm build` **THEN** `sudo systemctl restart os-vps.service`. ALWAYS
+- `mso.service` (:4005, WorkingDir `/home/rahman/projects/mso`) serves
+  mso.rahmanef.com via `next start`. Demo `mso-demo.service` (:4006, WorkingDir
+  `/home/rahman/projects/mso-demo`, `NEXT_PUBLIC_OS_DEMO=1` → no auth, mock data).
+- **Deploy prod:** `pnpm build` **THEN** `sudo systemctl restart mso.service`. ALWAYS
   build-then-restart, never the reverse, and never rebuild again after restarting
   without restarting once more — `next start` loads the build manifest at boot, so if
   the on-disk `.next/static` chunks don't match the running process's HTML refs, every
@@ -152,9 +152,9 @@ to `resources/` (rr) and drive any project from one manifest:
 - **`git add` aborts on a bad pathspec** and stages NOTHING new — after a
   `git rm`, don't re-list the removed file in `git add`; prefer `git add -A` and
   check `git status --short` before committing (a broken commit shipped once this way).
-- **Deploy demo:** from `/home/rahman/projects/os-vps-demo`: `git fetch origin -q &&
+- **Deploy demo:** from `/home/rahman/projects/mso-demo`: `git fetch origin -q &&
   git reset --hard origin/main -q && pnpm build && sudo systemctl restart
-  os-vps-demo.service`. Mind the cwd — running the sync from the prod dir is a classic slip.
+  mso-demo.service`. Mind the cwd — running the sync from the prod dir is a classic slip.
 - **The Browser app powers a systemd USER unit**, `camoufox-vnc.service` in
   `~/.config/systemd/user/`, whose `ExecStart` points at **`scripts/camoufox-vnc-service`
   in THIS repo** (it used to live untracked under `~/.openclaw/workspace/`, so a fresh
@@ -162,7 +162,7 @@ to `resources/` (rr) and drive any project from one manifest:
   version control). The script refuses to start without a VNC password file. Two further
   host-side facts the repo cannot carry, and the feature dies quietly without either: (1) `loginctl enable-linger rahman`, or the unit stops at
   logout and never starts at boot; (2) the drop-in
-  `/etc/systemd/system/os-vps.service.d/user-bus.conf` setting
+  `/etc/systemd/system/mso.service.d/user-bus.conf` setting
   `Environment=XDG_RUNTIME_DIR=/run/user/1001` — a system unit running as `User=rahman`
   gets NO user-bus address, so without it every `systemctl --user` call fails with
   "Failed to connect to bus: No medium found". `lib/camoufox/service.ts` reports that
@@ -190,7 +190,7 @@ to `resources/` (rr) and drive any project from one manifest:
   MIME is fatal — keep static Content-Types correct.
 
 ## Rules in force
-- **Only ONE session edits os-vps at a time.** One checkout, one `HEAD`, one index.
+- **Only ONE session edits mso at a time.** One checkout, one `HEAD`, one index.
   Two concurrent fix-loops collided three times on 2026-06-15: a `git reset --hard`
   wiped uncommitted work twice, and a shared-index sweep bundled one session's files
   into the other's commit. Before a long loop, `git log --oneline -10` — unexpected

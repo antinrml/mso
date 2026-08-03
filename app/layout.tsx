@@ -7,7 +7,7 @@ import { InstallPrompt } from "./install-prompt";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://os.rahmanef.com"),
+  metadataBase: new URL("https://mso.rahmanef.com"),
   applicationName: "Manef Shell OS",
   title: "Manef Shell OS — browser-based server control plane",
   description: "A browser-based graphical shell for a Linux server you own — terminal, files, metrics, and AI in one mobile-first pane.",
@@ -63,7 +63,7 @@ export default async function RootLayout({
           nonce={nonce}
           dangerouslySetInnerHTML={{
             __html:
-              'try{var t=JSON.parse(localStorage.getItem("os-vps:tweaks"));if(t&&t.theme)document.documentElement.dataset.theme=t.theme;}catch(e){}',
+              'try{var t=JSON.parse(localStorage.getItem("mso:tweaks"));if(t&&t.theme)document.documentElement.dataset.theme=t.theme;}catch(e){}',
           }}
         />
         {children}

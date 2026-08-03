@@ -9,7 +9,7 @@
 # persisted job record down to two elements.
 #
 # SECRETS. The provider key arrives in the ENVIRONMENT and never in this script's
-# argv, because os-vps stores a job's argv in the job record and writes it to the
+# argv, because mso stores a job's argv in the job record and writes it to the
 # audit log (app/api/v1/managed-apps/[id]/install/route.ts). Where an upstream CLI
 # has no env path, the key is re-exported to it as a flag: that argv belongs to a
 # transient child of this box, visible in `ps` only to the uid that could read the
@@ -29,7 +29,7 @@ BIND="${MSO_INSTALL_GATEWAY_BIND:-loopback}"
 PROVIDER="${MSO_INSTALL_PROVIDER:-}"
 KEY="${MSO_INSTALL_API_KEY:-}"
 # The origin MSO will frame this app's dashboard from (lib/managed-apps/origin.ts:
-# https://<id>.os.rahmanef.com). Empty in single-origin deployments.
+# https://<id>.mso.rahmanef.com). Empty in single-origin deployments.
 APP_ORIGIN="${MSO_INSTALL_APP_ORIGIN:-}"
 
 log() { printf '\n=== %s\n' "$*"; }
@@ -138,7 +138,7 @@ UNIT
 # Order matters and cost three consecutive failed installs to learn. The installer's own
 # launcher at ~/.local/bin/hermes is a bash wrapper that unsets PYTHONPATH/PYTHONHOME and
 # execs the VENV python — that is the one that works. But `~/.local/bin` is NOT on the PATH
-# a systemd service inherits (os-vps gets
+# a systemd service inherits (mso gets
 # /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin), so `command -v hermes`
 # misses it, and the next candidate down — ~/.hermes/hermes-agent/hermes — carries a
 # `#!/usr/bin/env python3` shebang. That runs the SYSTEM python, which has no `dotenv`, and

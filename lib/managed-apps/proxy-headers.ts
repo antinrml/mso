@@ -3,14 +3,14 @@
 //
 // Cookie model: every cookie crossing the boundary is namespaced per app AND
 // pinned to that app's proxy path. An upstream (Hermes, OpenClaw) therefore can
-// neither read nor overwrite the os-vps `session` cookie — which is unprefixed
+// neither read nor overwrite the mso `session` cookie — which is unprefixed
 // and Path=/ — nor a sibling managed app's cookies.
 
 // `authorization` is deliberately NOT forwarded and `www-authenticate` is
 // deliberately NOT returned: together they turn the proxy into a credential
 // relay — an upstream Basic challenge would make the browser prompt on the
-// os-vps origin and then preemptively attach that Authorization header to other
-// os-vps paths, which we would forward onward.
+// mso origin and then preemptively attach that Authorization header to other
+// mso paths, which we would forward onward.
 const REQUEST_HEADERS = [
   "accept",
   "accept-language",
@@ -56,8 +56,8 @@ const RESPONSE_HEADERS = [
 ];
 
 // Cookie NAMESPACE, not a path. Load-bearing on an app host too: the cockpit
-// session cookie now carries Domain=os.rahmanef.com, so it IS sent to
-// hermes.os.rahmanef.com — and Hermes' own cookies are `hermes_session_at` /
+// session cookie now carries Domain=mso.rahmanef.com, so it IS sent to
+// hermes.mso.rahmanef.com — and Hermes' own cookies are `hermes_session_at` /
 // `_rt` / `_provider` / `_pkce` / `hermes_sso_attempt`, any of which could just as
 // easily have been called `session` (OpenClaw sets none at all today).
 export const cookiePrefix = (id: string): string => `mapp_${id}_`;
@@ -69,7 +69,7 @@ export const cookiePrefix = (id: string): string => `mapp_${id}_`;
 export const proxyPrefix = (id: string): string => `/api/v1/managed-apps/${id}/proxy`;
 
 // Browser → upstream: keep ONLY our namespaced cookies and restore the real
-// names. Anything else (`session`, `os-vps-device`, …) never leaves the host.
+// names. Anything else (`session`, `mso-device`, …) never leaves the host.
 export function upstreamCookieHeader(raw: string | null, prefix: string): string | null {
   if (!raw) return null;
   const out: string[] = [];
@@ -231,7 +231,7 @@ export function rewriteLocation(raw: string, target: URL, base: URL, id: string,
 }
 
 // Service workers are the one thing a proxied bundle can leave behind: registered
-// from proxied bytes they install on the OS-VPS origin, scoped to this prefix,
+// from proxied bytes they install on the MSO origin, scoped to this prefix,
 // and keep answering fetches after the window is closed. OpenClaw's control UI
 // does exactly that — `navigator.serviceWorker.register(new URL(ct('sw.js'), …))`
 // where `ct()` derives its base from window.location.pathname, i.e. our prefix.

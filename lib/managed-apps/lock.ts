@@ -8,7 +8,7 @@ import type { ManagedAppId } from "./types";
 //
 // In-memory ON PURPOSE, and that is the correct scope: every operation this
 // process holds the lock for — a `systemctl restart`, a backup, a 30-minute
-// update — is executed BY this process and dies with it (os-vps.service is
+// update — is executed BY this process and dies with it (mso.service is
 // KillMode=control-group, Delegate=no; see the jobs.ts header). A lock that
 // outlived the process would therefore be a claim about work that is no longer
 // running, and would wedge the app until someone deleted a file.
@@ -16,7 +16,7 @@ import type { ManagedAppId } from "./types";
 // What must survive a restart is the RECORD, not the lock, and that is where
 // the durable half lives: job-store.ts reconciles a job whose owner process is
 // gone to `interrupted`, and startManagedAppJob() refuses to start while a
-// record for the app is still live — which is also what stops a SECOND os-vps
+// record for the app is still live — which is also what stops a SECOND mso
 // process on the same $HOME (a dev server on :3000) from running a concurrent
 // update, something no in-process Map could ever notice.
 

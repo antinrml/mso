@@ -2,7 +2,7 @@
 
 // Host-I/O PORT — the generic seam apps read to reach a backend (fs/exec/sys/
 // apps/auth). The interface + React context live here in the brand-free
-// framework; each CONSUMER injects a concrete adapter (os-vps: HTTP→/api/v1 or
+// framework; each CONSUMER injects a concrete adapter (mso: HTTP→/api/v1 or
 // in-browser mock; a Convex consumer: useQuery/useMutation) via
 // <HostApiProvider api=…>. App slices import `useOsApi` + these types through
 // the shell barrel (a legal alias) — never a project-specific @/lib path — so
@@ -111,7 +111,7 @@ const HostApiContext = createContext<OsApi | null>(null);
 
 // The consumer computes its adapter (mock|live HTTP, or Convex) and injects it
 // here; every app reads it via useOsApi(). Mounting stays in the consumer
-// (os-vps mounts it from app/os-root, wrapping this provider) so the brand-free
+// (mso mounts it from app/os-root, wrapping this provider) so the brand-free
 // framework carries no route/auth assumptions.
 export function HostApiProvider({
   api,

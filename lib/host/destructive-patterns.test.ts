@@ -5,7 +5,7 @@ describe("matchDestructive", () => {
   it("flags box-wrecking commands", () => {
     expect(matchDestructive("rm -rf /")).toBeTruthy();
     expect(matchDestructive("sudo shutdown now")).toBeTruthy();
-    expect(matchDestructive("systemctl stop os-vps")).toBeTruthy();
+    expect(matchDestructive("systemctl stop mso")).toBeTruthy();
     expect(matchDestructive("mkfs.ext4 /dev/sda")).toBeTruthy();
     expect(matchDestructive("kill -9 1")).toBeTruthy();
   });

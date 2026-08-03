@@ -64,7 +64,7 @@ function startSharedStats(api: ReturnType<typeof useOsApi>) {
   statsStop = startVisiblePoll(poll, 3000);
 }
 
-// Adapts os-vps's appearance store + host API + AI stream to the generic AppShell
+// Adapts mso's appearance store + host API + AI stream to the generic AppShell
 // capability contract, so `appshell` AND its feature slices carry NO dependency on
 // @/lib/*. These run inside os-root's AppearanceProvider + OsApiProvider (AppShell
 // is nested below them).

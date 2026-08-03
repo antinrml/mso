@@ -48,7 +48,7 @@ refusal (`X-Content-Type-Options: nosniff` makes that fatal on purpose).
 mismatched:
 
 ```bash
-rm -rf .next && pnpm build && sudo systemctl restart os-vps.service
+rm -rf .next && pnpm build && sudo systemctl restart mso.service
 ```
 
 ### Build runs out of memory ("Ineffective mark-compacts near heap limit")
@@ -88,13 +88,13 @@ Top-level system dirs are refused even if listed — keep writes narrow.
 
 Reads are bounded by `OS_FS_READ_ROOTS` (default home + `~/projects`). Set
 `OS_FS_READ_ROOTS=/` for read-only browsing of the whole box. Also remember
-the process user's own permissions still apply — os-vps can't read what
+the process user's own permissions still apply — mso can't read what
 `youruser` can't.
 
-### "Access to os-vps credential files is blocked"
+### "Access to mso credential files is blocked"
 
 By design: the FS API refuses the app's own `.env*` files and everything
-under `~/.os-vps/` (device allowlist, BYOK key, audit log, browser profile),
+under `~/.mso/` (device allowlist, BYOK key, audit log, browser profile),
 even inside a legal read/write root — otherwise one stolen session could read
 `OS_SESSION_SECRET` and forge cookies forever. Edit those files over SSH.
 
@@ -143,7 +143,7 @@ sudo once for the deps).
 ### Assistant returns 501
 
 No API key. Set `ANTHROPIC_API_KEY` in `.env.local` or paste a key under
-Settings → AI (stored in `~/.os-vps/config.json`). It's BYOK — without a key
+Settings → AI (stored in `~/.mso/config.json`). It's BYOK — without a key
 the endpoint stays off and everything else works.
 
 ## Service & networking
@@ -161,11 +161,11 @@ firewall allows the proxy, not the app port.
 
 ### Service restarts in a loop
 
-`journalctl -u os-vps -n 50` — most common: missing `.env.local`
+`journalctl -u mso -n 50` — most common: missing `.env.local`
 (`EnvironmentFile=` path wrong), Node not at `/usr/bin` (adjust `ExecStart`),
 or the build is absent (`pnpm build` never ran in that WorkingDirectory).
 
 ## Still stuck?
 
-Check the audit log (`~/.os-vps/audit.log`) for what the server actually did,
-and `journalctl -u os-vps` for stack traces. Issues/PRs welcome.
+Check the audit log (`~/.mso/audit.log`) for what the server actually did,
+and `journalctl -u mso` for stack traces. Issues/PRs welcome.

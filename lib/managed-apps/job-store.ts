@@ -5,7 +5,7 @@ import path from "node:path";
 import type { ManagedAppId, ManagedAppJob } from "./types";
 
 // Durable half of the job layer: one JSON file per job under
-// ~/.os-vps/managed-app-jobs/ (0700 dir, 0600 files, tmp+rename), matching how
+// ~/.mso/managed-app-jobs/ (0700 dir, 0600 files, tmp+rename), matching how
 // the device store and the config store already keep state. One file per job
 // rather than one index: a running job rewrites its own record every couple of
 // seconds and must never read-modify-write a file another job is appending to,
@@ -27,7 +27,7 @@ export function isManagedAppJobId(value: unknown): value is string {
 }
 
 function jobsDir(): string {
-  return path.join(os.homedir(), ".os-vps", "managed-app-jobs");
+  return path.join(os.homedir(), ".mso", "managed-app-jobs");
 }
 
 function pidAlive(pid: number): boolean {
@@ -53,7 +53,7 @@ export function reconcile(record: ManagedAppJob): ManagedAppJob {
     ...record,
     status: "interrupted",
     endedAt: new Date().toISOString(),
-    error: "os-vps stopped while this job was running; the child process was killed with it",
+    error: "mso stopped while this job was running; the child process was killed with it",
   };
 }
 
@@ -61,7 +61,7 @@ export async function writeJobRecord(record: ManagedAppJob): Promise<void> {
   const dir = jobsDir();
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   const file = path.join(dir, `${record.id}.json`);
-  // pid in the tmp name: two os-vps processes sharing $HOME must not collide on
+  // pid in the tmp name: two mso processes sharing $HOME must not collide on
   // one another's partial write.
   const tmp = `${file}.${process.pid}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(record), { encoding: "utf8", mode: 0o600 });

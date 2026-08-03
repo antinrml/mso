@@ -8,7 +8,7 @@
 //
 // Plain <img>, not next/image: these are tiny fixed-size local assets, so the
 // optimizer would add a round trip and buy nothing. They live in os-shell (the
-// os-vps CONSUMER), never in appshell — the framework stays brand-free.
+// mso CONSUMER), never in appshell — the framework stays brand-free.
 //
 // `alt=""` on purpose: every surface that renders an app icon already labels it
 // with the app title, so alt text here would just repeat it to a screen reader.

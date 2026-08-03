@@ -96,7 +96,7 @@ describe("backup copies a real install instead of refusing it", () => {
     systemctl({ "openclaw-gateway.service": ACTIVE });
     await performManagedAppAction("openclaw", "backup");
 
-    const root = path.join(home, ".os-vps", "backups", "openclaw");
+    const root = path.join(home, ".mso", "backups", "openclaw");
     const [stamp] = await fs.readdir(root);
     const backup = path.join(root, stamp);
 

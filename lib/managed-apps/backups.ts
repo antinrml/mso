@@ -37,7 +37,7 @@ export function stateDirFor(definition: ManagedAppDefinition): string {
 }
 
 export function backupsRoot(id: ManagedAppId): string {
-  return path.join(os.homedir(), ".os-vps", "backups", id);
+  return path.join(os.homedir(), ".mso", "backups", id);
 }
 
 export async function createBackup(definition: ManagedAppDefinition, reason: ManagedAppBackup["reason"]): Promise<ManagedAppBackup> {

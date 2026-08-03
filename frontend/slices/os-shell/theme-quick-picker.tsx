@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 // Compact menu-bar theme-preset switcher — the same live preset switch Settings
 // offers, without opening the Settings app. Lives in os-shell (the consumer) and
 // mounts into the appshell's `menuBarStatus` slot, so the brand-free appshell
-// never imports the os-vps preset registry.
+// never imports the mso preset registry.
 function ThemeQuickPicker() {
   const { tweaks, setTweaks } = useAppearance();
   const [open, setOpen] = useState(false);

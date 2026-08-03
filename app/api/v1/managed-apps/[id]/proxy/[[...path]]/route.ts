@@ -98,7 +98,7 @@ async function proxy(req: Request, context: { params: Promise<{ id: string; path
   if (segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0"))) {
     return fail("invalid upstream path", 400);
   }
-  // A service worker registered from proxied bytes installs on the OS-VPS origin
+  // A service worker registered from proxied bytes installs on the MSO origin
   // and keeps serving after the window closes. Never hand one to the browser.
   if (isServiceWorkerPath(segments)) {
     return fail("service workers are not proxied", 404);

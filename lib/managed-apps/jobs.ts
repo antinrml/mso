@@ -69,7 +69,7 @@ export async function startManagedAppJob(options: StartManagedAppJobOptions): Pr
   if (!isManagedAppId(applicationId)) throw new Error("unknown managed application");
   if (!(MANAGED_APP_JOB_KINDS as readonly string[]).includes(kind)) throw new Error("unsupported managed application job");
   const argv = normaliseArgv(options.argv);
-  // Durable half of the lock. A second os-vps process on the same $HOME (a dev
+  // Durable half of the lock. A second mso process on the same $HOME (a dev
   // server on :3000) has its own in-memory Map and would happily start a second
   // `hermes update` on the same git checkout; only the records are shared.
   // Jobs whose owner is gone were already reconciled away by listJobRecords().
@@ -108,7 +108,7 @@ export async function readManagedAppJob(jobId: string, since = 0): Promise<Manag
 }
 
 /** Stop a running job's child, freeing the app's lock without restarting
- *  os-vps. `false` = there is no live, cancellable job with that id for that app
+ *  mso. `false` = there is no live, cancellable job with that id for that app
  *  — an unknown id, one that already finished, one belonging to another app, or
  *  one still inside its mandatory pre-flight backup. See job-runner's
  *  `cancelJob` for why each of those refuses. Callers must not report `false` as

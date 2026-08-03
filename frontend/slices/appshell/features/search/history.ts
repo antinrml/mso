@@ -1,7 +1,7 @@
 // Spotlight MRU — recently-run command ids, newest first, capped. When the
 // Spotlight query is empty, these float to the top of the result list so the
 // last actions a user took are one keystroke away. localStorage-only, no host.
-const KEY = "os-vps:spotlight-recents";
+const KEY = "mso:spotlight-recents";
 const MAX = 6;
 
 export function loadRecents(): string[] {

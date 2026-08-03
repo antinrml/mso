@@ -84,7 +84,7 @@ export interface ManagedAppJob {
   /** Random per-server-process id. A record naming a runner that is gone was
    *  killed with it: the child never outlives the server (see jobs.ts). */
   runnerId: string;
-  /** pid of the os-vps process that owns the job — NOT the child's. */
+  /** pid of the mso process that owns the job — NOT the child's. */
   serverPid: number;
   /** Last write. A running job heartbeats, so this doubles as liveness. */
   updatedAt: string;

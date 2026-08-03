@@ -56,7 +56,7 @@ describe("a child that leaves something behind holding its output", () => {
       // service it starts inherits the child's stdout. `close` waits for those
       // pipes to reach EOF, so it never fires — the job sat at `running` with
       // the lock held and every later action on the app answered 409, with no
-      // cure short of restarting os-vps.
+      // cure short of restarting mso.
       const script = await stub(
         "leaks-a-daemon",
         `const { spawn } = require("child_process");
@@ -136,7 +136,7 @@ describe("what cancel refuses", () => {
       kind: "update",
       argv: [process.execPath, await stub("after-backup", 'console.log("ran");')],
       prepare: async (append) => {
-        append("[os-vps] pre-update backup\n");
+        append("[mso] pre-update backup\n");
         await gate;
       },
     });

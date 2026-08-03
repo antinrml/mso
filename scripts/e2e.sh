@@ -16,24 +16,24 @@ if curl -fso /dev/null "$E2E_URL"; then
 fi
 "$BROWSER" health >/dev/null || { echo "os-browser service down"; exit 1; }
 
-NEXT_PUBLIC_OS_DEMO=1 npx next dev -p "$E2E_PORT" >/tmp/osvps-e2e-next.log 2>&1 &
+NEXT_PUBLIC_OS_DEMO=1 npx next dev -p "$E2E_PORT" >/tmp/mso-e2e-next.log 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null' EXIT
 for _ in $(seq 1 90); do
   curl -fso /dev/null "$E2E_URL" && break
   sleep 0.5
 done
-curl -fso /dev/null "$E2E_URL" || { echo "server never came up"; tail -20 /tmp/osvps-e2e-next.log; exit 1; }
+curl -fso /dev/null "$E2E_URL" || { echo "server never came up"; tail -20 /tmp/mso-e2e-next.log; exit 1; }
 
 pass=0 fail=0
 for check in scripts/e2e/*.sh; do
   [ -e "$check" ] || continue
   name="$(basename "$check" .sh)"
   if [ "$#" -gt 0 ]; then case " $* " in *" $name "*) ;; *) continue ;; esac; fi
-  if bash "$check" >"/tmp/osvps-e2e-$name.log" 2>&1; then
+  if bash "$check" >"/tmp/mso-e2e-$name.log" 2>&1; then
     echo "PASS $name"; pass=$((pass + 1))
   else
-    echo "FAIL $name — /tmp/osvps-e2e-$name.log:"; tail -5 "/tmp/osvps-e2e-$name.log"; fail=$((fail + 1))
+    echo "FAIL $name — /tmp/mso-e2e-$name.log:"; tail -5 "/tmp/mso-e2e-$name.log"; fail=$((fail + 1))
   fi
 done
 echo "e2e: $pass pass, $fail fail"

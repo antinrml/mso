@@ -19,7 +19,7 @@ export interface CustomProviderConn {
 
 /** An OAuth "sign in with…" token bundle (subscription providers). Stored in the
  *  same 0600 host file as API keys — refresh tokens are account-scoped, so treat
- *  this file like an SSH key (which is already os-vps's trust boundary). */
+ *  this file like an SSH key (which is already mso's trust boundary). */
 export interface OAuthBundle {
   kind: "oauth";
   access: string;
@@ -50,7 +50,7 @@ export interface OsConfig {
 }
 
 const CONFIG_PATH =
-  process.env.OS_CONFIG_STORE ?? path.join(os.homedir(), ".os-vps", "config.json");
+  process.env.OS_CONFIG_STORE ?? path.join(os.homedir(), ".mso", "config.json");
 
 export const DEFAULT_MODEL = defaultModelFor(DEFAULT_PROVIDER);
 export { DEFAULT_PROVIDER };

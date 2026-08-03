@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { SaveImageDialog } from "./components/save-image-dialog";
 import { autoName, loadSavePrefs, saveImageToHost } from "./lib/save-image";
 
-// The OS "Image Editor" app — the portable image-editor slice + os-vps wiring:
+// The OS "Image Editor" app — the portable image-editor slice + mso wiring:
 // open host images / round-trip a saved doc, SAVE rendered images to a VPS folder,
 // and guard window close on unsaved changes (Save / Don't Save / Cancel).
 export default function MediaStudio({ payload, winId }: AppProps) {

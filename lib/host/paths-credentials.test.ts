@@ -23,7 +23,7 @@ let fakeHome = "";
 let parent = ""; // ~/.local/share — denied by neither itself nor its parent
 
 beforeAll(() => {
-  base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "osvps-cred-")));
+  base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "mso-cred-")));
   fakeHome = path.join(base, "home");
   parent = path.join(fakeHome, ".local", "share");
   mkdirSync(path.join(parent, "keyrings"), { recursive: true });

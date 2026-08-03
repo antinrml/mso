@@ -9,7 +9,7 @@ import { Card } from "./widget-cards";
 // widgets-defs.tsx): a mini calendar and a persisted task list. Split out to keep
 // widgets-defs.tsx under the line ceiling.
 
-const TASKS_KEY = "os-vps:widget:tasks";
+const TASKS_KEY = "mso:widget:tasks";
 type Task = { id: string; text: string; done: boolean };
 
 // Current-month mini calendar, today highlighted. Client-only (the desktop stack

@@ -62,7 +62,7 @@ export type { NotificationItem } from "./lib/toast";
 export { setActivity, clearActivity, useActivities } from "./lib/activity";
 export type { Activity } from "./lib/activity";
 // Host-I/O PORT — the generic backend seam. Apps read host data via useOsApi();
-// the consumer injects a concrete adapter through HostApiProvider (os-vps wraps
+// the consumer injects a concrete adapter through HostApiProvider (mso wraps
 // it in its own OsApiProvider). The OsApi type IS the portability contract.
 export { HostApiProvider, useOsApi } from "./lib/host-api";
 export type {

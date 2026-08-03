@@ -24,7 +24,7 @@ describe("appSecretExcludes", () => {
   const appName = path.basename(appDir);
 
   it("strips the app's .env* when a PARENT is the archive base", () => {
-    // The exploit: zip ~/projects (parent) with os-vps nested inside.
+    // The exploit: zip ~/projects (parent) with mso nested inside.
     expect(appSecretExcludes(path.dirname(appDir))).toEqual([
       `${appName}/.env`,
       `${appName}/.env.*`,
@@ -59,7 +59,7 @@ describe("zipStream against the real zip binary", () => {
   };
 
   beforeAll(() => {
-    base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "osvps-zip-")));
+    base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "mso-zip-")));
     process.env.OS_FS_READ_ROOTS = base;
     mkdirSync(path.join(base, "node_modules"), { recursive: true });
     mkdirSync(path.join(base, "proj", "node_modules"), { recursive: true });

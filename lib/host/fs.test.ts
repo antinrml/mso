@@ -25,7 +25,7 @@ let writeRoot = "";
 let outside = "";
 
 beforeAll(() => {
-  base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "osvps-fs-")));
+  base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "mso-fs-")));
   readRoot = path.join(base, "read");
   writeRoot = path.join(readRoot, "write");
   outside = path.join(base, "outside");

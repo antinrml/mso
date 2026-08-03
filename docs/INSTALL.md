@@ -1,4 +1,4 @@
-# Installing os-vps (Manef Shell OS) on your VPS
+# Installing mso (Manef Shell OS) on your VPS
 
 Step-by-step setup for a server you own. For the short path, see
 [Install](../README.md#install). This guide covers credentials, systemd, TLS,
@@ -9,7 +9,7 @@ the optional browser service, demo mode, updating, and rollback.
 - A Linux VPS (any distro with systemd; 1 vCPU / 2 GB RAM works, build wants
   ≥2 GB free — see [Troubleshooting](./TROUBLESHOOTING.md)).
 - **Node.js 20.9+** (22 recommended) and **pnpm 10.32.1** via corepack.
-- A **non-root user** that owns the install. Never run os-vps as root —
+- A **non-root user** that owns the install. Never run mso as root —
   an authenticated session can run shell commands as the process user.
 - Optional: a domain + reverse proxy (Caddy/nginx/Traefik) **or** Tailscale.
 
@@ -17,20 +17,20 @@ the optional browser service, demo mode, updating, and rollback.
 
 ```bash
 # as your normal user (NOT root)
-git clone https://github.com/<you>/os-vps.git ~/os-vps
-cd ~/os-vps
+git clone https://github.com/<you>/mso.git ~/mso
+cd ~/mso
 pnpm install
 ```
 
 ## 2. Credentials — read this section carefully
 
-os-vps is single-owner. A password, signed session cookie, and device allowlist
+mso is single-owner. A password, signed session cookie, and device allowlist
 gate owner access. All of it lives in two places:
 
 | What | Where | Committed? |
 |---|---|---|
 | Secrets/env | `.env.local` | **NEVER** (gitignored) |
-| Device allowlist, BYOK AI key, audit log | `~/.os-vps/*.json`, `~/.os-vps/audit.log` | outside the repo |
+| Device allowlist, BYOK AI key, audit log | `~/.mso/*.json`, `~/.mso/audit.log` | outside the repo |
 
 ```bash
 cp .env.example .env.local
@@ -57,7 +57,7 @@ node scripts/approve-device.js <deviceId> "rahman's phone"
 
 After you have one approved device, you can approve new ones from the UI
 (Settings → Devices) instead of SSH. The allowlist is a plain JSON file at
-`~/.os-vps/auth-devices.json` — deleting an entry revokes that device.
+`~/.mso/auth-devices.json` — deleting an entry revokes that device.
 
 **Filesystem bounds.** Reads and writes are jailed to configured roots
 (default: `~` + `~/projects`, realpath-checked so symlinks can't escape):
@@ -71,7 +71,7 @@ OS_FS_WRITE_ROOTS=~:~/projects
 OS_FS_READ_ROOTS=~/projects
 ```
 
-Even inside legal roots, credential material is always blocked: `~/.os-vps`,
+Even inside legal roots, credential material is always blocked: `~/.mso`,
 the app's own `.env*`, and the sensitive-home denylist (`~/.ssh`, `~/.gnupg`,
 `~/.secrets`, `~/vault`, `~/.bash_history`, `~/.npmrc`) — those paths are
 unreadable AND hidden from listings. Escape hatch for a supervised session:
@@ -84,7 +84,7 @@ their next attempt.
 
 **Checklist before going live** (same as the README security checklist):
 strong `OS_SESSION_SECRET`, VPN/TLS in front, tight read roots, non-root
-user, `.env.local` never committed, review `~/.os-vps/audit.log`.
+user, `.env.local` never committed, review `~/.mso/audit.log`.
 
 ## 3. First run
 
@@ -97,7 +97,7 @@ Open it, note the device id on the login screen, approve it (step 2), log in.
 
 ## 4. Run as a systemd service
 
-`/etc/systemd/system/os-vps.service` (adjust user + paths):
+`/etc/systemd/system/mso.service` (adjust user + paths):
 
 ```ini
 [Unit]
@@ -107,8 +107,8 @@ After=network.target
 [Service]
 Type=simple
 User=youruser
-WorkingDirectory=/home/youruser/os-vps
-EnvironmentFile=/home/youruser/os-vps/.env.local
+WorkingDirectory=/home/youruser/mso
+EnvironmentFile=/home/youruser/mso/.env.local
 Environment=PORT=4005
 Environment=HOSTNAME=0.0.0.0
 ExecStart=/usr/bin/pnpm start --hostname 0.0.0.0 --port 4005
@@ -117,7 +117,7 @@ RestartSec=5
 MemoryMax=3G
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=os-vps
+SyslogIdentifier=mso
 
 [Install]
 WantedBy=multi-user.target
@@ -125,8 +125,8 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now os-vps.service
-journalctl -u os-vps -f        # watch logs
+sudo systemctl enable --now mso.service
+journalctl -u mso -f        # watch logs
 ```
 
 `pnpm start` runs the `start` script from `package.json` (`next start`). The
@@ -194,7 +194,7 @@ secret travels server-to-server only and must never be reachable publicly.
 ## 7. Optional — AI assistant (BYOK)
 
 Set `ANTHROPIC_API_KEY` in `.env.local`, **or** paste a key in the OS under
-Settings → AI (stored in `~/.os-vps/config.json`, never in the repo). Unset
+Settings → AI (stored in `~/.mso/config.json`, never in the repo). Unset
 = the assistant endpoint returns 501 and the rest of the OS is unaffected.
 
 ## 8. Optional — public demo mode
@@ -211,13 +211,13 @@ the flag is baked at build time.
 ## 9. Updating
 
 ```bash
-cd ~/os-vps
+cd ~/mso
 git status --short          # must be clean before updating
 git fetch origin main
 git merge --ff-only FETCH_HEAD
 pnpm install --frozen-lockfile
 pnpm build                  # ALWAYS build before restarting
-sudo systemctl restart os-vps.service
+sudo systemctl restart mso.service
 ./scripts/post-deploy-smoke.sh   # catches the chunk/MIME drift the README warns about
 ```
 
@@ -236,7 +236,7 @@ If a deploy breaks production:
 1. Find the prior good commit: `git log --oneline -10`
 2. Check out the known-good commit: `git switch --detach <good-sha>`
 3. Rebuild: `pnpm build`
-4. Restart: `sudo systemctl restart os-vps.service`
+4. Restart: `sudo systemctl restart mso.service`
 5. Verify: `curl -s http://localhost:4005/api/health | jq .buildId`
 
 If the build itself broke (TypeScript or compile error), leave the running
@@ -265,12 +265,12 @@ NotifyAccess=all
 auto-restarts (catches hangs that `Restart=always`, crash-only, can't). All a
 no-op when `NOTIFY_SOCKET` is unset (dev / demo / CI).
 
-After editing the unit: `sudo systemctl daemon-reload && sudo systemctl restart os-vps.service`
-Verify: `systemctl show os-vps -p WatchdogUSec,NRestarts,ActiveState`
+After editing the unit: `sudo systemctl daemon-reload && sudo systemctl restart mso.service`
+Verify: `systemctl show mso -p WatchdogUSec,NRestarts,ActiveState`
 
 **External monitor** (Uptime Kuma / Healthchecks.io / etc):
 
-- URL: `https://os.rahmanef.com/api/health`
+- URL: `https://mso.rahmanef.com/api/health`
 - Expected: HTTP 200 + JSON body
 - Interval: 60s
 - Timeout: 5s
@@ -280,25 +280,25 @@ Verify: `systemctl show os-vps -p WatchdogUSec,NRestarts,ActiveState`
 
 ## 9e. Backup & retention
 
-`~/.os-vps/` is the persistence root:
+`~/.mso/` is the persistence root:
 
 - `auth-devices.json` — approved-device allowlist (losing it = re-approve every device)
 - `config.json` — BYOK key + AI model preferences
 - `audit.log` — append-only JSONL forensic trail
 - `chrome-profile/` — Playwright user data (browser app, optional)
 
-**Backup recommendation**: nightly `restic` (or `rsync` to off-host) of `~/.os-vps/`. ≤10MB typical.
+**Backup recommendation**: nightly `restic` (or `rsync` to off-host) of `~/.mso/`. ≤10MB typical.
 
 ```bash
 # example: restic to S3-compatible / Backblaze B2 / local NAS
-restic -r b2:my-bucket backup ~/.os-vps --tag os-vps --exclude chrome-profile
+restic -r b2:my-bucket backup ~/.mso --tag mso --exclude chrome-profile
 ```
 
 **Audit log rotation** (avoid unbounded growth):
 
 ```
-# /etc/logrotate.d/os-vps
-/home/rahman/.os-vps/audit.log {
+# /etc/logrotate.d/mso
+/home/rahman/.mso/audit.log {
     su rahman rahman
     size 1M
     rotate 4
@@ -324,8 +324,8 @@ availability:
 
 1. Run two instances on adjacent ports (4005 + 4006) behind a reverse proxy
    (Caddy/nginx).
-2. Update systemd to a socket-activated `os-vps@.service` template.
-3. Rolling restart: `systemctl restart os-vps@4006.service` first; verify
+2. Update systemd to a socket-activated `mso@.service` template.
+3. Rolling restart: `systemctl restart mso@4006.service` first; verify
    `/api/health`; then 4005.
 
 For a single-owner personal tool, this is overkill — the 200-500 ms gap is fine.
@@ -333,7 +333,7 @@ For a single-owner personal tool, this is overkill — the 200-500 ms gap is fin
 ## 10. Uninstall
 
 ```bash
-sudo systemctl disable --now os-vps.service os-browser.service 2>/dev/null
-sudo rm /etc/systemd/system/os-vps.service /etc/systemd/system/os-browser.service
-rm -rf ~/os-vps ~/.os-vps      # ~/.os-vps holds devices/config/audit log
+sudo systemctl disable --now mso.service os-browser.service 2>/dev/null
+sudo rm /etc/systemd/system/mso.service /etc/systemd/system/os-browser.service
+rm -rf ~/mso ~/.mso      # ~/.mso holds devices/config/audit log
 ```

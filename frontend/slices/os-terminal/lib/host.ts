@@ -1,6 +1,6 @@
 "use client";
 
-// os-vps side of the slice's host seam: everything project-specific the
+// mso side of the slice's host seam: everything project-specific the
 // slice touches re-exports from the shell + OsApi here. The rr catalog
 // copy replaces this file with a self-contained version (injectable
 // TerminalOsApi + no-op inspector) — every other file is line-identical.

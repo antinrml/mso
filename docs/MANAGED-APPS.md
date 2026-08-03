@@ -150,7 +150,7 @@ it stops double-clicks and makes `starting` observable, nothing more. On top of 
 `rateLimited("managed-app:<id>", 12, 60_000)` (`[id]/route.ts:23`) — fixed-window, **per app**.
 
 **Audit**: each action appends `managed-app.action` with `target=<id>`, `detail=<action>`, `ok` and
-`actor` (the approved device id from the session, via `getSessionActor()`) to `~/.os-vps/audit.log`.
+`actor` (the approved device id from the session, via `getSessionActor()`) to `~/.mso/audit.log`.
 Long operations are logged **twice**: the route writes the launch (`detail=update.<action>` +
 `meta.jobId` + `meta.argv`), and `job-audit.ts` writes the outcome (`detail=job.<kind>.<status>` +
 `meta.jobId/exitCode/error`) — matched on `jobId`, and the actor is carried across by
@@ -238,7 +238,7 @@ they do not boot at all. That is the whole security problem:
   control in the same run that *does* break through.
 
 Hence the **origin split**: each dashboard is served from its own host
-(`hermes.os.rahmanef.com`, `openclaw.os.rahmanef.com`) pointed at this same process. One host
+(`hermes.mso.rahmanef.com`, `openclaw.mso.rahmanef.com`) pointed at this same process. One host
 *per app*, never one shared host — a shared one would put Hermes and OpenClaw back in a single
 origin where they can script each other (`origin.ts:12`).
 
@@ -247,8 +247,8 @@ app a request belongs to and `X-Forwarded-Host` is deliberately ignored, because
 to claim the cockpit host while on an app host would escape the rewrite (`proxy.ts:112`). On an
 app host **every path** is rewritten into that app's proxy (`:146`), so `/api/v1/exec/run` does
 not exist there, and `/_next/*` 404s (`:129`). A host **inside the namespace that is not an app**
-also 404s (`:121`, `origin.ts:71`): the session cookie is widened to `os.rahmanef.com`, so a new
-`X.os.rahmanef.com` record must not be able to serve an authenticated cockpit — the parent name
+also 404s (`:121`, `origin.ts:71`): the session cookie is widened to `mso.rahmanef.com`, so a new
+`X.mso.rahmanef.com` record must not be able to serve an authenticated cockpit — the parent name
 is never matched, so this cannot lock the operator out. The rewrite stamps
 `x-os-managed-app-host` and **deletes any inbound copy** on every request (`:132`, `:182`,
 `:196`); the route trusts it only in split mode (`route.ts:92`), since forged it would buy
@@ -283,7 +283,7 @@ it, and the tighter side wins. Rules that matter:
   inject `<base href>`. Upstream **hashes** are copied in, upstream **nonces** never are: a nonce
   matches a script element whatever its URL, re-opening the origin scoping (`proxy-csp.ts:134`).
 - An external `https:` host the upstream **declares** is honoured (its own UI needs it), with no
-  wildcards and **never the cockpit origin** (`:174`) — `connect-src https://os.rahmanef.com` out
+  wildcards and **never the cockpit origin** (`:174`) — `connect-src https://mso.rahmanef.com` out
   of a compromised upstream is the thing scoping exists to stop. Hosts that *nothing* grants are
   disclosed in the window rather than failing silently (`proxy-headers.ts:228`).
 
@@ -305,7 +305,7 @@ So there is exactly one supported mode:
 | | origin-split (the only mode) |
 |---|---|
 | trigger | `NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE` contains `{id}` |
-| iframe `src` | `https://<id>.os.rahmanef.com/<route>` — the app owns its host root |
+| iframe `src` | `https://<id>.mso.rahmanef.com/<route>` — the app owns its host root |
 | document rewriting | none — the upstream's own URLs resolve as shipped |
 | cookie `Path` | `/`, namespaced to the app host |
 | `window.top` reach | opaque (cross-origin) |
@@ -318,12 +318,12 @@ cockpit-origin path proxy as a convenience.**
 Live verification (unauthenticated, so 401 is the expected success signal):
 
 ```
-H=hermes.os.rahmanef.com   # no trailing slash on the proxy URL: Next 308s it away first
+H=hermes.mso.rahmanef.com   # no trailing slash on the proxy URL: Next 308s it away first
 curl -sI -H "Host: $H" 127.0.0.1:4005/                 # 401 + frame-ancestors 'self' <cockpit>
 curl -s  -H "Host: $H" 127.0.0.1:4005/_next/static/x.js          # 404 — /_next is cockpit-only
 curl -s -X POST -H "Host: $H" 127.0.0.1:4005/api/v1/exec/run     # 403 cross_origin_blocked
-curl -s -H 'Host: staging.os.rahmanef.com' 127.0.0.1:4005/       # 404 — unclaimed namespace host
-curl -s -H 'Host: os.rahmanef.com' 127.0.0.1:4005/api/v1/managed-apps/hermes/proxy   # 401; 404 signed in
+curl -s -H 'Host: staging.mso.rahmanef.com' 127.0.0.1:4005/       # 404 — unclaimed namespace host
+curl -s -H 'Host: mso.rahmanef.com' 127.0.0.1:4005/api/v1/managed-apps/hermes/proxy   # 401; 404 signed in
 ```
 
 Residual, by design: the proxy is **HTTP only** — a route handler cannot service an `Upgrade` — so
@@ -333,7 +333,7 @@ view instead (`feature-cli.ts:41`, `:60`). The `connect-src` residual is §8.8.
 ## 6. Backup
 
 `backup` (`manager.ts:141`) copies the app's state dir recursively, timestamps preserved, to
-`~/.os-vps/backups/<id>/<ISO-stamp>/` (parent `0700`), then writes `manifest.json` (`0600`)
+`~/.mso/backups/<id>/<ISO-stamp>/` (parent `0700`), then writes `manifest.json` (`0600`)
 containing `{applicationId, createdAt, source, skipped: {symlinks, dirs, dirNames}}`. The source is
 `expandHome(homeDir)` when the catalog has one, else `homedir() + stateDirName` — so a Hermes
 install relocated with `HERMES_HOME` is what actually gets copied.
@@ -353,7 +353,7 @@ inside pruned trees and are never reached, so those are the order of `skipped.sy
 
 `du -sh --exclude=node_modules --exclude=.venv --exclude=venv --exclude=__pycache__ --exclude=.git
 --exclude=.cache --exclude=backups ~/.hermes ~/.openclaw` gives the size: **366 MB** and **237 MB**,
-against 2.7 GB and 1.7 GB unexcluded, with 227 GB free on `/home` (`df -h /home`). `~/.os-vps/backups/`
+against 2.7 GB and 1.7 GB unexcluded, with 227 GB free on `/home` (`df -h /home`). `~/.mso/backups/`
 is created by the first run; this host has one snapshot per app, from the first real backup runs.
 `manager.test.ts` covers the shape in a fixture home: state files copied, `node_modules/` and `backups/`
 absent, an `/etc/passwd` symlink neither followed nor recreated, manifest counters as claimed.
@@ -363,9 +363,9 @@ absent, an `/etc/passwd` symlink neither followed nor recreated, manifest counte
 Everything destructive is a **job** (`jobs.ts` + `job-runner.ts` + `job-store.ts`): the POST starts
 one and returns an id, the client polls `/jobs/<id>?since=`. A route handler cannot hold an
 `openclaw update` open — upstream's own default step timeout is 1800 s and it restarts services on
-the way out. The child is spawned by this process and **dies with it** (`os-vps.service` is
+the way out. The child is spawned by this process and **dies with it** (`mso.service` is
 `KillMode=control-group`, `Delegate=no`, so `detached` buys a process group, never a cgroup); the
-durable part is the record under `~/.os-vps/managed-app-jobs/` (0700 dir, 0600 files), and a job
+durable part is the record under `~/.mso/managed-app-jobs/` (0700 dir, 0600 files), and a job
 whose owner pid is gone — or which stopped heart-beating for 45 s — reconciles to `interrupted`
 rather than sitting at `running` and stranding the lock. **Do not deploy while an update runs.**
 
@@ -420,7 +420,7 @@ leave a broken install; so files created since the snapshot stay, and the result
 
 | Var | Read at | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE` | **build** (client) + runtime (server, middleware) | e.g. `{id}.os.rahmanef.com`. Presence of `{id}` is what turns split mode on |
+| `NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE` | **build** (client) + runtime (server, middleware) | e.g. `{id}.mso.rahmanef.com`. Presence of `{id}` is what turns split mode on |
 | `OS_SESSION_COOKIE_DOMAIN` | runtime | adds `Domain=` so the session reaches the app hosts (`lib/auth/session-cookie.ts:68`) |
 | `OS_PUBLIC_ORIGIN` | runtime | the origin named in `frame-ancestors` and used to scope the policy; unset falls back to the template's parent, and a value that resolves to nothing fails closed to `frame-ancestors 'none'`. The `HERMES_*` / `OPENCLAW_*` vars (§2) are runtime too |
 
@@ -432,16 +432,16 @@ app hosts that 401 on every request.
 **Deploy order** — forced by the build-time/runtime split:
 
 1. DNS for `hermes.os.…` and `openclaw.os.…`, then the Traefik router
-   (`/etc/dokploy/traefik/dynamic/os-vps-managed-apps.yml`: one `web` + one `websecure` router per host,
-   `service: os-vps-service`, `certResolver: letsencrypt`; that shared service forwards to
+   (`/etc/dokploy/traefik/dynamic/mso-managed-apps.yml`: one `web` + one `websecure` router per host,
+   `service: mso-service`, `certResolver: letsencrypt`; that shared service forwards to
    `http://172.17.0.1:4005` with `passHostHeader: true`, which is why middleware can trust `Host`).
 2. Set both env vars in `.env.local`.
 3. `pnpm build` — `NEXT_PUBLIC_*` is baked into the client bundle here. Built without it, the
    browser still points at the old same-origin URL the server has stopped answering, and the
    window comes up blank.
-4. `sudo systemctl restart os-vps.service` — never restart before building (`CLAUDE.md`).
+4. `sudo systemctl restart mso.service` — never restart before building (`CLAUDE.md`).
 
-**Verify** with the curls in §5, plus `https://hermes.os.rahmanef.com/` → `401` unauthenticated and the
+**Verify** with the curls in §5, plus `https://hermes.mso.rahmanef.com/` → `401` unauthenticated and the
 dashboard rendering in an app window when signed in. Both app hosts resolve to the cockpit's own A/AAAA.
 
 **Turning the feature OFF** (there is no "roll back to single-origin" any more — that mode was

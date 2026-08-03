@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerate the README demo (docs/media/demo.gif) against a LIVE os-vps instance,
+// Regenerate the README demo (docs/media/demo.gif) against a LIVE mso instance,
 // so the recording tracks the current UI.
 //
 //   OS_MEDIA_DEVICE=<approved-device-id> node scripts/gen-readme-media.mjs
@@ -22,7 +22,7 @@ import { chromium } from "../os-browser/node_modules/playwright/index.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "docs", "media");
-const TMP = path.join(os.tmpdir(), "os-vps-media");
+const TMP = path.join(os.tmpdir(), "mso-media");
 const BASE = process.env.OS_MEDIA_BASE || "http://127.0.0.1:4005";
 const DEVICE = process.env.OS_MEDIA_DEVICE;
 if (!DEVICE) throw new Error("set OS_MEDIA_DEVICE=<approved-device-id> (scripts/approve-device.js --list)");
@@ -42,7 +42,7 @@ const host = new URL(BASE).hostname;
 const cookie = { name: "session", value: `${enc}.${sig}`, domain: host, path: "/" };
 const seed = () => {
   localStorage.setItem("sv:shell", JSON.stringify({ desktop: "macos", mobile: "ios" }));
-  localStorage.setItem("os-vps:tweaks", JSON.stringify({ theme: "dark" }));
+  localStorage.setItem("mso:tweaks", JSON.stringify({ theme: "dark" }));
 };
 
 const wait = (p, ms) => p.waitForTimeout(ms);

@@ -44,7 +44,7 @@ afterEach(async () => {
 });
 
 /** A stub CLI on PATH. `body` is sh because the shell is the TEST's tool, not
- *  the product's — os-vps never spawns one (`shell: false` everywhere). */
+ *  the product's — mso never spawns one (`shell: false` everywhere). */
 async function stub(name: string, body: string): Promise<void> {
   await fs.writeFile(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
 }
@@ -125,7 +125,7 @@ describe("a backup gates the update it is protecting", () => {
     const [backup] = await listBackups("hermes");
     expect(backup.reason).toBe("pre-update");
     expect(backup.files).toBe(1);
-    expect(await fs.readFile(path.join(home, ".os-vps", "backups", "hermes", backup.id, "config.yaml"), "utf8")).toBe("state: kept\n");
+    expect(await fs.readFile(path.join(home, ".mso", "backups", "hermes", backup.id, "config.yaml"), "utf8")).toBe("state: kept\n");
     // Order is visible in the transcript: the backup lines land before the
     // child's first byte because `prepare` runs before anything spawns.
     expect(job.log.indexOf("pre-update backup")).toBeLessThan(job.log.indexOf("done"));

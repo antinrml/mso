@@ -1,11 +1,11 @@
 # os-browser — headless Chromium service for the Browser app
 
 A tiny HTTP wrapper around a REAL Playwright Chromium running on the VPS.
-The os-vps Browser app proxies to it server-to-server, so any site renders
+The mso Browser app proxies to it server-to-server, so any site renders
 (no `X-Frame-Options` problem — it's a browser, not an iframe). One
-persistent profile (`~/.os-vps/chrome-profile`) keeps logins across restarts.
+persistent profile (`~/.mso/chrome-profile`) keeps logins across restarts.
 
-Optional: without it, every other os-vps app still works.
+Optional: without it, every other mso app still works.
 
 ## Run
 
@@ -31,7 +31,7 @@ OS_BROWSER_SECRET=<the same secret>
 | `OS_BROWSER_SECRET` | — (required, ≥16) | Shared secret; never reaches the client |
 | `OS_BROWSER_PORT` | `4002` | Listen port |
 | `OS_BROWSER_HOST` | `127.0.0.1` | **Keep loopback.** Override only behind a private bridge |
-| `OS_BROWSER_PROFILE` | `~/.os-vps/chrome-profile` | Persistent browser profile dir |
+| `OS_BROWSER_PROFILE` | `~/.mso/chrome-profile` | Persistent browser profile dir |
 
 ## Security
 

@@ -21,7 +21,7 @@ export type NewIcon =
 
 export const ICON_W = 76;
 export const ICON_H = 82;
-const KEY = "os-vps:desktop-icons";
+const KEY = "mso:desktop-icons";
 const DEFAULT: DesktopIcon[] = [
   { id: "files-manager", kind: "app", app: "files-manager", x: 16, y: 12 },
   { id: "system-monitor", kind: "app", app: "system-monitor", x: 16, y: 106 },

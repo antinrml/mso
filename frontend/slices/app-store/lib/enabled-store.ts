@@ -9,7 +9,7 @@ import { useSyncExternalStore } from "react";
 // `app-store` itself can never be disabled: it is the surface that re-enables
 // everything else, so disabling it would be a lock-out.
 
-const KEY = "os-vps:disabled";
+const KEY = "mso:disabled";
 const MANDATORY = new Set<string>(["app-store"]);
 
 let ids: string[] | null = null;

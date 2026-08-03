@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const provider = req.nextUrl.searchParams.get("provider");
 
   // An OAuth provider's models come from the ACCOUNT, not from models.dev. Its slug
-  // ("openai-codex") is local to os-vps and models.dev has never heard of it, so the
+  // ("openai-codex") is local to mso and models.dev has never heard of it, so the
   // filter below matched nothing and the picker came up empty the moment ChatGPT auth
   // was connected — the account's own list had been fetched during OAuth and thrown
   // away. Nothing from the bundle but model IDs is ever returned: the access token

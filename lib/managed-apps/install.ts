@@ -20,7 +20,7 @@ import type { ManagedAppId, ManagedAppJob } from "./types";
 // inside job-child.ts and dropped). So the argv stays two elements long and the
 // secret travels in the environment.
 
-/** Where the sequence lives. Resolved against the server's cwd — os-vps runs
+/** Where the sequence lives. Resolved against the server's cwd — mso runs
  *  with `WorkingDirectory` at the repo root, and the script ships with the repo,
  *  so a fresh clone on another machine needs no path configuration. */
 const INSTALL_SCRIPT = path.join(process.cwd(), "scripts", "managed-app-install");

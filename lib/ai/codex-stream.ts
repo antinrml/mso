@@ -32,7 +32,7 @@ export async function streamCodex(opts: {
     headers: {
       authorization: `Bearer ${bundle.access}`,
       originator: "codex_cli_rs",
-      "user-agent": "codex_cli_rs/0.0.0 (os-vps)",
+      "user-agent": "codex_cli_rs/0.0.0 (mso)",
       "chatgpt-account-id": bundle.accountId ?? "",
       "openai-beta": "responses=experimental",
       accept: "text/event-stream",

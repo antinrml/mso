@@ -25,7 +25,7 @@ let writeRoot = "";
 let outside = "";
 
 beforeAll(() => {
-  base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "osvps-paths-")));
+  base = realpathSync(mkdtempSync(path.join(os.tmpdir(), "mso-paths-")));
   readRoot = path.join(base, "read");
   writeRoot = path.join(readRoot, "write");
   outside = path.join(base, "outside");
@@ -82,7 +82,7 @@ describe("resolveReadable bounds", () => {
 describe("credential denylist (read root = / so only the denylist gates)", () => {
   const home = os.homedir();
   const sshDir = path.join(home, ".ssh");
-  const storeDir = path.join(home, ".os-vps");
+  const storeDir = path.join(home, ".mso");
   const envLocal = path.join(process.cwd(), ".env.local");
   const envExample = path.join(process.cwd(), ".env.example");
 
@@ -91,7 +91,7 @@ describe("credential denylist (read root = / so only the denylist gates)", () =>
     await expect(resolveReadable(sshDir)).rejects.toThrow(/credential|sensitive/i);
   });
 
-  it.skipIf(!existsSync(storeDir))("blocks the ~/.os-vps config store", async () => {
+  it.skipIf(!existsSync(storeDir))("blocks the ~/.mso config store", async () => {
     useRoots("/", writeRoot);
     await expect(resolveReadable(storeDir)).rejects.toThrow(/credential|sensitive/i);
   });

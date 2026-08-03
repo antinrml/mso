@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 // stick across restarts) but ONE PAGE PER CONSUMER: the human viewer ("ui") and
 // the agent ("agent") each get their own tab, so they never fight over the same
 // page — while still SHARING the login/profile (a tab is cheap; a second
-// Chromium would not be). Loopback + secret; os-vps is the only caller. An
+// Chromium would not be). Loopback + secret; mso is the only caller. An
 // http(s) target CAN reach LAN/metadata by design, so never expose this port and
 // never let an unauthenticated relay forward here.
 
@@ -17,7 +17,7 @@ const PORT = Number(process.env.OS_BROWSER_PORT || 4002);
 const HOST = process.env.OS_BROWSER_HOST || "127.0.0.1";
 const SECRET = process.env.OS_BROWSER_SECRET || "";
 const USER_DATA_DIR =
-  process.env.OS_BROWSER_PROFILE || path.join(os.homedir(), ".os-vps", "chrome-profile");
+  process.env.OS_BROWSER_PROFILE || path.join(os.homedir(), ".mso", "chrome-profile");
 const VIEWPORT = {
   width: Number(process.env.OS_BROWSER_WIDTH || 1280),
   height: Number(process.env.OS_BROWSER_HEIGHT || 800),

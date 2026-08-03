@@ -1,6 +1,6 @@
 "use client";
 
-// Host-side image saving for Media Studio (the os-vps consumer of the portable
+// Host-side image saving for Media Studio (the mso consumer of the portable
 // image-editor slice). The editor stays backend-agnostic and just hands us a PNG
 // data URL; here we convert it to the chosen format and write it to a VPS folder
 // via the binary-safe upload route, remembering the user's choice in localStorage.

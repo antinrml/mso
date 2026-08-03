@@ -2,7 +2,7 @@ import "server-only";
 import { runProgram } from "@/lib/managed-apps/runner";
 
 // The Camoufox display is a systemd USER unit (`~/.config/systemd/user/`), which is
-// the whole reason this module can exist: os-vps runs as `User=rahman`, so
+// the whole reason this module can exist: mso runs as `User=rahman`, so
 // `systemctl --user` needs neither sudo nor a polkit rule. It used to be a system
 // unit, and then nothing short of a root shell could stop it — the Browser app could
 // hide itself from the dock while a headless Firefox + Xvfb + x11vnc kept burning a
@@ -46,8 +46,8 @@ async function show(): Promise<CamoufoxServiceStatus> {
   );
   // A failing systemctl is NOT the same answer as "no such unit", and collapsing
   // the two is how this reports "the browser is not installed on this host" when
-  // the truth is that os-vps cannot reach the user bus at all (a system unit gets
-  // no XDG_RUNTIME_DIR unless something sets it — see the os-vps.service drop-in).
+  // the truth is that mso cannot reach the user bus at all (a system unit gets
+  // no XDG_RUNTIME_DIR unless something sets it — see the mso.service drop-in).
   // Say which one it is; an unfixable-looking panel is worse than an error.
   if (result.code !== 0) {
     throw new Error(`systemctl --user failed (rc ${result.code}): ${result.stderr.trim().slice(0, 200) || "no output"}`);

@@ -9,8 +9,8 @@ import { NextResponse } from "next/server";
 // never JS chunks/HTML, so a redeploy can't strand a stale chunk.
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
 
-const SW = `// os-vps service worker — build ${BUILD_ID}
-const CACHE = "os-vps-${BUILD_ID}";
+const SW = `// mso service worker — build ${BUILD_ID}
+const CACHE = "mso-${BUILD_ID}";
 // The two names here until 2026-07-30 were "/icon-192.png" and "/icon-512.png", which
 // do not exist and never did — app/manifest.ts has always pointed at the SVGs. Next's
 // catch-all answers an unknown path with the app HTML and a 200, so addAll() did not

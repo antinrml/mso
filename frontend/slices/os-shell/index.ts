@@ -1,13 +1,13 @@
-// os-shell — the os-vps (MSO) consumer of the generic AppShell framework.
+// os-shell — the mso (MSO) consumer of the generic AppShell framework.
 //
 // The shell runtime, registries, responsive provider, chrome and primitives now
 // live in the brand-free `appshell` slice (lift-ready for rr). This barrel stays
 // the STABLE public surface every app slice imports from (`@/features/os-shell`),
-// re-exporting appshell verbatim so app slices need no edits. os-vps-specific
+// re-exporting appshell verbatim so app slices need no edits. mso-specific
 // wiring (brand + apps + features) lives in `./shell.manifest.ts` (added in a
 // later phase) and is passed to <AppShell manifest=…>.
 export * from "@/features/appshell";
-// Bridge os-vps-specific host helpers (raw-bytes URL + byte/uptime formatters)
+// Bridge mso-specific host helpers (raw-bytes URL + byte/uptime formatters)
 // into the stable barrel so app slices reach them via @/features/os-shell (a
 // legal peer alias) rather than @/lib/os-api directly. The OsApi port + hook
 // already flow through the appshell re-export above.

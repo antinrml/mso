@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-deploy smoke test. Run AFTER `pnpm build && sudo systemctl restart os-vps.service`.
+# Post-deploy smoke test. Run AFTER `pnpm build && sudo systemctl restart mso.service`.
 # Catches the chunk-MIME drift that has bitten this deploy twice (per CLAUDE.md).
 #
 # REQUIRES: devDependencies installed on host (vitest lives in devDeps). Run

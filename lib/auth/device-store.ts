@@ -29,10 +29,10 @@ interface DeviceStore {
 
 const MAX_PENDING = 50;
 
-// os-vps runs as a host process (the deploy user's systemd service) → write our
+// mso runs as a host process (the deploy user's systemd service) → write our
 // own file, no agent round-trip. Override with OS_DEVICE_STORE.
 const STORE_PATH =
-  process.env.OS_DEVICE_STORE ?? path.join(os.homedir(), ".os-vps", "auth-devices.json");
+  process.env.OS_DEVICE_STORE ?? path.join(os.homedir(), ".mso", "auth-devices.json");
 
 // Device ids are client-generated 128-bit+ hex/uuid.
 const DEVICE_ID_RE = /^[a-f0-9-]{16,128}$/i;

@@ -48,7 +48,7 @@ afterEach(async () => {
 /** A snapshot directory written by hand — the shape an attacker or a bad copy
  *  would leave behind, which `createBackup` would never produce. */
 async function planted(id: string, manifest: Record<string, unknown> | null, files: Record<string, string> = {}): Promise<string> {
-  const dir = path.join(home, ".os-vps", "backups", "hermes", id);
+  const dir = path.join(home, ".mso", "backups", "hermes", id);
   await fs.mkdir(dir, { recursive: true });
   if (manifest) await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify(manifest));
   for (const [name, body] of Object.entries(files)) await fs.writeFile(path.join(dir, name), body);
@@ -111,7 +111,7 @@ describe("what restore refuses before a byte moves", () => {
     await fs.writeFile(outside, "untouched");
     const backup = await createBackup(definition(), "manual");
     // A file in the snapshot whose counterpart in the state dir became a link.
-    await fs.writeFile(path.join(home, ".os-vps", "backups", "hermes", backup.id, "token.txt"), "would follow the link");
+    await fs.writeFile(path.join(home, ".mso", "backups", "hermes", backup.id, "token.txt"), "would follow the link");
     await fs.symlink(outside, path.join(state, "token.txt"));
     await fs.writeFile(path.join(state, "config.yaml"), "version: 2\n");
     await fs.writeFile(path.join(state, "sessions", "one.json"), '{"kept":true}');
@@ -168,7 +168,7 @@ describe("what a restore actually does", () => {
     // The undo: the state as it was a moment ago, saved before the overwrite.
     const safety = (await listBackups("hermes")).find((entry) => entry.id === result.safetyBackupId);
     expect(safety?.reason).toBe("pre-restore");
-    expect(await fs.readFile(path.join(home, ".os-vps", "backups", "hermes", result.safetyBackupId, "config.yaml"), "utf8")).toBe("version: 2\n");
+    expect(await fs.readFile(path.join(home, ".mso", "backups", "hermes", result.safetyBackupId, "config.yaml"), "utf8")).toBe("version: 2\n");
 
     const transcript = lines.join("");
     expect(transcript).toContain("NOT restored (never in a snapshot)");

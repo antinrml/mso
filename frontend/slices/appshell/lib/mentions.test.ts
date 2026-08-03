@@ -13,7 +13,7 @@ describe("/ never fires on a filesystem path", () => {
     "ls /home/rahman",
     "read /etc/hosts",
     "copy /var/log/syslog to /tmp",
-    "what is in /home/rahman/projects/os-vps",
+    "what is in /home/rahman/projects/mso",
     "cd ~/projects && ls /usr/share",
     "the ratio is 3/4",
   ])("stays closed for %j", (text) => {

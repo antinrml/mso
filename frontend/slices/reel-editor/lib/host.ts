@@ -1,4 +1,4 @@
-// Single integration seam between this slice and the host app (os-vps).
+// Single integration seam between this slice and the host app (mso).
 // EVERYTHING OS-specific funnels through here — shell services (toasts,
 // inspector, activity), the fs/api client, and responsive detection — so
 // lifting the slice to the rr catalog means swapping THIS file for injected

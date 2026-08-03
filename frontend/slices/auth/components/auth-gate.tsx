@@ -74,8 +74,8 @@ function Splash() {
   );
 }
 
-const ONBOARDING_KEY = "os-vps:onboarding:v1";
-const ONBOARDING_OPEN = "os-vps:onboarding:open";
+const ONBOARDING_KEY = "mso:onboarding:v1";
+const ONBOARDING_OPEN = "mso:onboarding:open";
 
 type StatusInfo = {
   linuxUser: string;

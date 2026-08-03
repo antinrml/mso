@@ -1,4 +1,4 @@
-# os-vps (Manef Shell OS) — Architecture
+# mso (Manef Shell OS) — Architecture
 
 > ## ⚠ HISTORY, NOT CURRENT STATE
 >
@@ -15,7 +15,7 @@
 > the CSP is shaped as it is — which remains valuable and is hard to recover.
 >
 > The earlier Convex + Control-Room-agent design (see `DESIGN-RECONCILE.md`, early
-> `PROGRESS.md` phases) was removed: os-vps runs **as a host process** and talks to
+> `PROGRESS.md` phases) was removed: mso runs **as a host process** and talks to
 > its own machine directly. No database, no external agent.
 
 ## What it is
@@ -29,11 +29,11 @@ applications already on the box (Hermes, OpenClaw) — managing them through the
 CLIs and HTTP surfaces, and framing each one's dashboard from an origin of its own.
 
 ```
-phone / browser ──https──> os.rahmanef.com ─────────┐
+phone / browser ──https──> mso.rahmanef.com ─────────┐
                   signed-cookie auth (lib/auth)     │
-                                                    ├─> os-vps (Next.js :4005) ──┬── lib/host → Node fs / child_process (host, non-root)
- the app iframe ──https──> hermes.os.rahmanef.com ──┤   ONE process, 3 origins    └── os-browser (Playwright :4002, loopback, optional)
- the app iframe ──https──> openclaw.os.rahmanef.com ┘
+                                                    ├─> mso (Next.js :4005) ──┬── lib/host → Node fs / child_process (host, non-root)
+ the app iframe ──https──> hermes.mso.rahmanef.com ──┤   ONE process, 3 origins    └── os-browser (Playwright :4002, loopback, optional)
+ the app iframe ──https──> openclaw.mso.rahmanef.com ┘
                              ▲ proxy.ts rewrites EVERY path on an app host into
                                /api/v1/managed-apps/<id>/proxy → loopback Hermes :9119 /
                                OpenClaw :18789. Nothing else is reachable there — the cockpit
@@ -48,7 +48,7 @@ for why the dashboards need origins of their own.
 ## Layout (mirrors `resources/` so slices stay lift-ready)
 
 ```
-os-vps/
+mso/
 ├── app/                      Next 16 App Router
 │   ├── layout.tsx            fonts + theme + providers
 │   ├── globals.css           Tailwind 4 + glass theme tokens
@@ -58,7 +58,7 @@ os-vps/
 │       │                     managed-apps (state/actions/logs/features + dashboard proxy)
 │       ├── health/           tiny liveness probe (200 OK) for uptime checks
 │       ├── auth/             login · logout · me · devices
-│       ├── config/           BYOK AI key (read/write ~/.os-vps/config.json)
+│       ├── config/           BYOK AI key (read/write ~/.mso/config.json)
 │       └── assistant/        Claude SSE stream (BYOK)
 ├── components/ui/            shadcn (new-york) primitives — app-wide
 ├── components/shared/        cross-slice primitives (file-tree, …) via @/shared/*
@@ -70,12 +70,12 @@ os-vps/
 │   │   ├── sys.ts            cpu/mem/disk/uptime/processes
 │   │   ├── host-error.ts / api-error.ts  HostError + apiError + readJson/requireString kit
 │   │   ├── paths.ts          read/write root jail + realpath bounds check
-│   │   ├── audit.ts          append-only JSONL audit (~/.os-vps/audit.log) — writes serialized through a chained promise so bursty callers land in submission order
+│   │   ├── audit.ts          append-only JSONL audit (~/.mso/audit.log) — writes serialized through a chained promise so bursty callers land in submission order
 │   │   ├── rate-limit.ts     fixed-window in-memory limiter
 │   │   └── index.ts          barrel
 │   ├── auth/                 session.ts (HMAC sign/verify) · require-session.ts ·
-│   │                         device-store.ts (~/.os-vps/auth-devices.json)
-│   ├── config/               store.ts (~/.os-vps/config.json — BYOK key + model)
+│   │                         device-store.ts (~/.mso/auth-devices.json)
+│   ├── config/               store.ts (~/.mso/config.json — BYOK key + model)
 │   ├── managed-apps/         Hermes/OpenClaw control plane: catalog · manager · runner ·
 │   │                         features + feature-parser · and the dashboard reverse proxy
 │   │                         (origin · proxy-csp · proxy-headers · proxy-html)
@@ -94,7 +94,7 @@ os-vps/
 │   │                         shell-widgets   pluggable features mounted via <Slot region>
 │   ├── managed-apps/         Hermes/OpenClaw surfaces: the manage window, per-feature
 │   │                         windows (iframe + CLI fallback), icons, workspace app lists
-│   └── os-shell/             os-vps consumer: shell.manifest.ts (brand+apps+features)
+│   └── os-shell/             mso consumer: shell.manifest.ts (brand+apps+features)
 │                             + re-export barrel (@/features/os-shell)
 ├── os-browser/               Playwright Chromium service (gitignored, deploy-local)
 ├── public/demo-media/        real sample media so the mock demo can open files
@@ -127,9 +127,9 @@ host kernel (as the unprivileged service user — NOT root)
   state lives in a module-level store read via `useSyncExternalStore`; only the
   dragged window subscribes to its own rect.
 - **Persistence is local.** Window layout + installed-app registry → `localStorage`
-  (the demo also persists its mock FS to `localStorage`, key `os-vps:demo-fs`).
-  Device allowlist → `~/.os-vps/auth-devices.json`; BYOK key/model →
-  `~/.os-vps/config.json`; audit trail → `~/.os-vps/audit.log`.
+  (the demo also persists its mock FS to `localStorage`, key `mso:demo-fs`).
+  Device allowlist → `~/.mso/auth-devices.json`; BYOK key/model →
+  `~/.mso/config.json`; audit trail → `~/.mso/audit.log`.
 - **Apps lazy-mount.** A window mounts its app component only when opened.
 - **Shared shell primitives.** `MasterDetail` + `AppFrame` + `useResponsive`
   back the responsive layout of system-monitor / assistant / os-settings (more
@@ -197,7 +197,7 @@ Signed-cookie sessions — no Convex, no Clerk.
 
 - **Factor 1**: `OS_LOGIN_PASSWORD` (weak/memorable), checked constant-time.
 - **Factor 2**: the device must be in the approved allowlist
-  (`~/.os-vps/auth-devices.json`). A correct password on a new device registers
+  (`~/.mso/auth-devices.json`). A correct password on a new device registers
   it `pending`; **no session is issued until approved**
   (`node scripts/approve-device.js <deviceId> "name"`).
 - On success: an HMAC-SHA256 cookie signed with `OS_SESSION_SECRET` (≥32 bytes),
@@ -212,7 +212,7 @@ MSO is the shell / control plane. Hermes and OpenClaw stay **separate applicatio
 their own runtime, config, data, versions, health, logs and backups. MSO does not copy,
 fork or merge their source, does not scrape their DOM, and writes nothing under
 `~/.hermes/` or `~/.openclaw/` — reading those trees is how discovery works, but the
-only writes are into `~/.os-vps/`. Everything else goes through the app's own CLI, its
+only writes are into `~/.mso/`. Everything else goes through the app's own CLI, its
 own HTTP surface, or systemd/docker. Full operator guide: `docs/MANAGED-APPS.md`.
 
 - **catalog** (`lib/managed-apps/catalog.ts:13`) — one definition per app: `command`,
@@ -230,7 +230,7 @@ own HTTP surface, or systemd/docker. Full operator guide: `docs/MANAGED-APPS.md`
   double-click cannot interleave a stop with a restart. Live now: both apps `systemd` / `running`
   / `healthy: true` through `listManagedApps()`.
 - **backup** (`manager.ts:141`) copies the app's state dir (`HERMES_HOME` honoured) to
-  `~/.os-vps/backups/<id>/<timestamp>/` (per-app dir 0700, `manifest.json` 0600), skipping
+  `~/.mso/backups/<id>/<timestamp>/` (per-app dir 0700, `manifest.json` 0600), skipping
   `node_modules`/`.venv`/`venv`/`__pycache__`/`.git`/`.cache`/`backups` and **skipping symlinks**
   rather than following or recreating them — following one copies bytes from outside the app,
   recreating an absolute one aims a future restore outside the tree; the manifest records both
@@ -270,7 +270,7 @@ demo mode, rate-limits to 12/min per app, and audits both outcomes as
 **Workspace modes — REMOVED in `a2c3882`; this describes the old design.** They
 (`frontend/slices/os-shell/workspace-mode.ts`, deleted) decided *which* app's
 features populate the dock/launchpad: `plain | hermes | openclaw`, stored in
-`localStorage` under `os-vps:workspace-mode` and read through `useSyncExternalStore`.
+`localStorage` under `mso:workspace-mode` and read through `useSyncExternalStore`.
 This is orthogonal to Shell Style (macos/windows/dashboard/ios/android) — a workspace is
 which apps exist, a shell is what they look like. Switching writes one key and fires one
 event: nothing restarts, no service is touched. Each discovered feature becomes an
@@ -283,7 +283,7 @@ Each app's own dashboard is reverse-proxied and rendered in an OS window as an i
 The upstream target must be loopback or the route refuses it
 (`app/api/v1/managed-apps/[id]/proxy/[[...path]]/route.ts:114`) — the proxy is not a
 general-purpose fetcher. Cookies are namespaced (`mapp_<id>_`) and pinned to that app's
-mount, the os-vps `session` cookie is never forwarded upstream, `authorization` is never
+mount, the mso `session` cookie is never forwarded upstream, `authorization` is never
 forwarded and `www-authenticate` never returned (together they would make the proxy a
 credential relay), off-origin redirects are refused rather than passed on (they are an
 open redirect **and** a CSP path-matching bypass), and an upstream service worker is
@@ -300,8 +300,8 @@ origin.** The iframe needs `allow-same-origin` or these SPAs do not boot at all.
 cockpit origin that made upstream JS same-origin *with the cockpit*: it could take
 `window.top.fetch` and call `/api/v1/exec/run` with the user's session. No CSP closes
 that — a policy binds a realm, not a reference across realms. So each dashboard is
-served from its **own host on this same process**: `hermes.os.rahmanef.com`,
-`openclaw.os.rahmanef.com`. `window.top` is then cross-origin and opaque (measured in
+served from its **own host on this same process**: `hermes.mso.rahmanef.com`,
+`openclaw.mso.rahmanef.com`. `window.top` is then cross-origin and opaque (measured in
 Chromium 148; the properties and the same-origin control are listed in
 `docs/MANAGED-APPS.md` §5). One host **per app**, not one shared host:
 a shared one puts Hermes and OpenClaw back in a single origin where they can script each
@@ -372,20 +372,20 @@ the policy intersection, the header rules and the host gating.
 A separate Playwright Chromium service (`os-browser/`, systemd, **loopback**
 :4002, gitignored). `lib/agent/server.ts` proxies the `/api/v1/browser/*` routes
 to it (secret-gated, server-only). Renders any site, drivable from the UI, with
-a persistent profile (`~/.os-vps/chrome-profile`) so logins stick. Leave
+a persistent profile (`~/.mso/chrome-profile`) so logins stick. Leave
 `OS_BROWSER_URL`/`OS_BROWSER_SECRET` unset to disable the app — everything else
 still works.
 
 ## Deployment
 
-- **prod** — `os-vps.service` :4005 (systemd, `User=rahman`, WorkingDir
-  `/home/rahman/projects/os-vps`).
-- **demo** — `os-vps-demo.service` :4006 (`NEXT_PUBLIC_OS_DEMO=1`, separate
-  WorkingDir `/home/rahman/projects/os-vps-demo`, mock-only, no host access).
+- **prod** — `mso.service` :4005 (systemd, `User=rahman`, WorkingDir
+  `/home/rahman/projects/mso`).
+- **demo** — `mso-demo.service` :4006 (`NEXT_PUBLIC_OS_DEMO=1`, separate
+  WorkingDir `/home/rahman/projects/mso-demo`, mock-only, no host access).
 - **os-browser** — `os-browser.service` :4002 (loopback).
-- **managed-app origins** — `hermes.os.rahmanef.com` and `openclaw.os.rahmanef.com`, each
+- **managed-app origins** — `hermes.mso.rahmanef.com` and `openclaw.mso.rahmanef.com`, each
   its own DNS record and TLS cert, both routed to the same `172.17.0.1:4005` by
-  `/etc/dokploy/traefik/dynamic/os-vps-managed-apps.yml` (`passHostHeader: true`, so the
+  `/etc/dokploy/traefik/dynamic/mso-managed-apps.yml` (`passHostHeader: true`, so the
   process sees the public name). Adding an app to the catalog means adding a router there and a
   DNS record **in the same change**: the host template applies to every catalog id, so a new
   app's iframe points at `<newid>.os.…` the moment it exists, and with no record for that name

@@ -79,7 +79,7 @@ export interface ManagedAppUpdateOptions {
   noRestart?: boolean;
 }
 
-/** One snapshot under `~/.os-vps/backups/<id>/`, as its manifest records it. */
+/** One snapshot under `~/.mso/backups/<id>/`, as its manifest records it. */
 export interface ManagedAppBackup {
   /** The stamp directory name. It is also a path segment and an API parameter,
    *  so it is pattern-checked before it is ever joined to a path. */

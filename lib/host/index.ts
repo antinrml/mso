@@ -1,5 +1,5 @@
 // Host facade — the single import for /api/v1 route handlers. All host access
-// (fs/exec/sys) is LOCAL: os-vps runs as a host process, so it touches the
+// (fs/exec/sys) is LOCAL: mso runs as a host process, so it touches the
 // filesystem and spawns commands directly. No external agent. Bounds + auth
 // live in paths.ts and the route's verifyAuth() gate.
 export { listDir, readFile, writeFile, makeDir, remove, move, copy, searchFs, usage, statReadable, fileStream } from "./fs";

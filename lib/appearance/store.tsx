@@ -16,7 +16,7 @@ import { normalizeLiveWallpaper, normalizeWallpaper } from "./wallpapers";
 import { ensureServerTargets } from "./server-targets";
 import { applyPreset, clearPreset } from "./presets/apply";
 
-const KEY = "os-vps:tweaks";
+const KEY = "mso:tweaks";
 
 function upgradeUnsplash(url: string): string {
   try {

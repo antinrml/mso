@@ -13,7 +13,7 @@ import type { ManagedAppJobStatus, StartManagedAppJobOptions } from "./types";
 // npm leaves helpers, a service the updater started inherits the same stdout.
 // Waiting on `close` alone therefore left the job `running` FOREVER — with the
 // app's operation lock held, so every later action on that app 409'd, and the
-// only cure was restarting os-vps (which the docs tell the operator not to do
+// only cure was restarting mso (which the docs tell the operator not to do
 // mid-update). Reproduced by killing the child's group exactly as the timeout
 // does: the child is reaped, the grandchild keeps the pipe, the job never ends.
 //
@@ -103,7 +103,7 @@ export function spawnJobChild(argv: readonly string[], options: StartManagedAppJ
     const terminate = (why: string): void => {
       if (terminated) return;
       terminated = why;
-      hooks.append(`[os-vps] ${why} - terminating\n`);
+      hooks.append(`[mso] ${why} - terminating\n`);
       signalTree(child, "SIGTERM");
       setTimeout(() => signalTree(child, "SIGKILL"), KILL_GRACE_MS).unref?.();
     };
@@ -124,7 +124,7 @@ export function spawnJobChild(argv: readonly string[], options: StartManagedAppJ
       // The child is gone; only its pipes might not be. Wait a moment for the
       // tail of its output, then finish regardless — see the header.
       reaper = setTimeout(() => {
-        hooks.append(`[os-vps] the child exited but something it started still holds its output; finishing anyway\n`);
+        hooks.append(`[mso] the child exited but something it started still holds its output; finishing anyway\n`);
         child.stdout?.destroy();
         child.stderr?.destroy();
         done(code, signal);

@@ -9,7 +9,7 @@ import { redact } from "./redact";
 /** Assembled from the shapes actually seen in `hermes update` / `openclaw
  *  update` output, plus the two journald formats getManagedAppLogs asks for. */
 const TRANSCRIPT = [
-  "[os-vps] pre-update backup of /home/rahman/.hermes",
+  "[mso] pre-update backup of /home/rahman/.hermes",
   "npm WARN deprecated inflight@1.0.6: This module is not supported",
   "npm notice New major version of npm available! 10.8.2 -> 11.0.0",
   "added 412 packages, and audited 413 packages in 9s",
@@ -26,7 +26,7 @@ const TRANSCRIPT = [
   "2026-07-25T10:11:12.345Z INFO  update complete in 42s",
   "Jul 25 10:11:12 srv614914 openclaw-gateway[1234]: token bucket refilled, 5 left",
   "2026-07-25T10:11:13+0000 hermes-dashboard[9119]: listening on 127.0.0.1:9119",
-  "[os-vps] restored 314 files (12.4 MB)",
+  "[mso] restored 314 files (12.4 MB)",
 ];
 
 describe("secrets that reached a persisted transcript before this widened", () => {

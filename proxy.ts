@@ -3,7 +3,7 @@
 //     NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE) EVERY path is rewritten into that
 //     app's proxy route, so the dashboard is root-mounted at "/" on its own origin
 //     and the cockpit — pages, /api/v1/exec, /api/auth/* — does not exist there.
-//     That gating is what makes the widened session cookie (Domain=os.rahmanef.com)
+//     That gating is what makes the widened session cookie (Domain=mso.rahmanef.com)
 //     safe to hand to those hosts.
 //  2. CSRF depth-2 for mutating /api — every /api route already verifies the
 //     signed session cookie via requireSession(); this adds the second factor
@@ -150,7 +150,7 @@ export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") ?? request.nextUrl.host;
   const managedApp = managedAppIdForHost(host);
 
-  // A host inside the app namespace that is NOT an app (a new `X.os.rahmanef.com`
+  // A host inside the app namespace that is NOT an app (a new `X.mso.rahmanef.com`
   // record, or a `*.os` wildcard) must not serve the cockpit: the session cookie is
   // widened to that name, so such a host would be same-origin with a fully
   // authenticated cockpit — the reach the split exists to remove, re-opened by a DNS

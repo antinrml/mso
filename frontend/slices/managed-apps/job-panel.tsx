@@ -50,7 +50,7 @@ export function JobPanel({ job, onDismiss, onCancel }: { job: JobState; onDismis
           // A job holds the app's lock until it ends, so one that stops ending —
           // an updater that leaks a background process, a CLI that hangs below
           // its timeout — leaves every later action on this app answering "busy".
-          // The alternative escape is restarting os-vps, which is the one thing
+          // The alternative escape is restarting mso, which is the one thing
           // not to do mid-update.
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
             Cancel

@@ -16,12 +16,12 @@ const APP_NAME = "Manef Shell OS";
 const APP_TAGLINE = "Browser-based visual shell";
 
 // Wipes appearance + device identity, then reloads fresh. Storage keys keep the
-// historical "os-vps" prefix (changing them would orphan existing device ids).
+// historical "mso" prefix (changing them would orphan existing device ids).
 function performReset() {
   try {
-    localStorage.removeItem("os-vps:tweaks");
-    localStorage.removeItem("os-vps.device.id");
-    localStorage.removeItem("os-vps:demo-fs");
+    localStorage.removeItem("mso:tweaks");
+    localStorage.removeItem("mso.device.id");
+    localStorage.removeItem("mso:demo-fs");
   } catch {
     /* private mode / quota */
   }

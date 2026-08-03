@@ -4,7 +4,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 
 // Point the store at a temp dir BEFORE importing (the dir is read at module load).
-process.env.OS_THREADS_DIR = path.join(os.tmpdir(), `osvps-threads-test-${process.pid}`);
+process.env.OS_THREADS_DIR = path.join(os.tmpdir(), `mso-threads-test-${process.pid}`);
 const { saveThread, getThread, listThreads, deleteThread } = await import("./threads");
 
 describe("thread YAML store", () => {

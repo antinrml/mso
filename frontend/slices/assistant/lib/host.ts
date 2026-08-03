@@ -1,6 +1,6 @@
 "use client";
 
-// os-vps side of the slice's host seam: everything project-specific the
+// mso side of the slice's host seam: everything project-specific the
 // slice touches re-exports from the shell + the root AI stream here. The
 // rr catalog copy replaces this file with a self-contained version
 // (configureAssistantStream + typing demo stream + no-op inspector) —

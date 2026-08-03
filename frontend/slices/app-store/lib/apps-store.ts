@@ -17,7 +17,7 @@ export type AppRow = {
   installed: boolean;
 };
 
-const KEY = "os-vps:apps";
+const KEY = "mso:apps";
 const EMPTY: AppRow[] = [];
 let rows: AppRow[] | null = null;
 const subs = new Set<() => void>();

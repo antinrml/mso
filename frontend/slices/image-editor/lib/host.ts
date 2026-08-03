@@ -1,4 +1,4 @@
-// Single integration seam between this slice and the host app (os-vps): the
+// Single integration seam between this slice and the host app (mso): the
 // AI streaming bridge is the ONLY host service the editor uses. Lifting the
 // slice to the rr catalog = swap this file for an injected `streamAgentTurn`
 // capability (UI primitives `@/components/ui/*` + `@/lib/utils` excepted).

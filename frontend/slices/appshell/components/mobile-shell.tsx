@@ -203,7 +203,7 @@ export function MobileShell() {
           />
           {/* Nav bar: transparent at rest, frosting into a hairline glass bar once
               the app scrolls (onScrollCapture on <main> catches the app's own inner
-              scroll container generically). Title stays put — os-vps apps carry no
+              scroll container generically). Title stays put — mso apps carry no
               in-content large title to fade in. */}
           <header
             className={cn(

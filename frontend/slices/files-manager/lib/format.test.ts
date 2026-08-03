@@ -99,19 +99,19 @@ describe("parentPath", () => {
 
 describe("crumbsFor", () => {
   it("root path → single crumb [root]", () => {
-    expect(crumbsFor("/")).toEqual([{ name: "os-vps", path: "/" }]);
+    expect(crumbsFor("/")).toEqual([{ name: "mso", path: "/" }]);
   });
 
   it("single-level → [root, segment]", () => {
     expect(crumbsFor("/home")).toEqual([
-      { name: "os-vps", path: "/" },
+      { name: "mso", path: "/" },
       { name: "home", path: "/home" },
     ]);
   });
 
   it("multi-level → all segments with correct paths", () => {
     expect(crumbsFor("/home/rahman/projects")).toEqual([
-      { name: "os-vps", path: "/" },
+      { name: "mso", path: "/" },
       { name: "home", path: "/home" },
       { name: "rahman", path: "/home/rahman" },
       { name: "projects", path: "/home/rahman/projects" },

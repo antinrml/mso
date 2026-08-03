@@ -2,7 +2,7 @@
 
 Embeddable, layer-based image editor built on Konva. Consumed as a LIBRARY
 slice: import `{ ImageEditor }` (or the store/model pieces) from the barrel —
-it is not an app descriptor by itself (os-vps mounts it via media-studio).
+it is not an app descriptor by itself (mso mounts it via media-studio).
 
 ## Capabilities
 

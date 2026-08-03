@@ -33,7 +33,7 @@ export function zipUrl(
   return "/api/v1/fs/zip?" + p.toString();
 }
 
-// os-vps adapter injection: pick mock (default) ↔ live, then hand the concrete
+// mso adapter injection: pick mock (default) ↔ live, then hand the concrete
 // api to the framework's HostApiProvider (which owns the context useOsApi reads).
 // Live talks to SAME-ORIGIN `/api/v1` route handlers (base url ""); the signed
 // session cookie rides along, the routes verify it, then proxy to the host agent

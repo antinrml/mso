@@ -1,7 +1,7 @@
 // DELETE /api/v1/managed-apps/[id]/jobs/[jobId] — the way out of a wedged
 // operation. A job holds the app's lock until it reaches a terminal status, so
 // one that never finishes makes every later start/stop/restart/update/backup on
-// that app answer 409. The only other cure is restarting os-vps, which is the one
+// that app answer 409. The only other cure is restarting mso, which is the one
 // thing an operator must not do mid-update. Gates are asserted here rather than
 // assumed: this verb ends someone's running update.
 import { beforeEach, describe, expect, it, vi } from "vitest";

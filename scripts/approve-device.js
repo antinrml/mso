@@ -1,20 +1,20 @@
 #!/usr/bin/env node
-// Seed / list / revoke trusted login devices for os-vps (no Convex — flat JSON,
+// Seed / list / revoke trusted login devices for mso (no Convex — flat JSON,
 // same model as the VPS Control Room).
 //
 //   node scripts/approve-device.js <deviceId> [label]   # approve a device
 //   node scripts/approve-device.js --list               # show approved + pending
 //   node scripts/approve-device.js --revoke <deviceId>  # un-trust a device
 //
-// Store path = ~/.os-vps/auth-devices.json unless OS_DEVICE_STORE is set (must
-// match what the os-vps service sees).
+// Store path = ~/.mso/auth-devices.json unless OS_DEVICE_STORE is set (must
+// match what the mso service sees).
 
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
 const STORE =
-  process.env.OS_DEVICE_STORE || path.join(os.homedir(), ".os-vps", "auth-devices.json");
+  process.env.OS_DEVICE_STORE || path.join(os.homedir(), ".mso", "auth-devices.json");
 const DEVICE_ID_RE = /^[a-f0-9-]{16,128}$/i;
 
 function read() {

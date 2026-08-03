@@ -6,7 +6,7 @@ import { IS_DEMO } from "@/lib/demo";
 const DEBOUNCE_MS = 1500;
 
 /** Fired by the auth slice when a login lands (providers mount outside AuthGate). */
-export const AUTHED_EVENT = "os-vps:authed";
+export const AUTHED_EVENT = "mso:authed";
 
 // Shared server-sync seam for the appearance + quicklinks providers. Offline-first:
 // mount → GET /api/prefs → apply the stored section (server wins on initial load) →

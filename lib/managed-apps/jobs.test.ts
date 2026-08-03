@@ -51,7 +51,7 @@ describe("a job outlives the request that started it", () => {
     // reason the layer exists, since the HTTP response cannot wait 30 minutes.
     expect(started.status).toBe("running");
     expect(started.endedAt).toBeNull();
-    const file = path.join(home, ".os-vps", "managed-app-jobs", `${started.id}.json`);
+    const file = path.join(home, ".mso", "managed-app-jobs", `${started.id}.json`);
     expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
 

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 // Durable cross-session facts recalled into Alfa's system prompt. One JSON file in
-// ~/.os-vps (small structured records, chmod 600). Recall is substring scoring for
+// ~/.mso (small structured records, chmod 600). Recall is substring scoring for
 // now. ponytail: substring recall — swap for embeddings if it gets noisy at scale.
 export interface Memory {
   id: string;
@@ -11,7 +11,7 @@ export interface Memory {
   createdAt: number;
 }
 
-const FILE = process.env.OS_MEMORY_STORE || path.join(os.homedir(), ".os-vps", "memory.json");
+const FILE = process.env.OS_MEMORY_STORE || path.join(os.homedir(), ".mso", "memory.json");
 
 async function read(): Promise<Memory[]> {
   try {

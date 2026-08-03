@@ -29,7 +29,7 @@ export function seedFs(): FsModel {
       { name: "apps", kind: "dir", size: 0 },
       { name: "readme.md", kind: "file", size: 1840, ext: "md" },
     ],
-    "/Projects": [{ name: "os-vps", kind: "dir", size: 0 }],
+    "/Projects": [{ name: "mso", kind: "dir", size: 0 }],
     "/Documents": [{ name: "notes.txt", kind: "file", size: 96, ext: "txt" }],
     "/apps": [],
     "/Media": [],

@@ -73,10 +73,10 @@ describe("a job whose owner is gone is interrupted, not running forever", () => 
 
     const read = await readJobRecord(stranded.id);
     expect(read?.status).toBe("interrupted");
-    expect(read?.error).toContain("os-vps stopped while this job was running");
+    expect(read?.error).toContain("mso stopped while this job was running");
     expect(read?.endedAt).not.toBeNull();
     // The verdict is persisted, so every later reader agrees without re-deriving.
-    const onDisk = JSON.parse(await fs.readFile(path.join(home, ".os-vps", "managed-app-jobs", `${stranded.id}.json`), "utf8"));
+    const onDisk = JSON.parse(await fs.readFile(path.join(home, ".mso", "managed-app-jobs", `${stranded.id}.json`), "utf8"));
     expect(onDisk.status).toBe("interrupted");
   });
 

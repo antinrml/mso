@@ -1,10 +1,10 @@
-# Design Reconcile — `mock-os` (os-rr) → os-vps
+# Design Reconcile — `mock-os` (os-rr) → mso
 
 > **ARCHIVE (historical).** This records the Phase-1 decision to adopt the os-rr
 > design + Cloud API contract. The **visual/design adoption still holds** (glass
 > tokens, shell chrome, mobile shell, the `OsApi` mock↔http boundary). The
 > **backend assumptions are obsolete**: Convex + the Control-Room agent bridge
-> were later removed — os-vps is now self-contained (`lib/host` does fs/exec/sys
+> were later removed — mso is now self-contained (`lib/host` does fs/exec/sys
 > directly, signed-cookie auth). For the current system read `ARCHITECTURE.md`.
 > The "Revised architecture" diagram below is kept only as a record of the old plan.
 >
@@ -12,7 +12,7 @@
 > deleted on 2026-07-30 as part of a dead-weight sweep: 101 files, 5.7k lines and 6.6 MB
 > that nothing in the app, the build, the tests or the lint pass ever touched. It is
 > recoverable two ways — `git show bccd0b1:mock-os/<path>` for any tracked file, and
-> `~/archive/os-vps-cleanup-2026-07-30/mock-os.tar.gz` for the whole tree including the
+> `~/archive/mso-cleanup-2026-07-30/mock-os.tar.gz` for the whole tree including the
 > untracked `Apple-clone-app/`. Every `mock-os/...` path below should be read against one
 > of those, not against a working directory.
 
@@ -20,7 +20,7 @@ The uploaded `mock-os/` is **os-rr**: a macOS-style browser shell prototype that
 *explicitly a VPS front-end*. It is not just a visual reference — it ships a
 defined **Cloud API contract** (`mock-os/js/core/api.jsx` + `os-rr API.html`)
 that is the single boundary between the desktop and a VPS daemon. This matches
-os-vps's purpose and gives us the concrete agent-bridge spec Phase 2 needed.
+mso's purpose and gives us the concrete agent-bridge spec Phase 2 needed.
 
 ## What os-rr is
 
@@ -113,7 +113,7 @@ browser ── os-shell (window mgr, module store)
 - **What carried over**: the `OsApi` mock↔http boundary, the glass design tokens,
   shell chrome, mobile shell, the os-rr endpoint *shape* (`fs/exec/sys`).
 - **What changed**: no Convex (layout/registry → `localStorage`; device allowlist
-  + config → `~/.os-vps/*.json`); no external agent (the Next.js app *is* the host
+  + config → `~/.mso/*.json`); no external agent (the Next.js app *is* the host
   process); auth is a password + device-approval HMAC signed cookie, not
   `@convex-dev/auth`; the browser is real Playwright (`os-browser`), not a proxy.
 - **Still demoable with zero host**: `OsApi` defaults to `MockAdapter`.

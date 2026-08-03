@@ -9,7 +9,7 @@ let dir: string;
 let file: string;
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "os-vps-prefs-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "mso-prefs-"));
   file = path.join(dir, "prefs.json");
   process.env.OS_PREFS_PATH = file;
 });

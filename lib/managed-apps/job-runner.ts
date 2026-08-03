@@ -12,9 +12,9 @@ import type { ManagedAppId, ManagedAppJob, ManagedAppJobStatus, StartManagedAppJ
 //
 // THE CHILD IS IN-PROCESS — spawned by this server and killed with it. Detaching
 // would not change that, and believing otherwise is the dangerous mistake here:
-// `systemctl show os-vps.service -p KillMode -p Delegate` says `control-group`
+// `systemctl show mso.service -p KillMode -p Delegate` says `control-group`
 // and `no`, so stopping or restarting the unit SIGTERMs every pid in
-// /system.slice/os-vps.service, and `detached: true` makes a new process GROUP,
+// /system.slice/mso.service, and `detached: true` makes a new process GROUP,
 // never a new cgroup. (It is still passed — see job-child.ts: a timeout has to
 // signal git/pip/npm, not just the CLI that started them.) Surviving a
 // deploy for real would take `systemd-run --scope`, i.e. a second supervisor
@@ -129,7 +129,7 @@ function finish(rt: Runtime, status: ManagedAppJobStatus, exitCode: number | nul
 
 /** Stop a job this process is running: the same SIGTERM its timeout would send,
  *  up to an hour early. The way OUT of an operation that is stuck holding the
- *  app's lock — without it the only cure was restarting os-vps, which the docs
+ *  app's lock — without it the only cure was restarting mso, which the docs
  *  tell the operator not to do mid-update.
  *
  *  It cannot end a healthy job by accident. It needs the job's exact 24-hex id

@@ -83,7 +83,7 @@ export const MOCK_ROOTS: FsRoot[] = [
 // Demo persistence — the mock FS tree (folder/file STRUCTURE, not file bytes)
 // is mirrored to localStorage so a visitor's sandbox survives a page reload.
 // Bytes are intentionally not stored (5 MB cap + binary); reads stay mock.
-const DEMO_FS_KEY = "os-vps:demo-fs";
+const DEMO_FS_KEY = "mso:demo-fs";
 const DEMO_FS_VERSION = 2;
 
 export function loadDemoTree(): Record<string, FsEntry[]> {

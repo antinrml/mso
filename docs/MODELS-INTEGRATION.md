@@ -1,10 +1,10 @@
-# @rahmanef/models → os-vps AI integration
+# @rahmanef/models → mso AI integration
 
 **Status: first slice SHIPPED + verified (2026-07-15).** Designed by a 3-agent workflow
 (`models-integration-design`) that mapped both codebases; grounded against live code.
 
 ## What it does
-os-vps's AI (the **Alfa** assistant) now resolves its model + BYOK key + host-gated
+mso's AI (the **Alfa** assistant) now resolves its model + BYOK key + host-gated
 endpoint through the vendored **`@rahmanef/models`** registry (`resolveModel()`),
 instead of a single hardcoded Anthropic key. Multi-provider, single-owner, self-contained.
 
@@ -13,11 +13,11 @@ instead of a single hardcoded Anthropic key. Multi-provider, single-owner, self-
   the src is **zero-dep ESM** (`node:` builtins + relative imports only), so it drops in with
   **0 new npm deps** and no install-graph/deploy risk. Server-only (reads `node:fs`/env — never
   import from a client component). *Sync from `models-rahmanef-com/src/*.js` when it updates.*
-- **`resolveModel()` only, not `chat()`** — the lib's `chat()` returns buffered JSON; os-vps
+- **`resolveModel()` only, not `chat()`** — the lib's `chat()` returns buffered JSON; mso
   streams SSE. So we use the lib for key + **host-gate** (a provider's key is pinned to its own
   `baseUrl`, can't be redirected) + model + protocol, and **keep the Anthropic SDK** for the stream.
 - **`hostCredentialStore()`** (`lib/config/store.ts`) implements the lib's `CredentialStore` over the
-  existing **0600 `~/.os-vps/config.json`**, per-provider, with the env chain (`ANTHROPIC_API_KEY`…)
+  existing **0600 `~/.mso/config.json`**, per-provider, with the env chain (`ANTHROPIC_API_KEY`…)
   as fallback. Single-owner → `tenantId` ignored. Legacy `anthropicApiKey` stays a read alias →
   **existing installs migrate for free**.
 - **No new cloud/Convex** — reuses the host config file. Essence intact.
@@ -48,7 +48,7 @@ in `.env.local`) Alfa streams via the resolved provider/model. Build bundles the
   session-gated, `listModels()` from the offline-tolerant models.dev cache) + a provider `<Select>`
   in `ai-section.tsx` (8 curated providers) with catalog-backed free-text model suggestions
   (`<datalist>`, so an id absent from the catalog still works offline). `config/route.ts` +
-  `store.ts` already persisted keys per-provider → unchanged. (Optional: `MODELS_CACHE_DIR=~/.os-vps/models-cache`.)
+  `store.ts` already persisted keys per-provider → unchanged. (Optional: `MODELS_CACHE_DIR=~/.mso/models-cache`.)
 - **Verified live:** `/api/models?provider=openai` → 56 models; picker lists Anthropic / OpenAI /
   OpenRouter / Google / Groq / xAI / DeepSeek / Mistral; Alfa streams via the resolved provider once
   a key is set (Settings → AI or the provider env var).

@@ -74,5 +74,5 @@ render acc
 - New panel → `components/panels/`, added as a tab in `side-panel`/`mobile-shell`.
 - New state/op → a hook in `lib/` wired into `store.tsx` (keep store thin).
 - Files over 200 LOC get split (e.g. transform-panel → text-props/shape-props).
-- shadcn primitives only; on lift to os-vps, divergent ones (slider/tabs) are
+- shadcn primitives only; on lift to mso, divergent ones (slider/tabs) are
   vendored under `ui/` and imports rewritten (see the lift notes).

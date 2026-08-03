@@ -44,7 +44,7 @@ describe("resolve", () => {
   });
 
   it("relative arg with nested path", () => {
-    expect(resolve(cwd, "projects/os-vps")).toBe("/home/rahman/projects/os-vps");
+    expect(resolve(cwd, "projects/mso")).toBe("/home/rahman/projects/mso");
   });
 
   it("strips trailing slash from absolute arg", () => {
