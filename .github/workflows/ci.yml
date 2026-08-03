@@ -60,5 +60,20 @@ jobs:
       - name: Slice checks
         run: bun run check
 
+      # RAW command, and fail-closed ON PURPOSE — deliberately NOT `bun run audit`.
+      # `bun audit` exits 1 both for "found a high" and for "could not reach the
+      # registry". scripts/audit.mjs (what `bun run audit` calls) treats the second
+      # case as a skip, so a flaky VPS cannot manufacture a fake CVE locally. A
+      # release gate must make the opposite trade: never pass an audit it could not
+      # actually perform. Added 2026-08-03, when the first run ever caught
+      # sharp <0.35.0 (libvips CVEs) sitting transitively under next.
+      #
+      # If a high ever lands with no upstream fix, do NOT lower this to `critical` —
+      # that silently disables the ENTIRE high tier. Add the GHSA id to the IGNORE map
+      # in scripts/audit.mjs with a reason and a date, then mirror it here with
+      # `--ignore=<id>` so the two halves agree.
+      - name: Audit dependencies
+        run: bun audit --audit-level=high
+
       - name: Build
         run: bun run build

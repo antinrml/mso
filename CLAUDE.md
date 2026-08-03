@@ -247,6 +247,7 @@ shebangs, which `bun run` honours, so every tool still executes under Node.
   change: `node -e "require('node-pty')"` before building.
 - **Never `bunx`/`bun x` in a deploy or CI script** — unlike `pnpm exec` it downloads a
   missing package and runs it. Call `node_modules/.bin/<tool>` directly.
-- `sharp`/`unrs-resolver`/`protobufjs` postinstalls stay blocked (pnpm blocked the same
-  three; all work from prebuilt binaries). Don't "fix" the `bun pm untrusted` warning.
+- `unrs-resolver`/`protobufjs` postinstalls stay blocked (both work from prebuilt
+  binaries). Don't "fix" the `bun pm untrusted` warning. `sharp` used to be a third
+  entry here; 0.35 dropped its install script, so it no longer appears at all.
 - `lib/host/cleanup.ts`'s pnpm-store card stays — other repos on this box still use it.

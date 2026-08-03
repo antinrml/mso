@@ -14,7 +14,8 @@
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "check": "node scripts/check-cycles.mjs && node scripts/check-contrast.mjs",
-    "verify": "bun run typecheck && bun run lint && bun run test && bun run check",
+    "audit": "node scripts/audit.mjs",
+    "verify": "bun run typecheck && bun run lint && bun run test && bun run check && bun run audit",
     "smoke": "E2E_BASE_URL=http://localhost:4005 vitest run scripts/e2e/smoke.test.ts"
   },
   "dependencies": {
@@ -53,7 +54,8 @@
     "node-pty"
   ],
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.10",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",

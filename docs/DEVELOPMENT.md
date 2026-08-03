@@ -23,7 +23,7 @@ Every feature is a self-contained **vertical slice** under `frontend/slices/<slu
 ## Quality gates
 
 ```bash
-bun run verify   # typecheck + lint + test + check (cycles / slices / contrast)
+bun run verify   # typecheck + lint + test + check + audit (high/critical only)
 ```
 
 A **pre-push hook** runs the same CI locally and blocks the push on failure. None of
@@ -76,6 +76,7 @@ Three things that will bite:
   that turns a capability check into a fetch-and-execute. Call `node_modules/.bin/<tool>`
   directly (see `scripts/post-deploy-smoke.sh`).
 
-`sharp`, `unrs-resolver` and `protobufjs` postinstalls stay **untrusted/blocked** — pnpm
-blocked exactly the same three, and all three work from their prebuilt binaries. Don't
-"fix" the `bun pm untrusted` warning by trusting them.
+`unrs-resolver` and `protobufjs` postinstalls stay **untrusted/blocked** — both work
+from their prebuilt binaries. Don't "fix" the `bun pm untrusted` warning by trusting
+them. `sharp` was a third entry until 0.35.0 removed its install script entirely; do
+NOT add it to `trustedDependencies` to "restore" anything.
