@@ -20,23 +20,22 @@ export type Quicklink = { id: string; title: string; url: string };
 
 const KEY = "mso:quicklinks";
 
-// Seed for a fresh visitor (localStorage/server-synced edits win once present).
+// STATIC FALLBACK — not the owner's links, and deliberately not personal.
 //
-// These are the INSTANCE OWNER'S links, not the project's. They used to be four
-// GitHub file URLs, which made a personal shortcut rail into a second, worse copy
-// of the docs — those moved to the Docs app (`@/features/docs`), which is where a
-// visitor looking for documentation actually goes.
+// Quicklinks are whoever-owns-this-instance's own shortcuts, so they belong in
+// that owner's DATA (`~/.mso/prefs.json`, synced through /api/prefs), not in a
+// repo other people install. Hardcoding real accounts here shipped the
+// maintainer's Instagram to every stranger's install; hardcoding the project's
+// own docs (what was here before that) made a personal shortcut rail into a
+// second, worse copy of the Docs app.
 //
-// ⚠️ If you installed MSO on your own server, change these — they are the
-// maintainer's accounts, not yours. They are all that is here so the list is one
-// edit, and nothing else in the codebase reads them.
+// So this is only what renders when there is no owner data to render: a fresh
+// install, a signed-out visitor (whose /api/prefs GET 401s), or a prefs file that
+// is missing or corrupt. One project-neutral link — enough that the rail is
+// visibly a rail rather than looking broken, and true for anyone who installs MSO.
+// Everything else the owner adds in Settings → Quicklink.
 const DEFAULTS: Quicklink[] = [
-  { id: "gh", title: "GitHub", url: "https://github.com/rahmanef63" },
-  { id: "li", title: "LinkedIn", url: "https://www.linkedin.com/in/rahmanfakhrul" },
-  { id: "ig", title: "Instagram", url: "https://www.instagram.com/rahmanef_" },
-  { id: "x", title: "X", url: "https://x.com/rahmanef" },
-  { id: "yt", title: "YouTube", url: "https://www.youtube.com/@rahmanef" },
-  { id: "tt", title: "TikTok", url: "https://www.tiktok.com/@rahmanef" },
+  { id: "mso", title: "MSO on GitHub", url: "https://github.com/rahmanef63/mso" },
 ];
 
 type Ctx = {

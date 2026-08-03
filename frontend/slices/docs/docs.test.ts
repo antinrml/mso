@@ -36,19 +36,32 @@ describe("docs app", () => {
   });
 });
 
-describe("quicklinks defaults", () => {
-  it("are the owner's accounts, not the project's docs", async () => {
-    // The four GitHub file URLs that used to seed here now live in the Docs app.
-    // A shortcut rail that ships the project's own documentation is a second,
-    // worse copy of Docs — and leaves the owner nowhere to put their own links.
-    const src = await import("node:fs").then((fs) =>
-      fs.readFileSync(new URL("../../../lib/quicklinks/store.tsx", import.meta.url), "utf8"),
-    );
-    const defaults = src.slice(src.indexOf("const DEFAULTS"), src.indexOf("type Ctx"));
-    expect(defaults).not.toContain("/blob/main/");
-    expect(defaults).not.toContain("github.com/rahmanef63/mso");
-    for (const host of ["github.com", "linkedin.com", "instagram.com"]) {
-      expect(defaults).toContain(host);
+describe("quicklinks fallback", () => {
+  // Quicklinks are the instance owner's own shortcuts, so they live in that
+  // owner's data (~/.mso/prefs.json). What stays in the repo is only what renders
+  // when there is no owner data — and it must be true for ANY installer, because
+  // this repo is public and the README invites strangers to run it.
+  const defaults = (() => {
+    const src = read("../../../lib/quicklinks/store.tsx");
+    return src.slice(src.indexOf("const DEFAULTS"), src.indexOf("type Ctx"));
+  })();
+
+  it("ships nobody's personal accounts", () => {
+    // A real account here would seed every stranger's install with it.
+    for (const host of ["linkedin.com", "instagram.com", "x.com", "tiktok.com", "youtube.com"]) {
+      expect(defaults).not.toContain(host);
     }
+    // ...and no profile URL of the maintainer's either.
+    expect(defaults).not.toMatch(/github\.com\/[A-Za-z0-9-]+\s*"/);
+  });
+
+  it("is not a second copy of the docs", () => {
+    // Four GitHub file URLs used to seed here; they belong in the Docs app.
+    expect(defaults).not.toContain("/blob/main/");
+  });
+
+  it("still renders something, so an empty rail reads as empty and not broken", () => {
+    expect(defaults.match(/url:/g)?.length).toBe(1);
+    expect(defaults).toContain("https://github.com/rahmanef63/mso");
   });
 });
