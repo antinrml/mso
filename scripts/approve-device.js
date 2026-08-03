@@ -48,11 +48,46 @@ if (args[0] === "--list") {
   process.exit(0);
 }
 
+if (args[0] === "--pending") {
+  const s = read();
+  const pd = Object.entries(s.pending);
+  console.log(`store: ${STORE}\n\nPENDING (typed correct password, awaiting approval):`);
+  if (!pd.length) console.log("  (none)");
+  for (const [id, d] of pd) console.log(`  ${id}  "${d.label}"  ip=${d.ip} attempts=${d.attempts} last=${ts(d.lastSeen)}`);
+  if (pd.length) console.log(`\napprove: mso device approve ${pd[0][0]} "a label"`);
+  process.exit(0);
+}
+
+if (args[0] === "--revoke-all") {
+  // Locks every browser out at once. Recoverable — approving is a local file
+  // write that needs no session — but the confirmation is not optional, because
+  // this is one keystroke away from `--revoke <id>`.
+  const s = read();
+  const ids = Object.keys(s.approved);
+  if (!ids.length) { console.log("nothing to revoke — no approved devices"); process.exit(0); }
+  if (args[1] !== "--yes") {
+    console.error(`refusing: this revokes ALL ${ids.length} approved devices and signs every browser out.`);
+    console.error("re-run with --yes if that is what you want. Re-approve later with:");
+    console.error("  mso device approve <deviceId> \"label\"");
+    process.exit(1);
+  }
+  s.approved = {};
+  write(s);
+  console.log(`revoked ${ids.length} device(s):`);
+  for (const id of ids) console.log(`  ${id}`);
+  console.log("\nno device can sign in until you approve one again.");
+  process.exit(0);
+}
+
 if (args[0] === "--revoke") {
   const id = args[1];
   if (!id) { console.error("usage: --revoke <deviceId>"); process.exit(1); }
   const s = read();
-  if (!s.approved[id]) { console.error(`not approved: ${id}`); process.exit(1); }
+  if (!s.approved[id]) {
+    console.error(`not approved: ${id}`);
+    if (id === "all") console.error("to revoke every device: mso device revoke all --yes");
+    process.exit(1);
+  }
   delete s.approved[id];
   write(s);
   console.log(`revoked ${id}`);

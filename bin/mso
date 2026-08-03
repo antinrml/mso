@@ -14,15 +14,27 @@
 # TERMINAL   term open [cwd] · term input <id> <text> · term close <id>
 # AI         ai <prompt…> · threads [id] · memory
 # CONFIG     config · prefs · models · skills
-# DEVICES    device list|approve <id> [label]|revoke <id>   (local, no login)
-#            devices = device list · whoami · login   (this CLI's id + session)
+# DEVICES    device list|pending|approve <id> [label]|revoke <id>|revoke all --yes
+#            devices = device list · whoami · login   (local, no login needed)
 # SERVICE    service status|start|stop|restart|logs [n] · build · deploy
 # EDITOR     crud list|get|set|del|cmds   (see `mso crud`)
-# ESCAPE     api <METHOD> <path> [json]   — any endpoint, e.g.
-#            mso api GET /api/v1/sys/stats
+# ESCAPE     api <METHOD> <path> [json]   — any endpoint
+# META       version · help [command]
+#
+# EXAMPLES
+#   mso device pending                       who typed the password and is waiting
+#   mso device approve <id> "my phone"       let them in
+#   mso exec "systemctl status nginx"        run anything on the host
+#   mso camoufox start && mso camoufox session   browser up + its VNC password
+#   mso mapp logs hermes                     a managed app's log tail
+#   mso api POST /api/v1/sys/cleanup         no named verb? call it directly
+#
+# Per-command help:  mso <command> --help    (e.g. `mso device --help`)
 #
 # READ = OS_FS_READ_ROOTS; WRITE = home + ~/projects; exec = full host power.
 set -euo pipefail
+
+VERSION="1.0.0"
 
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 B="${MSO_BASE:-${OS_BASE:-http://127.0.0.1:4005}}"
@@ -98,13 +110,38 @@ usage() { awk 'NR>1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"; }
 # from the table itself so a new arm can never be missing from did-you-mean.
 verbs() {
   awk '/^cmd="/ { on = 1 }
-       on && match($0, /^  [a-z|h-]+\)/) {
+       on && match($0, /^  [a-zA-Z|-]+\)/) {
          s = substr($0, 3, RLENGTH - 3); gsub(/\|/, "\n", s); print s
        }' "$0"
 }
 
+# One usage string per command group, used by BOTH `--help` and the error path —
+# so the help you get when you ask can never disagree with the help you get when
+# you're wrong.
+U_camoufox="camoufox status|start|stop|session"
+U_mapp="mapp list|show <id>|logs <id>|backups <id>|jobs <id>|install <id>|update <id>"
+U_term="term open [cwd]|input <id> <text>|close <id>"
+U_device="device list|pending|approve <id> [label]|revoke <id>|revoke all --yes"
+U_service="service status|start|stop|restart|logs [n]"
+U_crud="crud list <dir> | get <path> | set <path> <cmd k=v…|text> | del <path> | cmds"
+U_api="api <METHOD> <path> [json]   e.g. mso api GET /api/v1/sys/stats"
+
+# `mso <command> --help` — hermes-style per-command help, before dispatch so a
+# group never has to handle the flag itself.
+if [ $# -ge 2 ]; then
+  case "$2" in
+    -h|--help|help)
+      eval "u=\${U_$1-}"
+      [ -n "${u-}" ] && { echo "usage: mso $u"; exit 0; }
+      # No group usage means a flat verb: show the header line that documents it.
+      usage | grep -E "(^|[ ·|])$1([ ·|]|$)" || usage
+      exit 0 ;;
+  esac
+fi
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
+  version|--version|-V) echo "mso $VERSION  (base $B, root $ROOT)"; exit 0 ;;
   # ── files ────────────────────────────────────────────────────────────────
   ls)     jget "/api/v1/fs/list?path=$(enc "${1:-~}")" ;;
   cat)    jget "/api/v1/fs/read?path=$(enc "${1:?path}")" | jq -r . ;;
@@ -130,7 +167,7 @@ case "$cmd" in
       start)   jpost "/api/v1/camoufox/service" '{"action":"start"}' ;;
       stop)    jpost "/api/v1/camoufox/service" '{"action":"stop"}' ;;
       session) jget "/api/v1/camoufox/session" ;;
-      *) die "camoufox: status|start|stop|session" ;;
+      *) die "usage: mso $U_camoufox" ;;
     esac ;;
 
   # ── managed apps (hermes, openclaw…) ─────────────────────────────────────
@@ -145,7 +182,7 @@ case "$cmd" in
       jobs)    jget "/api/v1/managed-apps/$(enc "${1:?id}")/jobs" ;;
       install) jpost "/api/v1/managed-apps/$(enc "${1:?id}")/install" "$(kv_args "${@:2}")" ;;
       update)  jpost "/api/v1/managed-apps/$(enc "${1:?id}")/update"  "$(kv_args "${@:2}")" ;;
-      *) die "mapp: list|show <id>|logs <id>|backups <id>|jobs <id>|install <id>|update <id>" ;;
+      *) die "usage: mso $U_mapp" ;;
     esac ;;
 
   # ── terminal ─────────────────────────────────────────────────────────────
@@ -155,7 +192,7 @@ case "$cmd" in
       open)  jpost "/api/v1/term/open" "$(jq -n --arg c "${1-}" '{cwd:$c}')" ;;
       input) jpost "/api/v1/term/input" "$(jq -n --arg i "${1:?id}" --arg d "${2:?text}" '{id:$i,data:$d}')" ;;
       close) jpost "/api/v1/term/close" "$(jq -n --arg i "${1:?id}" '{id:$i}')" ;;
-      *) die "term: open [cwd]|input <id> <text>|close <id>" ;;
+      *) die "usage: mso $U_term" ;;
     esac ;;
 
   # ── assistant / state ────────────────────────────────────────────────────
@@ -173,11 +210,13 @@ case "$cmd" in
   devices|device)
     case "${1:-list}" in
       list)    dev_script --list ;;
+      pending) dev_script --pending ;;
       approve) [ -n "${2-}" ] || die "usage: mso device approve <deviceId> [label]"
                dev_script "$2" "${@:3}" ;;
-      revoke)  [ -n "${2-}" ] || die "usage: mso device revoke <deviceId>"
-               dev_script --revoke "$2" ;;
-      *) die "device: list|approve <id> [label]|revoke <id>" ;;
+      revoke)  [ -n "${2-}" ] || die "usage: mso device revoke <deviceId> | all --yes"
+               if [ "$2" = "all" ]; then dev_script --revoke-all "${3-}"
+               else dev_script --revoke "$2"; fi ;;
+      *) die "usage: mso $U_device" ;;
     esac ;;
   approve) [ -n "${1-}" ] || die "usage: mso approve <deviceId> [label]  (ids: mso device list)"
            dev_script "$1" "${@:2}" ;;
@@ -194,7 +233,7 @@ case "$cmd" in
       stop)    sudo systemctl stop mso.service ;;
       restart) sudo systemctl restart mso.service ;;
       logs)    journalctl -u mso.service -n "${2:-50}" --no-pager ;;
-      *) die "service: status|start|stop|restart|logs [n]" ;;
+      *) die "usage: mso $U_service" ;;
     esac ;;
   build)  (cd "$ROOT" && npm run build) ;;
   deploy) (cd "$ROOT" && npm run build) && sudo systemctl restart mso.service && echo "deployed → $B" ;;
@@ -219,7 +258,7 @@ case "$cmd" in
         else
           jpost "/api/v1/fs/write" "$(jq -n --arg p "$path" --arg c "$op${*:+ $*}" '{path:$p,content:$c}')"
         fi ;;
-      *) die "crud: list <dir> | get <path> | set <path> <cmd k=v…|text> | del <path> | cmds" ;;
+      *) die "usage: mso $U_crud" ;;
     esac ;;
 
   # ── escape hatch: any endpoint at all ────────────────────────────────────

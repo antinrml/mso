@@ -39,4 +39,24 @@ describe("bin/mso", () => {
   it("exits non-zero on an unknown command", () => {
     expect(() => run("definitely-not-a-verb")).toThrow();
   });
+
+  it("refuses `device revoke all` without --yes, and leaves the store intact", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const os = require("node:os") as typeof import("node:os");
+    const store = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mso-dev-")), "devices.json");
+    const before = JSON.stringify({ approved: { ["a".repeat(32)]: { label: "x" } }, pending: {} });
+    fs.writeFileSync(store, before);
+    const withStore = (...args: string[]) =>
+      execFileSync(CLI, args, {
+        encoding: "utf8",
+        env: { ...process.env, MSO_ENV: "/dev/null", OS_DEVICE_STORE: store },
+      });
+
+    // Revoking everything signs every browser out; one keystroke from `revoke <id>`.
+    expect(() => withStore("device", "revoke", "all")).toThrow();
+    expect(fs.readFileSync(store, "utf8")).toBe(before);
+
+    withStore("device", "revoke", "all", "--yes");
+    expect(JSON.parse(fs.readFileSync(store, "utf8")).approved).toEqual({});
+  });
 });
