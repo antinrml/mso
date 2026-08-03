@@ -112,24 +112,28 @@ Full production setup, TLS/VPN notes, filesystem roots, updates, and rollback st
 
 ## CLI
 
-The browser UI is one frontend, not the product. The installer also puts `mso` on your
-`PATH`, and it drives the same API:
+The browser UI is one frontend, not the product. The installer puts `mso` on your
+`PATH`, and it reaches the same API — every endpoint has a named verb, and `mso api`
+covers anything without one.
 
 ```bash
-mso -h                       # every verb
-mso device list              # who can log in
+mso -h                       # grouped command list; `mso <command> --help` per command
+mso doctor                   # deps, env, service, session, device — names what broke
 mso device pending           # who typed the password and is waiting
-mso approve <deviceId> "my phone"
-mso ls ~/projects            # files
+mso device approve <id> "my phone"
+mso ls ~/projects            # files; `raw` for binaries, `zip`/`upload` for transfers
 mso exec "df -h"             # host shell
 mso stats                    # cpu / mem / disk
 mso camoufox start           # power the anti-detection browser
-mso mapp list                # managed apps (hermes, openclaw…)
+mso mapp logs hermes         # managed apps (hermes, openclaw)
+mso term open                # interactive PTY
 mso service restart          # systemd
 mso api GET /api/v1/sys/stats   # escape hatch — any endpoint
+eval "$(mso completion bash)"   # tab completion
 ```
 
-Local verbs (`-h`, `approve`, `devices`, `service`) work even while the service is
+Global options: `--base <url>` to target another instance, `--env <file>` to pick a
+different secrets file. Device and service commands work even while the service is
 down. If you use [Claude Code](https://claude.com/claude-code), the installer also
 links the agent skills in `claude-skills/` into `~/.claude/skills/` — `/mso`,
 `/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`, `/mso-browser-list`.

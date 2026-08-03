@@ -34,8 +34,13 @@ function ccLabel(slug: string): string {
   return `CC ${up}`;
 }
 
+// Openverse caps page_size at 20 for anonymous callers and answers a request over
+// that with **401**, not 400 — so a hardcoded 24 read as "bad credentials" and the
+// whole picker 502'd for every user, with nothing in the UI pointing at page size.
+export const OPENVERSE_ANON_MAX_PAGE_SIZE = 20;
+
 export async function searchOpenverse(q: string, page: number): Promise<StockResult[]> {
-  const u = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=24&page=${page}`;
+  const u = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=${OPENVERSE_ANON_MAX_PAGE_SIZE}&page=${page}`;
   const data = await getJson(u);
   return (data.results ?? [])
     .map((r) => ({

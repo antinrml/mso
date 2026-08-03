@@ -1,48 +1,133 @@
 #!/usr/bin/env bash
-# mso — drive the whole Manef Shell OS from the shell.
+# Manef Shell OS — drive the whole cockpit from the shell.
+#
+# Usage: mso [options] <command> [args]
 #
 # mso.rahmanef.com is only ONE frontend. Everything it can do is a call to the
-# same /api/v1 surface, so this CLI reaches every feature without a browser.
+# same /api surface, so this CLI reaches every feature without a browser.
 # Auth = signed session cookie (password + approved device), cached in a jar.
 #
-# FILES      ls [path] · cat <p> · write <p> <text> · mkdir <p> · rm <p>
-#            mv <a> <b> · cp <a> <b> · usage [path] · search <q> [root]
-# HOST       exec <cmd…> · stats · ps · cleanup [--run] · health
-# BROWSER    camoufox status|start|stop|session
-# APPS       apps · mapp list|show <id>|logs <id>|install <id>|update <id>
-#            mapp backups <id>|jobs <id>
-# TERMINAL   term open [cwd] · term input <id> <text> · term close <id>
-# AI         ai <prompt…> · threads [id] · memory
-# CONFIG     config · prefs · models · skills
-# DEVICES    device list|pending|approve <id> [label]|revoke <id>|revoke all --yes
-#            devices = device list · whoami · login   (local, no login needed)
-# SERVICE    service status|start|stop|restart|logs [n] · build · deploy
-# EDITOR     crud list|get|set|del|cmds   (see `mso crud`)
-# ESCAPE     api <METHOD> <path> [json]   — any endpoint
-# META       version · help [command]
+# Options:
+#   --base <url>         API base to talk to (default http://127.0.0.1:4005)
+#   --env <file>         Env file to source for secrets (default <repo>/.env.local)
+#   -h, --help           Show this help, or `mso <command> --help` for one command
+#   -v, --version        Show version
 #
-# EXAMPLES
-#   mso device pending                       who typed the password and is waiting
-#   mso device approve <id> "my phone"       let them in
-#   mso exec "systemctl status nginx"        run anything on the host
-#   mso camoufox start && mso camoufox session   browser up + its VNC password
-#   mso mapp logs hermes                     a managed app's log tail
-#   mso api POST /api/v1/sys/cleanup         no named verb? call it directly
+# Commands:
+#   Hint: commands suffixed with * have subcommands. Run `mso <command> --help`.
 #
-# Per-command help:  mso <command> --help    (e.g. `mso device --help`)
+#  Files
+#   ls [path]            List a directory (default ~)
+#   cat <path>           Read a text file
+#   raw <path>           Stream a file's raw bytes to stdout (images, video, any blob)
+#   write <path> <text>  Write a file
+#   mkdir <path>         Create a directory
+#   rm <path>            Delete, recursively
+#   mv <from> <to>       Move or rename
+#   cp <from> <to>       Copy
+#   zip <base> <name…>   Zip entries of <base> to stdout (redirect it to a .zip)
+#   upload <local> <dst> Upload a local file into <dst> (the dir must already exist)
+#   search <q> [root]    Search file contents
+#   usage [path]         Disk usage
+#
+#  Host
+#   exec <cmd…>          Run a shell command on the host (full power)
+#   stats                CPU, memory, disk
+#   ps                   Process table
+#   cleanup [--run]      Reclaimable junk; --run actually deletes it
+#   status               Public service status (no session needed)
+#   health               Is this CLI's session valid?
+#   doctor               Check deps, env, service, session, device — and say what broke
+#
+#  Browser
+#   camoufox *           Power the anti-detection VNC browser + read its password
+#
+#  Apps
+#   apps                 App-store runtime apps
+#   mapp *               Managed apps on the box (hermes, openclaw): logs, update…
+#   term *               Interactive PTY sessions (open | input | resize | stream | close)
+#
+#  AI + state
+#   ai <prompt…>         One turn with the assistant
+#   threads *            Conversation history: list | show | rm
+#   memory *             Assistant memories: list | add | rm
+#   config *             BYOK provider + model: show | set | rm
+#   prefs *              UI preferences: show | set
+#   models *             Model catalog: list | test
+#   skills               Skill catalog the assistant sees
+#   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)
+#
+#  Devices  (a local file — these work while the service is down)
+#   device *             list | pending | approve | revoke | revoke all
+#   devices              Alias for `device list`
+#   approve <id> [label] Approve a device id
+#   revoke <id>          Revoke one device
+#   whoami               This CLI's device id + session state
+#   login                Force a fresh login
+#   logout               Drop the session (server-side + local jar)
+#
+#  Service  (local systemd)
+#   service *            status | start | stop | restart | logs
+#   build                next build
+#   deploy               next build, then restart the service
+#
+#  Escape hatches
+#   crud *               Generic resource CRUD, incl. editor documents
+#   api *                Call ANY endpoint directly
+#   completion [shell]   Print a shell completion script (bash|zsh)
+#   version              Show version
+#
+# Examples:
+#   mso doctor
+#     First thing to run when something is off — it names the broken layer.
+#   mso device pending
+#     See who typed the correct password and is waiting to be let in.
+#   mso device approve <id> "my phone"
+#     Let that device sign in.
+#   mso exec "systemctl status nginx"
+#     Run anything on the host, as the user that owns the process.
+#   mso camoufox start && mso camoufox session
+#     Bring the browser up and print its one-time VNC password.
+#   mso raw ~/shot.png > ./shot.png
+#     Pull a binary file down; `cat` is for text.
+#   mso mapp logs hermes
+#     Tail a managed app's log without opening the UI.
+#   mso api POST /api/v1/sys/cleanup
+#     No named verb for it? Call the endpoint directly.
+#
+# Environment:
+#   MSO_BASE             Same as --base
+#   MSO_ENV              Same as --env
+#   MSO_PASSWORD         Overrides OS_LOGIN_PASSWORD from the env file
+#   MSO_DEVICE           Overrides this CLI's device id (~/.mso/cli.device.id)
 #
 # READ = OS_FS_READ_ROOTS; WRITE = home + ~/projects; exec = full host power.
+#
+# Docs: https://github.com/rahmanef63/mso
 set -euo pipefail
 
-VERSION="1.0.0"
-
+VERSION="1.1.0"
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-B="${MSO_BASE:-${OS_BASE:-http://127.0.0.1:4005}}"
-ENVF="${MSO_ENV:-${OS_ENV:-$ROOT/.env.local}}"
+
+die() { echo "mso: $*" >&2; exit 1; }
+
+# Global options are parsed BEFORE the env file is sourced, because --env chooses
+# which file that is.
+BASE_OVERRIDE=""; ENV_OVERRIDE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base) [ -n "${2-}" ] || die "--base needs a url"; BASE_OVERRIDE="$2"; shift 2 ;;
+    --env)  [ -n "${2-}" ] || die "--env needs a file";  ENV_OVERRIDE="$2";  shift 2 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+
+B="${BASE_OVERRIDE:-${MSO_BASE:-${OS_BASE:-http://127.0.0.1:4005}}}"
+ENVF="${ENV_OVERRIDE:-${MSO_ENV:-${OS_ENV:-$ROOT/.env.local}}}"
 # shellcheck disable=SC1090
 set -a; . "$ENVF" 2>/dev/null || true; set +a
 
-die() { echo "mso: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "missing dependency: $1"; }
 need curl; need jq
 
@@ -60,7 +145,9 @@ cli_device() {
   cat "$DEVF"
 }
 
-JAR="${MSO_JAR:-${TMPDIR:-/tmp}/mso-$(id -u).jar}"
+# Jar is per-base as well as per-user: switching --base must not reuse a cookie
+# minted for a different origin (it would 401 and look like a broken password).
+JAR="${MSO_JAR:-${TMPDIR:-/tmp}/mso-$(id -u)-$(printf '%s' "$B" | cksum | cut -d' ' -f1).jar}"
 
 # proxy.ts blocks mutating /api requests that can't prove same-origin. A browser
 # proves it with Sec-Fetch-Site; the documented fallback for non-browser clients
@@ -74,11 +161,12 @@ login() {
   code=$(curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" -X POST "$B/api/auth/login" \
     "${ORIGIN[@]}" -H 'content-type: application/json' \
     -d "$(jq -n --arg p "$PASS" --arg d "$d" '{password:$p,deviceId:$d,deviceLabel:"mso cli"}')" || true)
-  [ "$code" = "200" ] || die "login failed ($code) — approve this CLI device:
-  mso approve $d \"mso cli\""
+  [ "$code" = "200" ] || die "login failed ($code) — run \`mso doctor\`, or approve this device:
+  mso device approve $d \"mso cli\""
 }
+
 # Request with the cached cookie; on 401/403 (expired) log in once and retry.
-# Login is lazy on purpose: `mso -h`, `mso approve` and `mso service …` are
+# Login is lazy on purpose: `mso -h`, `mso device …` and `mso service …` are
 # local-only and must keep working while the service is down or unapproved.
 req() {
   local out code body
@@ -92,6 +180,9 @@ req() {
   fi
   case "$code" in 2*) printf '%s' "$body" ;; *) die "request failed ($code): $body" ;; esac
 }
+# Binary-safe variant: streams straight to stdout, no capture, no code check.
+reqraw() { [ -f "$JAR" ] || login; curl -fsS -b "$JAR" "${ORIGIN[@]}" "$@"; }
+
 enc()   { jq -rn --arg v "$1" '$v|@uri'; }
 jget()  { req "$B$1"; }
 jpost() { req -H 'content-type: application/json' -d "${2:-{\}}" "$B$1"; }
@@ -101,6 +192,7 @@ kv_args() { local j='{}' kv k v; for kv in "$@"; do k="${kv%%=*}"; v="${kv#*=}"
   if [[ "$v" =~ ^-?[0-9]+([.][0-9]+)?$ || "$v" == "true" || "$v" == "false" ]]; then
     j=$(jq -c --arg k "$k" --argjson v "$v" '.+{($k):$v}' <<<"$j")
   else j=$(jq -c --arg k "$k" --arg v "$v" '.+{($k):$v}' <<<"$j"); fi; done; printf '%s' "$j"; }
+json_arg() { jq -e . >/dev/null 2>&1 <<<"${1-}" || die "not valid JSON: ${1-}"; printf '%s' "$1"; }
 
 # Print the header block verbatim — stops at the first non-comment line, so the
 # help can never drift out of sync with the comment above.
@@ -116,35 +208,42 @@ verbs() {
 }
 
 # One usage string per command group, used by BOTH `--help` and the error path —
-# so the help you get when you ask can never disagree with the help you get when
+# so the help you get when you ask cannot disagree with the help you get when
 # you're wrong.
 U_camoufox="camoufox status|start|stop|session"
-U_mapp="mapp list|show <id>|logs <id>|backups <id>|jobs <id>|install <id>|update <id>"
-U_term="term open [cwd]|input <id> <text>|close <id>"
+U_mapp="mapp list|show <id>|logs <id>|backups <id>|jobs <id>|job <id> <jobId>|install <id>|update <id>"
+U_term="term open [cwd] [cols] [rows]|input <id> <text>|resize <id> <cols> <rows>|stream <id>|close <id>"
 U_device="device list|pending|approve <id> [label]|revoke <id>|revoke all --yes"
 U_service="service status|start|stop|restart|logs [n]"
+U_threads="threads list|show <id>|rm <id>"
+U_memory="memory list|add <text>|rm <id>"
+U_config="config show|set <json>|rm <provider>"
+U_prefs="prefs show|set <json>"
+U_models="models list|test"
 U_crud="crud list <dir> | get <path> | set <path> <cmd k=v…|text> | del <path> | cmds"
 U_api="api <METHOD> <path> [json]   e.g. mso api GET /api/v1/sys/stats"
 
-# `mso <command> --help` — hermes-style per-command help, before dispatch so a
-# group never has to handle the flag itself.
+# `mso <command> --help` — per-command help, resolved before dispatch so no group
+# has to handle the flag itself.
 if [ $# -ge 2 ]; then
   case "$2" in
     -h|--help|help)
       eval "u=\${U_$1-}"
       [ -n "${u-}" ] && { echo "usage: mso $u"; exit 0; }
-      # No group usage means a flat verb: show the header line that documents it.
-      usage | grep -E "(^|[ ·|])$1([ ·|]|$)" || usage
+      # No group usage means a flat verb: show the header line documenting it.
+      usage | grep -E "^ +$1( |$)" || usage
       exit 0 ;;
   esac
 fi
 
 cmd="${1:-help}"; shift || true
 case "$cmd" in
-  version|--version|-V) echo "mso $VERSION  (base $B, root $ROOT)"; exit 0 ;;
+  version|--version|-V|-v) echo "mso $VERSION  (base $B, root $ROOT)"; exit 0 ;;
+
   # ── files ────────────────────────────────────────────────────────────────
   ls)     jget "/api/v1/fs/list?path=$(enc "${1:-~}")" ;;
   cat)    jget "/api/v1/fs/read?path=$(enc "${1:?path}")" | jq -r . ;;
+  raw)    reqraw "$B/api/v1/fs/raw?path=$(enc "${1:?path}")"; exit 0 ;;
   usage)  jget "/api/v1/fs/usage?path=$(enc "${1:-~}")" ;;
   search) jget "/api/v1/fs/search?q=$(enc "${1:?query}")${2:+&root=$(enc "$2")}" ;;
   write)  jpost "/api/v1/fs/write" "$(jq -n --arg p "${1:?path}" --arg c "${2-}" '{path:$p,content:$c}')" ;;
@@ -152,13 +251,44 @@ case "$cmd" in
   rm)     jdel  "/api/v1/fs/delete" "$(jq -n --arg p "${1:?path}" '{path:$p}')" ;;
   mv)     jpost "/api/v1/fs/move" "$(jq -n --arg f "${1:?from}" --arg t "${2:?to}" '{from:$f,to:$t}')" ;;
   cp)     jpost "/api/v1/fs/copy" "$(jq -n --arg f "${1:?from}" --arg t "${2:?to}" '{from:$f,to:$t}')" ;;
+  zip)
+    base="${1:?base dir}"; shift
+    [ $# -gt 0 ] || die "usage: mso zip <baseDir> <name…> > out.zip"
+    q="base=$(enc "$base")"; for n in "$@"; do q="$q&n=$(enc "$n")"; done
+    reqraw "$B/api/v1/fs/zip?$q"; exit 0 ;;
+  upload)
+    src="${1:?local file}"; dst="${2:?destination dir on the host}"
+    [ -f "$src" ] || die "no such local file: $src"
+    req -F "dest=$dst" -F "file=@$src" "$B/api/v1/fs/upload" ;;
 
   # ── host ─────────────────────────────────────────────────────────────────
   exec)   jpost "/api/v1/exec/run" "$(jq -n --arg c "$*" '{cmd:$c}')" ;;
   stats)  jget "/api/v1/sys/stats" ;;
   ps)     jget "/api/v1/sys/processes" ;;
   cleanup) if [ "${1-}" = "--run" ]; then jpost "/api/v1/sys/cleanup"; else jget "/api/v1/sys/cleanup"; fi ;;
+  status) jget "/api/status" ;;
   health) jget "/api/auth/me" ;;
+
+  # Layer-by-layer, cheapest first, so the FIRST failure names the real cause
+  # instead of the symptom three layers up ("login failed" when node is missing).
+  doctor)
+    fails=0
+    chk() { if eval "$2" >/dev/null 2>&1; then printf '  ok    %s\n' "$1"; else printf '  FAIL  %s — %s\n' "$1" "$3"; fails=$((fails+1)); fi; }
+    echo "mso doctor  (base $B)"
+    chk "curl"           "command -v curl"  "install curl"
+    chk "jq"             "command -v jq"    "install jq"
+    chk "node"           "command -v node"  "install Node >=20.9"
+    chk "env file"       "[ -f '$ENVF' ]"   "no $ENVF — copy .env.example and fill it"
+    chk "login password" "[ -n '$PASS' ]"   "OS_LOGIN_PASSWORD unset in $ENVF"
+    chk "session secret" "[ -n \"\${OS_SESSION_SECRET-}\" ]" "OS_SESSION_SECRET unset in $ENVF"
+    chk "service unit"   "systemctl is-active --quiet mso.service" "mso.service not active — mso service start"
+    chk "reachable"      "curl -fsS --max-time 5 '$B/api/health'"  "nothing answering at $B"
+    d=$(cli_device)
+    chk "device known"   "dev_script --list | grep -q '$d'" "this CLI device is not approved — mso device approve $d 'mso cli'"
+    chk "session"        "[ \"\$(rm -f '$JAR'; jget /api/auth/me | jq -r .authenticated)\" = true ]" "cannot sign in — see the checks above"
+    echo
+    [ "$fails" -eq 0 ] && echo "all good." || echo "$fails check(s) failed."
+    exit $(( fails > 0 ? 1 : 0 )) ;;
 
   # ── camoufox (the real browser the Browser app drives) ────────────────────
   camoufox)
@@ -180,6 +310,7 @@ case "$cmd" in
       logs)    jget "/api/v1/managed-apps/$(enc "${1:?id}")/logs" ;;
       backups) jget "/api/v1/managed-apps/$(enc "${1:?id}")/backups" ;;
       jobs)    jget "/api/v1/managed-apps/$(enc "${1:?id}")/jobs" ;;
+      job)     jget "/api/v1/managed-apps/$(enc "${1:?id}")/jobs/$(enc "${2:?jobId}")" ;;
       install) jpost "/api/v1/managed-apps/$(enc "${1:?id}")/install" "$(kv_args "${@:2}")" ;;
       update)  jpost "/api/v1/managed-apps/$(enc "${1:?id}")/update"  "$(kv_args "${@:2}")" ;;
       *) die "usage: mso $U_mapp" ;;
@@ -189,20 +320,56 @@ case "$cmd" in
   term)
     sub="${1:-open}"; shift || true
     case "$sub" in
-      open)  jpost "/api/v1/term/open" "$(jq -n --arg c "${1-}" '{cwd:$c}')" ;;
-      input) jpost "/api/v1/term/input" "$(jq -n --arg i "${1:?id}" --arg d "${2:?text}" '{id:$i,data:$d}')" ;;
-      close) jpost "/api/v1/term/close" "$(jq -n --arg i "${1:?id}" '{id:$i}')" ;;
+      # cols/rows are required by the route; a CLI has no viewport, so default to
+      # the real terminal's size when there is one and 120x30 when piped.
+      open)   jpost "/api/v1/term/open" "$(jq -n --arg c "${1-}" \
+                --argjson x "${2:-$(tput cols 2>/dev/null || echo 120)}" \
+                --argjson y "${3:-$(tput lines 2>/dev/null || echo 30)}" \
+                '{cwd:$c,cols:$x,rows:$y}')" ;;
+      input)  jpost "/api/v1/term/input" "$(jq -n --arg i "${1:?id}" --arg d "${2:?text}" '{id:$i,data:$d}')" ;;
+      resize) jpost "/api/v1/term/resize" "$(jq -n --arg i "${1:?id}" --argjson c "${2:?cols}" --argjson r "${3:?rows}" '{id:$i,cols:$c,rows:$r}')" ;;
+      stream) reqraw -N "$B/api/v1/term/stream?id=$(enc "${1:?id}")"; exit 0 ;;
+      close)  jpost "/api/v1/term/close" "$(jq -n --arg i "${1:?id}" '{id:$i}')" ;;
       *) die "usage: mso $U_term" ;;
     esac ;;
 
   # ── assistant / state ────────────────────────────────────────────────────
-  ai)      jpost "/api/assistant" "$(jq -n --arg m "$*" '{messages:[{role:"user",content:$m}]}')" ;;
-  threads) if [ -n "${1-}" ]; then jget "/api/threads?id=$(enc "$1")"; else jget "/api/threads"; fi ;;
-  memory)  jget "/api/memory" ;;
-  config)  jget "/api/config" ;;
-  prefs)   jget "/api/prefs" ;;
-  models)  jget "/api/models" ;;
-  skills)  jget "/api/skills" ;;
+  ai) jpost "/api/assistant" "$(jq -n --arg m "$*" '{messages:[{role:"user",content:$m}]}')" ;;
+  threads)
+    case "${1:-list}" in
+      list) jget "/api/threads" ;;
+      show) jget "/api/threads?id=$(enc "${2:?id}")" ;;
+      rm)   jdel "/api/threads?id=$(enc "${2:?id}")" ;;
+      *) die "usage: mso $U_threads" ;;
+    esac ;;
+  memory)
+    case "${1:-list}" in
+      list) jget "/api/memory" ;;
+      add)  jpost "/api/memory" "$(jq -n --arg t "${2:?text}" '{text:$t}')" ;;
+      rm)   jdel "/api/memory?id=$(enc "${2:?id}")" ;;
+      *) die "usage: mso $U_memory" ;;
+    esac ;;
+  config)
+    case "${1:-show}" in
+      show) jget "/api/config" ;;
+      set)  jpost "/api/config" "$(json_arg "${2:?json, e.g. '{\"model\":\"gpt-5.6\"}'}")" ;;
+      rm)   jdel "/api/config?provider=$(enc "${2:?provider}")" ;;
+      *) die "usage: mso $U_config" ;;
+    esac ;;
+  prefs)
+    case "${1:-show}" in
+      show) jget "/api/prefs" ;;
+      set)  jpost "/api/prefs" "$(json_arg "${2:?json, e.g. '{\"tweaks\":{\"theme\":\"dark\"}}'}")" ;;
+      *) die "usage: mso $U_prefs" ;;
+    esac ;;
+  models)
+    case "${1:-list}" in
+      list) jget "/api/models" ;;
+      test) jpost "/api/models/test" ;;
+      *) die "usage: mso $U_models" ;;
+    esac ;;
+  skills) jget "/api/skills" ;;
+  stock)  jget "/api/v1/stock/search?q=$(enc "${1:?query}")&page=${2:-1}" ;;
 
   # ── devices (local file, works even when the service is down) ────────────
   # Both shapes work: `mso devices` reads as a noun, `mso device list` matches the
@@ -224,6 +391,8 @@ case "$cmd" in
            dev_script --revoke "$1" ;;
   whoami)  echo "cli device: $(cli_device)"; jget "/api/auth/me" ;;
   login)   rm -f "$JAR"; login; echo "logged in as device $(cli_device)" ;;
+  logout)  [ -f "$JAR" ] && jpost "/api/auth/logout" >/dev/null 2>&1 || true
+           rm -f "$JAR"; echo "signed out (jar cleared)" ;;
 
   # ── service (local systemd) ──────────────────────────────────────────────
   service)
@@ -266,6 +435,15 @@ case "$cmd" in
     m="${1:?METHOD}"; p="${2:?/api/...}"; body="${3-}"
     if [ -n "$body" ]; then req -X "$m" -H 'content-type: application/json' -d "$body" "$B$p"
     else req -X "$m" "$B$p"; fi ;;
+
+  # Verb list comes from verbs(), so completion cannot go stale.
+  completion)
+    case "${1:-bash}" in
+      bash) printf 'complete -W "%s" mso\n' "$(verbs | grep -v '^-' | sort -u | tr '\n' ' ')" ;;
+      zsh)  printf 'compdef _gnu_generic mso\ncompctl -k "(%s)" mso\n' "$(verbs | grep -v '^-' | sort -u | tr '\n' ' ')" ;;
+      *) die "completion: bash|zsh   (eval \"\$(mso completion bash)\")" ;;
+    esac
+    exit 0 ;;
 
   help|-h|--help) usage; exit 0 ;;
   *)

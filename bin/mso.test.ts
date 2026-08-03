@@ -13,8 +13,9 @@ const run = (...args: string[]) =>
 describe("bin/mso", () => {
   it("prints help without logging in", () => {
     const out = run("-h");
-    expect(out).toContain("drive the whole Manef Shell OS");
-    for (const verb of ["camoufox", "approve", "service", "api", "exec"]) {
+    expect(out).toContain("Manef Shell OS");
+    expect(out).toContain("Usage: mso");
+    for (const verb of ["camoufox", "approve", "service", "api", "exec", "doctor"]) {
       expect(out).toContain(verb);
     }
   });
@@ -38,6 +39,44 @@ describe("bin/mso", () => {
 
   it("exits non-zero on an unknown command", () => {
     expect(() => run("definitely-not-a-verb")).toThrow();
+  });
+
+  // "Covers every need" is only true if it stays true. Every API route must be
+  // reachable by a named verb, except the ones a shell genuinely cannot drive.
+  it("has a named verb for every API route", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const repo = path.join(__dirname, "..");
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const p = path.join(dir, e.name);
+        return e.isDirectory() ? walk(p) : e.name === "route.ts" ? [p] : [];
+      });
+    const routes = walk(path.join(repo, "app/api")).map((p) =>
+      "/" + path.relative(repo, p).replace(/^app\//, "").replace(/\/route\.ts$/, ""),
+    );
+    const cli = fs.readFileSync(CLI, "utf8");
+
+    // Browser-only surfaces: an OAuth redirect needs a browser to land on, the
+    // service worker is fetched by the browser itself, and the managed-app proxy
+    // exists to be iframed. /api/auth/devices reads the same store `mso device
+    // list` reads straight off disk, which also works with the service down.
+    const browserOnly = [
+      "/api/oauth/[provider]",
+      "/api/sw",
+      "/api/v1/managed-apps/[id]/proxy/[[...path]]",
+      "/api/auth/devices",
+    ];
+
+    const uncovered = routes.filter((r) => {
+      if (browserOnly.includes(r)) return false;
+      // The CLI builds dynamic segments by interpolation, so compare on the
+      // literal chunks either side of a [param] rather than the whole path.
+      const parts = r.split("/").filter((s) => s && !s.startsWith("["));
+      const tail = parts[parts.length - 1];
+      return !cli.includes(`/${parts.join("/")}`) && !cli.includes(`/${tail}"`) && !cli.includes(`/${tail}?`);
+    });
+    expect(uncovered).toEqual([]);
+    expect(routes.length).toBeGreaterThan(40);
   });
 
   it("refuses `device revoke all` without --yes, and leaves the store intact", () => {
