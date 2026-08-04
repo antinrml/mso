@@ -17,20 +17,31 @@ import type { AppDescriptor, WindowState } from "../../../lib/types";
 // total every overlay pads for. `inactive` = covered by the app layer's copy.
 export function NavBar({ inactive = false, onBack, onHome, onRecents }: { inactive?: boolean; onBack: () => void; onHome: () => void; onRecents: () => void }) {
   return (
+    // The row MUST carry its own surface. It used to be fully transparent, which
+    // left `text-foreground` (dark, from the light theme) floating directly on the
+    // wallpaper — and the Android wallpaper is dark, so Back/Home/Recents were
+    // invisible. Pairing bg-background with text-foreground restores the token
+    // contract: whatever the theme, the two are a legible pair by construction.
+    // This is why the shell felt like it had "no back button".
     <div
-      className="flex shrink-0 items-center justify-around"
+      className="flex shrink-0 items-center justify-around border-t border-border/60 bg-background/80 text-foreground backdrop-blur-xl"
       style={{ height: "calc(var(--android-nav) + var(--sai-bottom))", paddingBottom: "var(--sai-bottom)" }}
       inert={inactive}
       aria-hidden={inactive}
     >
       <Button type="button" variant="ghost" onClick={onBack} aria-label="Back" className="h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center">
-        <ChevronLeft className="size-5" />
+        <ChevronLeft className="size-6" />
       </Button>
+      {/* border-current, not border-foreground/70: these two are drawn as outlines,
+          so they must follow the button's own colour rather than a token that can
+          drift from it. (border-foreground/70 was also silently dead until the
+          @layer base fix in globals.css — every border-<color> utility was being
+          overridden by an unlayered `*` rule.) */}
       <Button type="button" variant="ghost" onClick={onHome} aria-label="Home" className="h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center">
-        <span className="size-4 rounded-full border-2 border-foreground/70" />
+        <span className="size-4 rounded-full border-2 border-current opacity-80" />
       </Button>
       <Button type="button" variant="ghost" onClick={onRecents} aria-label="Recents" className="h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center">
-        <span className="size-3.5 rounded-[3px] border-2 border-foreground/70" />
+        <span className="size-3.5 rounded-[3px] border-2 border-current opacity-80" />
       </Button>
     </div>
   );

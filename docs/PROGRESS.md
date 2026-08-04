@@ -8,6 +8,40 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-04 — every `border-<color>` utility in the app was dead, and that is why Android had no visible Back (DONE)
+
+Started from a user report — "stuck in the Android shell, there is no back button, and
+the mobile back affordance is hidden generally". Both turned out to share one root cause
+that had nothing to do with the shells.
+
+**`app/globals.css` overrode every border-colour utility in the codebase.** The line
+`* { box-sizing: border-box; border-color: var(--color-border); }` sat **outside any
+`@layer`**, and unlayered CSS beats every layered rule in the cascade. Tailwind 4 emits
+all utilities into layers, so that single `*` selector silently won against all of them.
+Measured in the live page before the fix — `border-red-500`, `border-primary` and
+`border-foreground/70` all computed to `rgba(0,0,0,0.1)`, byte-identical to an element
+with no class at all. **64 usages across 48 files**, including 15 `border-primary`
+selection states, 10 `border-destructive/*` danger states and 6 `border-ring`. Wrapping
+the rule in `@layer base` fixes all of them at once; `box-sizing` moved with it because
+`box-border`/`box-content` were subject to the same trap. After: `border-primary` →
+`rgb(31,109,240)`. A visible side effect on the desktop shell: the CPU meter bar in the
+Today widget now renders — it had been drawing its fill in the default 10% grey.
+
+**The Android NavBar was transparent, so Back/Home/Recents were invisible.** The row
+carried `text-foreground` with no background of its own, and the Android wallpaper is
+dark — dark-on-dark. It now carries `bg-background/80 backdrop-blur-xl border-t`, which
+restores the token contract (background and foreground are a legible pair by
+construction, whatever the theme). Home/Recents switched from `border-foreground/70` to
+`border-current` so an outline always follows its own button's colour; the back chevron
+went `size-5` → `size-6`. Measured after: scrim `oklab(0.968…/0.8)`, icon `rgb(28,28,31)`
+— roughly 15:1. The 48×48 targets were already correct; nothing was ever missing, it was
+unreadable.
+
+On standardising the two mobile shells: iOS exits an app with a labelled blue **"Done"**
+top-right, Android with the bottom NavBar back. Those are the correct platform metaphors
+and were deliberately kept — the actual defect was that one of the two could not be seen.
+Both are now visible, labelled, and ≥44 px.
+
 ## 2026-08-03 (UX) — a real browser pass, a demo instance back, and I broke prod proving it (DONE)
 
 First pass that opened the product in a browser instead of reading the code. Also the

@@ -197,7 +197,17 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-* { box-sizing: border-box; border-color: var(--color-border); }
+/* MUST stay inside @layer base. Unlayered CSS beats EVERY layered rule in the
+   cascade, and Tailwind 4 emits all utilities into layers — so while this lived
+   outside a layer it silently overrode every `border-<color>` utility in the app.
+   Measured before the fix: `border-red-500`, `border-primary` and
+   `border-foreground/70` all computed to rgba(0,0,0,0.1), identical to no class
+   at all — 64 usages across 48 files, including 15 `border-primary` selection
+   states, 10 `border-destructive/*` danger states and 6 `border-ring`. Same trap
+   applies to `box-border`/`box-content`, hence box-sizing moves in here too. */
+@layer base {
+  * { box-sizing: border-box; border-color: var(--color-border); }
+}
 /* Global :focus-visible fallback — component primitives (Button etc.) own
    their own rings; this catches native <a>/<input>, custom tabIndex divs and
    anything else without a bespoke focus style. WCAG 2.4.7 (Focus Visible). */
