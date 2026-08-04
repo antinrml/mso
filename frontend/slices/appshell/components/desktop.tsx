@@ -46,6 +46,12 @@ export function OsDesktop() {
 function Surface() {
   const r = useResponsive();
   const prefs = useShellPrefs();
+  // False on the server AND on the first client render, true from the first effect
+  // onwards — so the server HTML and the tree React hydrates are identical by
+  // construction. See the note above the early return below.
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot post-hydration flip, the same pattern lib/appearance/store.tsx and lib/quicklinks/store.tsx use. A lazy initializer cannot work here: the whole point is that the FIRST render must match the server, and only the effect (which never runs on the server) may flip it.
+  useEffect(() => setMounted(true), []);
 
   // The live form factor picks the surface; the user's per-surface preference
   // picks WHICH shell renders there (desktop look vs mobile look, chosen
@@ -63,6 +69,30 @@ function Surface() {
   // mobile shell, surprising the user when they switch back.
   useWindowSnapKeys(!!desc.windowed);
   const framed = surface === "mobile" && r.vw >= 768;
+
+  // The shell renders ONLY after mount, and this is a correctness fix, not caution.
+  // Which shell to draw depends on three things the server cannot know: the viewport
+  // (`useResponsive` measures `window.innerWidth`), the persisted per-surface shell
+  // choice (localStorage `sv:shell`) and the wallpaper preference. So SSR always
+  // guessed desktop/macOS, and on a phone the client then rendered iOS instead — two
+  // different trees, which is a guaranteed hydration mismatch. React responded by
+  // throwing away the hydrated tree and re-rendering the whole shell on the client,
+  // and because Radix derives ids from `useId`, the divergence surfaced as mismatched
+  // DropdownMenuTrigger ids in the dev overlay.
+  //
+  // This is also a UX improvement, not a trade: the old behaviour PAINTED the macOS
+  // desktop on a phone and then swapped it for iOS. A brief flash of the themed
+  // background is strictly better than a flash of the wrong operating system.
+  // Nothing is lost to SEO — the catch-all is fully dynamic and auth-gated, and the
+  // shell was never usable without JS anyway.
+  //
+  // #main-content and the sizing stay in the skeleton so the skip link keeps a target
+  // and the layout does not jump. `bg-background` is already the correct light/dark
+  // value here: the pre-hydration script in app/layout.tsx sets data-theme before
+  // first paint.
+  if (!mounted) {
+    return <div id="main-content" className="relative h-dvh w-screen overflow-hidden bg-background" />;
+  }
 
   return (
     <ActiveShellProvider id={desc.id} surface={surface}>

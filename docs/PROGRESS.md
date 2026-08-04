@@ -8,6 +8,42 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-04 (hydration, final) — the fourth cause closed; zero mismatches anywhere (DONE)
+
+The architectural one the previous entry deliberately left open.
+
+**The shell now renders only after mount.** Which shell to draw depends on three things
+the server cannot know — the viewport (`useResponsive` measures `window.innerWidth`), the
+persisted per-surface choice (`localStorage` `sv:shell`) and the wallpaper preference — so
+SSR always guessed desktop/macOS and a phone client then rendered iOS. Two different trees
+is a guaranteed mismatch, and React answered by discarding the hydrated tree and
+re-rendering the entire shell client-side. Because Radix derives ids from `useId`, the
+divergence surfaced in the dev overlay as mismatched `DropdownMenuTrigger` ids — a symptom
+that sent the first look at it in the wrong direction.
+
+`Surface` now returns a skeleton (`#main-content` + sizing + `bg-background`) until a
+one-shot post-hydration flag flips, so the server HTML and the tree React hydrates are
+identical by construction.
+
+**This is an improvement, not a trade-off, on the UX side.** The old behaviour PAINTED the
+macOS desktop on a phone and then swapped it for iOS — a flash of the wrong operating
+system. A brief flash of the themed background is strictly better, and `bg-background` is
+already the right light/dark value because the pre-hydration script in `app/layout.tsx`
+sets `data-theme` before first paint. Nothing is lost to SEO: the catch-all is fully
+dynamic and auth-gated, and the shell was never usable without JS.
+
+**The measured cost, stated plainly: mobile LCP 160 ms → 320 ms**, because the shell is no
+longer painted from SSR. Desktop LCP 380 → 420 ms. Both remain far under the 2500 ms
+"good" threshold, and desktop CLS improved 0.008 → 0.001. The old 160 ms was painting a
+shell that was then thrown away and rebuilt, so it was never a real 160 ms to the content
+the user wanted.
+
+**Verified end to end on the production build:** hydration clean on desktop and mobile,
+**0 JS errors across all 17 apps in both mobile shells** (was 17/17 erroring), 17/17 still
+render, shell resolution still correct (390 → ios, 412 → ios, 1280 → macos), no horizontal
+overflow, skip link and its `#main-content` target both intact, smoke 4/4. Mobile
+sub-24 px touch targets are down to one — the `sr-only` skip link, which is 1×1 by design.
+
 ## 2026-08-04 (hydration + mobile polish) — three of four hydration mismatches killed (DONE)
 
 Chasing React #418, which had been firing on every page load and every app. A hydration
