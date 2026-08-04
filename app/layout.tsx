@@ -59,8 +59,18 @@ export default async function RootLayout({
             paints (dark users otherwise get a light flash). A raw nonced <script>
             at body-top runs synchronously during parse; the nonce (proxy.ts →
             x-nonce header) satisfies the strict CSP script-src. */}
+        {/* suppressHydrationWarning is REQUIRED here, not cosmetic. Browsers blank the
+            `nonce` content attribute once CSP has consumed it — a deliberate
+            anti-exfiltration measure — so the DOM reports nonce="" while the server
+            HTML carried the real value. React compares the attribute and reports a
+            mismatch on EVERY page load. Confirmed against a non-minified dev build:
+              + nonce="NjA3NDAxNWIt…"   (server)
+              - nonce=""                (client)
+            The nonce itself must stay: proxy.ts mints it per request and the strict
+            CSP script-src will not execute this script without it. */}
         <script
           nonce={nonce}
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html:
               'try{var t=JSON.parse(localStorage.getItem("mso:tweaks"));if(t&&t.theme)document.documentElement.dataset.theme=t.theme;}catch(e){}',

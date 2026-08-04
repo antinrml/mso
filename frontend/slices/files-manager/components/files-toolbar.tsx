@@ -53,7 +53,7 @@ export function FilesToolbar(props: {
         <Button variant="ghost" size="icon" onClick={props.onOpenSidebar} aria-label="Browse" className="size-9 shrink-0 text-primary [@media(pointer:coarse)]:size-[44px]">
           <PanelLeft className="size-5" />
         </Button>
-        <Button variant="ghost" size="icon" disabled={!props.canBack} onClick={props.onBack} aria-label="Back" className="size-9 shrink-0 text-primary disabled:text-muted-foreground [@media(pointer:coarse)]:size-[44px]">
+        <Button variant="ghost" size="icon" disabled={!props.canBack} onClick={props.onBack} aria-label="Previous folder" className="size-9 shrink-0 text-primary disabled:text-muted-foreground [@media(pointer:coarse)]:size-[44px]">
           <ChevronRight className="size-5 rotate-180" />
         </Button>
         <FileCrumbs
@@ -114,7 +114,7 @@ export function FilesToolbar(props: {
         <PanelLeft className="size-4" />
       </Button>
       <div className="flex items-center gap-0.5">
-        <Button variant="ghost" size="icon" disabled={!props.canBack} onClick={props.onBack} aria-label="Back" className="size-7 [@media(pointer:coarse)]:size-9">
+        <Button variant="ghost" size="icon" disabled={!props.canBack} onClick={props.onBack} aria-label="Previous folder" className="size-7 [@media(pointer:coarse)]:size-9">
           <ChevronRight className="size-4 rotate-180" />
         </Button>
         <Button variant="ghost" size="icon" disabled={!props.canForward} onClick={props.onForward} aria-label="Forward" className="size-7 [@media(pointer:coarse)]:size-9">

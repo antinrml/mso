@@ -8,6 +8,61 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-04 (hydration + mobile polish) — three of four hydration mismatches killed (DONE)
+
+Chasing React #418, which had been firing on every page load and every app. A hydration
+mismatch is not cosmetic: React discards the hydrated tree and re-renders the whole shell
+on the client. Localised with a **non-minified dev build in a throwaway `git archive`
+tree on :4007** — the minified production message names nothing. Four distinct causes,
+three fixed.
+
+1. **The `nonce` attribute on the theme-restore inline script.** Browsers blank the
+   `nonce` content attribute once CSP has consumed it (anti-exfiltration), so the DOM
+   reports `nonce=""` while the server HTML carried the real value. Dev build showed it
+   verbatim: `+ nonce="NjA3NDAxNWIt…"` / `- nonce=""`. Fixed with
+   `suppressHydrationWarning` on that one script. The nonce itself must stay — proxy.ts
+   mints it per request and the strict CSP will not run the script without it.
+2. **`useWidgetState`'s `getServerSnapshot` returned the live `state`.** React uses
+   `getServerSnapshot` for the *first client render while hydrating*, and by then the
+   module-level `state` had already been read from `localStorage`. So the server rendered
+   the desktop widget layer off and hydration rendered it on, throwing the whole tree
+   away. Now returns a frozen SSR default matching `load()`'s no-localStorage branch.
+3. **`Clock` could not match, for two independent reasons**: it captures `new Date()` at
+   SSR time and again at hydration time, and `toLocaleTimeString`/`toLocaleDateString`
+   resolve against the *server's* locale during SSR and the *browser's* on the client.
+   Both are named on React's own hydration-mismatch page. `suppressHydrationWarning` on
+   each branch — which is precisely the attribute's purpose — keeps the server text (no
+   layout shift) and lets the client correct it on the next tick.
+
+**Result: the home route is hydration-clean on desktop and mobile in the production
+build.** Verified against :4005, not just dev.
+
+**STILL OPEN, and architectural rather than a bug.** Deep-linking into an app at phone
+width still mismatches. The dev trace points at a Radix `DropdownMenuTrigger`'s
+`useId`-generated `id`, which is a *symptom*: `responsive-provider.ts`'s `initial()`
+deliberately returns **desktop** for SSR, so the server renders the macOS shell (menu bar
+full of dropdowns) while the client computes mobile and renders iOS. Different trees →
+different `useId` sequence. Closing it means changing what the server renders for the
+shell (a neutral skeleton, or no shell until mount), which trades away SSR'd content and
+risks a flash. Left for a deliberate decision rather than changed in passing.
+
+**Mobile polish shipped alongside**, all from actually looking at the rendered pixels:
+- Android home labels and clock were `foreground` (dark) directly on a dark wallpaper.
+  Now white + text-shadow, matching the treatment iOS home/app-library already used.
+  The colour is set on the **home grid container**, not inside `AppCell` — that same
+  cell is reused by the App Drawer, a light sheet where white would be invisible.
+  Caught before shipping by checking the cell's other call site.
+- `Clock mode="date"` hard-codes `text-muted-foreground`, correct on a card and invisible
+  on a wallpaper. Overridden locally with a `[&_div]:` descendant selector — (0,1,1)
+  beats the class deterministically, with no `!important` and no API change to a
+  component four shells share.
+- Files' history back said `aria-label="Back"`, identical to the two shell-level
+  exit-app controls, so a screen reader announced "Back" three times with three
+  different meanings. It is now "Previous folder"; "Back" is reserved for leaving an app.
+
+**Feature sweep: 17/17 apps render in both mobile shells**, each with a reachable exit
+(iOS "Done", Android NavBar + header). No blank screens, no fatals.
+
 ## 2026-08-04 — every `border-<color>` utility in the app was dead, and that is why Android had no visible Back (DONE)
 
 Started from a user report — "stuck in the Android shell, there is no back button, and

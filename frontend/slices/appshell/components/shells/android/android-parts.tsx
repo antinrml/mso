@@ -119,6 +119,10 @@ export function AppCell({ app, onClick }: { app: AppDescriptor; onClick: () => v
   return (
     <Button type="button" variant="ghost" onClick={onClick} className="h-auto p-0 font-normal hover:bg-transparent flex flex-col items-center gap-1.5">
       <span className="size-14"><AppIcon app={app} /></span>
+      {/* Colour is INHERITED, deliberately: this cell renders both on the home grid
+          (over the wallpaper, where the parent sets white + a shadow) and inside the
+          App Drawer (a light bg-background/95 sheet, where white would be invisible).
+          Hard-coding either one breaks the other surface. */}
       <span className="w-full truncate text-center text-[11px]">{app.title}</span>
     </Button>
   );

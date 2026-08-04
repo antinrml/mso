@@ -122,7 +122,13 @@ function AndroidShell() {
             grid + NavBar drop out of tab/AT order under the z-20 app layer).
             Pull down → Control Center; clock+date live on the wallpaper. */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-1" inert={showApp} aria-hidden={showApp} onPointerDown={pullDown} onContextMenu={onHomeContext} style={{ paddingTop: "var(--sai-top, 0px)" }}>
-          <div className="mt-6 shrink-0">
+          {/* Same reason as the app labels: the clock sits on the wallpaper, so it
+              needs its own light-on-dark treatment rather than the theme foreground. */}
+          {/* `[&_div]:text-white/80` targets Clock mode="date", which hard-codes
+              text-muted-foreground — correct on a card, invisible on a wallpaper. The
+              descendant selector is (0,1,1) so it beats that class deterministically,
+              without !important and without changing Clock's shared API for one caller. */}
+          <div className="mt-6 shrink-0 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.5)] [&_div]:text-white/80">
             <Clock mode="big" />
             <Clock mode="date" />
           </div>
@@ -142,7 +148,11 @@ function AndroidShell() {
               an agent workspace (20-24 Hermes/OpenClaw features). The grid is already
               `min-h-0 overflow-y-auto`, so it just scrolls a longer list; usePullDown
               still arms only at scrollTop 0, so the shade gesture is unchanged. */}
-          <div ref={gridRef} className="mt-5 grid min-h-0 grid-cols-4 content-start gap-x-3 gap-y-5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* White + shadow HERE rather than inside AppCell: the same cell is reused by
+              the App Drawer, which is a light sheet where white text would vanish. This
+              grid is the only surface that sits directly on the wallpaper. Matches the
+              treatment the iOS home and app library already use. */}
+          <div ref={gridRef} className="mt-5 grid min-h-0 grid-cols-4 content-start gap-x-3 gap-y-5 overflow-y-auto text-white [scrollbar-width:none] [text-shadow:0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-scrollbar]:hidden">
             {dockable.map((a) => (
               <AppCell key={a.id} app={a} onClick={() => launch(a)} />
             ))}

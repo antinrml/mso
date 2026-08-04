@@ -101,6 +101,21 @@ function commit(next: WidgetState) {
   subs.forEach((f) => f());
 }
 
+// getServerSnapshot must return what the SERVER rendered, which is load()'s
+// no-localStorage branch — NOT `state`. React uses getServerSnapshot for the first
+// client render while hydrating, and by then the module-level `state` has already
+// been populated from localStorage. Returning it there meant the server rendered
+// the widget layer as off while hydration rendered it on, and React threw the whole
+// shell tree away with "Hydration failed because the server rendered HTML didn't
+// match the client" on every single page load. Frozen + module-level so the
+// reference is stable; an inline object would loop useSyncExternalStore.
+const SSR_STATE: WidgetState = Object.freeze({
+  on: false,
+  enabled: DEFAULT_ENABLED,
+  sizes: {},
+  positions: {},
+}) as WidgetState;
+
 export function useWidgetState(): WidgetState {
   return useSyncExternalStore(
     (cb) => {
@@ -110,7 +125,7 @@ export function useWidgetState(): WidgetState {
       };
     },
     () => state,
-    () => state,
+    () => SSR_STATE,
   );
 }
 
