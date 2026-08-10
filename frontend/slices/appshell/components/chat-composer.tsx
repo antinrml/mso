@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { ArrowUp, Send, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useActiveShell } from "../registry/shells";
-import { alfaSources } from "../lib/alfa-sources";
+import { alfaSources, subscribeAlfaSources, alfaSourcesVersion } from "../lib/alfa-sources";
 import { mentionAt, applyMention, rankMentions, type MentionItem } from "../lib/mentions";
 
 // THE composer. Every AI input in MSO renders this one — the Assistant app, the
@@ -39,6 +39,11 @@ export function ChatComposer({
   const ref = useRef<HTMLTextAreaElement>(null);
   const canSend = value.trim().length > 0 && !streaming;
   const ios = useActiveShell().id === "ios";
+  // Re-render when a source's data lands asynchronously: the consumer module is
+  // imported on this component's first render, and its skills fetch starts on the
+  // first `/`. `items` below is computed during render, so without this the new
+  // rows would only appear on the user's next keystroke.
+  useSyncExternalStore(subscribeAlfaSources, alfaSourcesVersion, () => 0);
   const agentName = alfaSources().activeAgentName?.() ?? null;
 
   const query = dismissed ? null : mentionAt(value, caret);

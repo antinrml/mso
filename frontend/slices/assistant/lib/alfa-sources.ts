@@ -1,6 +1,6 @@
 "use client";
 
-import { registerAlfaSources, type MentionItem } from "@/features/os-shell";
+import { notifyAlfaSources, registerAlfaSources, type MentionItem } from "@/features/os-shell";
 import { HOST_TOOLS } from "../host-tools/catalog";
 import { activeAgent, agentList, setActiveAgentId } from "./store";
 
@@ -14,8 +14,11 @@ import { activeAgent, agentList, setActiveAgentId } from "./store";
 // exists — `skills.read` is a tool, so naming a skill is enough for Alfa to go and
 // read it. No new endpoint, no attachment plumbing, no second execution path.
 //
-// Skills are fetched ONCE and cached for the tab. There are ~88 of them and the
-// menu filters on every keystroke; refetching per keystroke would be absurd.
+// Skills are fetched ONCE and cached for the tab, and NOT until the first `/`.
+// There are ~88 of them, the read is ~600 KB of SKILL.md off disk server-side, and
+// nothing renders them until that menu opens — it used to run on every signed-in
+// page load. There are ~88 and the menu filters on every keystroke; refetching per
+// keystroke would be absurd.
 
 type SkillRow = { name: string; description?: string };
 
@@ -41,6 +44,7 @@ function loadSkills(): void {
     })
     .finally(() => {
       inflight = null;
+      notifyAlfaSources(); // the composer computes its list during render
     });
 }
 
@@ -56,13 +60,14 @@ const toolItems: MentionItem[] = HOST_TOOLS.map((t) => ({
 }));
 
 /**
- * Publish @ and / to the shared composer. Called ONCE from os-shell/integrations,
- * not from the Assistant app: neither source needs that app to be open (HOST_TOOLS
- * is a static array, skills are one fetch), and requiring it would leave the menus
- * empty in exactly the surface that needs them most — the per-app Alfa sheet.
+ * Publish @ and / to the shared composer. Registered as a LOADER from
+ * os-shell/integrations rather than called at module scope, so this module (tool
+ * catalog + its run() closures + agent presets, ~88 KB) stays out of first load;
+ * the first composer render pulls it in. Not called from the Assistant app either:
+ * requiring that app to be open would leave the menus empty in exactly the surface
+ * that needs them most — the per-app Alfa sheet.
  */
 export function installAlfaSources(): void {
-  loadSkills();
   registerAlfaSources({
     agents: () =>
       agentList().map((a) => ({
@@ -80,7 +85,10 @@ export function installAlfaSources(): void {
     // 8 rows — skills-first meant a bare "/" only ever showed skills and the
     // executable tools were unreachable without typing their name. Filtering still
     // reaches everything; this only decides what an empty query shows.
-    commands: () => [...toolItems, ...(skillCache ?? [])],
+    commands: () => {
+      loadSkills(); // first `/` starts the fetch; tools render immediately
+      return [...toolItems, ...(skillCache ?? [])];
+    },
     activeAgentName: () => activeAgent()?.name ?? null,
   });
 }

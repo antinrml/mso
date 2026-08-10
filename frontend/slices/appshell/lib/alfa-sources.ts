@@ -22,11 +22,51 @@ export type AlfaSources = {
 const NO_SOURCES: AlfaSources = { agents: () => [], commands: () => [] };
 let sources: AlfaSources = NO_SOURCES;
 
+const subs = new Set<() => void>();
+let version = 0;
+
+// The consumer's source module is worth ~88 KB of chunk (tool catalog, its run()
+// closures, agent presets) and NOTHING renders it until an AI composer exists. So
+// the consumer registers a LOADER instead of importing eagerly, and the first
+// composer render is what pulls it in.
+let loader: (() => void | Promise<void>) | null = null;
+let loaderStarted = false;
+
+export function registerAlfaLoader(fn: () => void | Promise<void>): void {
+  loader = fn;
+}
+
 export function registerAlfaSources(next: AlfaSources): void {
   sources = next;
+  notifyAlfaSources();
+}
+
+/** Call when a getter's data lands asynchronously (the skills fetch). The composer
+ *  computes its item list DURING render — deliberately, see chat-composer — so
+ *  without this the new rows only appear on the user's next keystroke. */
+export function notifyAlfaSources(): void {
+  version++;
+  for (const cb of subs) cb();
+}
+
+export function subscribeAlfaSources(cb: () => void): () => void {
+  subs.add(cb);
+  return () => {
+    subs.delete(cb);
+  };
+}
+
+export function alfaSourcesVersion(): number {
+  return version;
 }
 
 export function alfaSources(): AlfaSources {
+  if (loader && !loaderStarted) {
+    loaderStarted = true;
+    // Fire and forget: the loader calls registerAlfaSources, which notifies.
+    void Promise.resolve(loader()).catch(() => {
+      loaderStarted = false; // a failed chunk may succeed on the next open
+    });
+  }
   return sources;
 }
-

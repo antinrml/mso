@@ -9,6 +9,7 @@ import {
   lock,
   openWindow,
   registerCommands,
+  registerAlfaLoader,
   registerContextMenu,
   resetDesktopIcons,
   setAddDialog,
@@ -18,12 +19,16 @@ import {
   toast,
   type MenuItem,
 } from "@/features/appshell";
-import { installAlfaSources } from "@/features/assistant";
 
 // @ agents and / skills+tools for every AI composer. Registered here rather than
 // from the Assistant app so the menus work in the per-app Alfa sheet before that
-// app has ever been opened. Pulls only the tool catalog + presets, not the UI.
-installAlfaSources();
+// app has ever been opened — but as a LOADER, not an eager import: the catalog and
+// presets are ~88 KB that nothing renders until a composer exists, and the module
+// also fired a /api/skills read (90 files, ~600 KB off disk) on every page load.
+registerAlfaLoader(async () => {
+  const { installAlfaSources } = await import("@/features/assistant");
+  installAlfaSources();
+});
 
 // Unlock = the signed session cookie is still valid. A dead session falls
 // through to false; the user reloads and lands on the login gate instead.

@@ -1,15 +1,39 @@
 "use client";
-// Lazy shell registration. The non-default shells (Windows / Android / Dashboard)
-// register their METADATA eagerly here — so resolveShell() + the shell switcher
-// work at startup — but their COMPONENT is React.lazy, so each becomes its own
-// chunk: a phone never downloads the desktop chrome it can't reach by default.
-// The Surface (desktop.tsx) wraps the shell in <Suspense>, so SSR renders the
-// fallback rather than a client-only shell (also removes the #418 hydration
-// mismatch). macOS + iOS stay EAGER in desktop.tsx (zero-flash defaults; their
-// components share desktop.tsx with the Surface, so they can't split cleanly here).
+// Lazy shell registration. Every shell registers its METADATA eagerly here — so
+// resolveShell() + the shell switcher work at startup — but its COMPONENT is
+// React.lazy, so each becomes its own chunk: a phone never downloads the desktop
+// chrome it cannot reach, and a desktop never downloads the phone chrome.
+//
+// macOS + iOS used to be EAGER, registered inside desktop.tsx because DesktopChrome
+// shared that module with Surface. The measured cost of that convenience was one
+// 267 KB first-load chunk carrying BOTH chromes plus every shell feature to every
+// visitor. DesktopChrome now lives in components/shells/macos/, so all five split
+// the same way. Surface wraps the shell in <Suspense fallback={null}> and paints
+// the wallpaper outside it, so the pre-chrome frame shows the themed background —
+// the same trade the post-mount render already makes for hydration correctness.
 import { lazy } from "react";
-import { AppWindow, Bot, Activity } from "lucide-react";
+import { AppWindow, Bot, Activity, Monitor, Smartphone } from "lucide-react";
 import { registerShell } from "./shells";
+
+registerShell({
+  id: "macos",
+  label: "macOS",
+  icon: Monitor,
+  surface: "desktop",
+  group: "Desktop",
+  windowed: true,
+  wallpaper: "aurora",
+  render: lazy(() => import("../components/shells/macos/macos-shell").then((m) => ({ default: m.DesktopChrome }))),
+});
+registerShell({
+  id: "ios",
+  label: "iOS",
+  icon: Smartphone,
+  surface: "mobile",
+  group: "Mobile",
+  wallpaper: "ios",
+  render: lazy(() => import("../components/mobile-shell").then((m) => ({ default: m.MobileShell }))),
+});
 
 registerShell({
   id: "windows",
