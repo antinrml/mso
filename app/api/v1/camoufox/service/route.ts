@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/agent/server";
 import { camoufoxStatus, setCamoufoxEnabled } from "@/lib/camoufox/service";
-import { apiError, audit, readJson } from "@/lib/host";
+import { apiError, audit, rateLimited, readJson } from "@/lib/host";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +23,13 @@ export async function GET(req: Request) {
 // POST /camoufox/service {action:"start"|"stop"} → the status AFTER the change.
 export async function POST(req: Request) {
   if (!(await verifyAuth(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Each start forks systemctl and boots a browser on an X display. This route had
+  // no limit at all, which was survivable while the only caller was a toggle in the
+  // UI and stopped being so when an MCP bearer could reach it. Same shape and
+  // number as the managed-app bucket, which is the same kind of operation.
+  if (rateLimited("camoufox", 12, 60_000)) {
+    return NextResponse.json({ error: "too many operations" }, { status: 429 });
+  }
   try {
     const { action } = (await readJson(req)) as { action?: unknown };
     if (action !== "start" && action !== "stop") {

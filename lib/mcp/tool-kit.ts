@@ -33,6 +33,18 @@ export interface McpTool {
      *  NOT a generic result→outcome mapper: one call site is not a pattern. */
     outcome?: (result: unknown) => { ok: boolean; action?: AuditAction; detail?: string };
   };
+  /** Per-OPERATION rate limit, mirroring the one its /api/v1 route already applies.
+   *
+   *  The token bucket in app/mcp/route.ts is per TOKEN (120/min, 5000/day) and says
+   *  nothing about which tool was called, so an MCP client got the same allowance
+   *  for `apps_power` as for `fs_list` — while the browser and the CLI hit
+   *  `managed-app:<id>` at 12/min going through the route. That is a 10x gap on a
+   *  daemon restart, available to a WRITE-scope token that holds no shell.
+   *
+   *  `keyArg` puts the bucket on the same key the route uses, so MCP and the UI
+   *  share it rather than getting one each. Numbers here must MATCH the route's,
+   *  never undercut them — the route is the authority. */
+  limit?: { max: number; windowMs: number; keyArg?: string; key: string };
 }
 
 export const str = (a: Record<string, unknown>, k: string): string => {

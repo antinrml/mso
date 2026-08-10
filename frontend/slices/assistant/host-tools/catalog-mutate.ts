@@ -88,6 +88,39 @@ export const MUTATE_TOOLS: HostTool[] = [
     },
   },
   {
+    name: "apps.power",
+    group: "apps",
+    label: "Start/stop app",
+    effect: "mutate",
+    description:
+      "Start, stop, restart or back up a managed application (hermes, openclaw). Bounded to those apps and those four verbs — this exists so restarting a daemon does not require exec.run, which the destructive-command filter refuses for systemctl anyway. Check apps.list or apps.logs first.",
+    parameters: obj({
+      "id!": str("Managed app id from apps.list, e.g. hermes"),
+      "action!": str("start | stop | restart | backup"),
+    }),
+    run: async (api, a) => {
+      const action = String(a.action);
+      if (!["start", "stop", "restart", "backup"].includes(action))
+        return `unknown action "${action}" — use start, stop, restart or backup`;
+      const r = await api.apps.power(String(a.id), action as "start" | "stop" | "restart" | "backup");
+      return `${r.name}: ${r.running ? "running" : "stopped"} (after ${action})`;
+    },
+  },
+  {
+    name: "browser.power",
+    group: "apps",
+    label: "Browser on/off",
+    effect: "mutate",
+    description:
+      "Start or stop the Camoufox browser session. Starting boots a real Firefox on a headless display holding the user's live logins; it self-terminates after 2h. Stop it when the user is done.",
+    parameters: obj({ "on!": str("true to start, false to stop") }),
+    run: async (api, a) => {
+      const on = String(a.on).toLowerCase() === "true";
+      const s = await api.browser.power(on);
+      return `camoufox is now ${s.running ? "running" : "stopped"}`;
+    },
+  },
+  {
     name: "exec.run",
     group: "terminal",
     label: "Run command",

@@ -90,9 +90,13 @@ export function HttpAdapter(cfg: { url?: string }): OsApi {
       processes: () => req("GET", "/sys/processes"),
     },
     apps: {
-      list: () => req("GET", "/apps"),
-      start: (slug) => req("POST", `/apps/${slug}/start`),
-      stop: (slug) => req("POST", `/apps/${slug}/stop`),
+      list: () => req("GET", "/managed-apps"),
+      logs: (id) => req("GET", `/managed-apps/${encodeURIComponent(id)}/logs`),
+      power: (id, action) => req("POST", `/managed-apps/${encodeURIComponent(id)}`, { body: { action } }),
+    },
+    browser: {
+      status: () => req("GET", "/camoufox/service"),
+      power: (on) => req("POST", "/camoufox/service", { body: { action: on ? "start" : "stop" } }),
     },
   };
 }

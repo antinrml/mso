@@ -63,6 +63,12 @@ Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`.
 | `write` | + `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
 | `exec` | + `exec_run` `browser_power` |
 
+Alfa — the in-app assistant — has the same capabilities under dot.case names, and
+`lib/mcp/parity.test.ts` fails if one surface gains a tool the other lacks without a
+written reason. The two catalogs stay separate on purpose (different transport,
+different guard) but may not drift by accident, which they did: MCP shipped the
+managed-app and browser tools before Alfa had them.
+
 The tiering is about blast radius, not about which layer the call lands in.
 `apps_logs` reads a daemon's journal, so "why is hermes down?" is answerable from
 a `read` token — the same question through `exec_run` would need a full shell.
@@ -160,6 +166,13 @@ Per token: 120 calls/min, 5,000/day. Per IP before auth: 240/min. DCR: 10
 registrations/hour/IP. Token exchange: 30/min/IP. All in-memory (process-local,
 resets on restart) — enough to blunt a runaway agent, which is the realistic
 failure mode for an endpoint whose top scope is a shell.
+
+Those are per TOKEN and say nothing about which tool ran, so each mutating tool
+also carries the **per-operation** limit its `/api/v1` route already applies, on
+the SAME bucket key — MCP and the browser share one allowance rather than getting
+one each. `exec_run` 60/min, fs writes 120/min, fs copy/delete 60/min,
+`apps_power` and `browser_power` 12/min per app. Without this a write-scope token
+could restart a daemon 120×/min while the UI was capped at 12.
 
 ## Layout
 

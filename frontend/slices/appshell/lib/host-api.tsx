@@ -64,6 +64,12 @@ export type Process = {
 
 export type AppManifest = { name: string; slug: string; runtime: string; entry: string };
 
+/** A managed application on the host (hermes, openclaw) — the thing that actually
+ *  has server state, unlike the UI app list, which lives in localStorage. */
+export type ManagedAppSummary = { id: string; name: string; installed: boolean; running: boolean };
+export type ManagedAppAction = "start" | "stop" | "restart" | "backup";
+export type BrowserState = { installed: boolean; running: boolean; autostart: boolean };
+
 export type OsApi = {
   mode: "mock" | "live";
   auth: {
@@ -100,10 +106,17 @@ export type OsApi = {
     statsStream: (onEvent: (s: Partial<SysStats>) => void) => Unsub;
     processes: () => Promise<Process[]>;
   };
+  // Managed apps, not the UI app list. `start`/`stop` used to sit here pointed at
+  // /apps/:slug/start and /apps/:slug/stop — neither of which is a route — while
+  // `list` hit /apps, which returns [] by construction.
   apps: {
-    list: () => Promise<AppManifest[]>;
-    start: (slug: string) => Promise<{ slug: string; state: string }>;
-    stop: (slug: string) => Promise<{ ok: boolean }>;
+    list: () => Promise<ManagedAppSummary[]>;
+    logs: (id: string) => Promise<{ available: boolean; entries: string[] }>;
+    power: (id: string, action: ManagedAppAction) => Promise<ManagedAppSummary>;
+  };
+  browser: {
+    status: () => Promise<BrowserState>;
+    power: (on: boolean) => Promise<BrowserState>;
   };
 };
 

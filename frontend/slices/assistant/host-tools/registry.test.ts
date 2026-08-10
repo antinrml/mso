@@ -7,8 +7,8 @@ import { findHostTool, HOST_AI_TOOLS } from "./registry";
 describe("host-tools registry", () => {
   it("classifies reads as read; fs mutations + exec as mutate", () => {
     const eff = (n: string) => findHostTool(n)?.effect;
-    for (const n of ["fs.list", "fs.read", "fs.search", "fs.usage", "sys.stats", "sys.processes", "apps.list", "skills.list", "skills.read", "memory.remember"]) expect(eff(n)).toBe("read");
-    for (const n of ["fs.write", "fs.mkdir", "fs.move", "fs.copy", "fs.delete", "exec.run", "memory.forget"]) expect(eff(n)).toBe("mutate");
+    for (const n of ["fs.list", "fs.read", "fs.search", "fs.usage", "sys.stats", "sys.processes", "apps.list", "apps.logs", "browser.status", "skills.list", "skills.read", "memory.remember"]) expect(eff(n)).toBe("read");
+    for (const n of ["fs.write", "fs.mkdir", "fs.move", "fs.copy", "fs.delete", "exec.run", "memory.forget", "apps.power", "browser.power"]) expect(eff(n)).toBe("mutate");
   });
 
   it("memory.forget parks a card; memory.remember does not", () => {

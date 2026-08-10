@@ -1,4 +1,4 @@
-import { audit } from "@/lib/host";
+import { audit, rateLimited } from "@/lib/host";
 import { TOOLS, TOOLS_BY_NAME } from "./tools";
 import { allows, type Scope } from "./scope";
 
@@ -80,6 +80,20 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       }
       for (const k of tool.inputSchema.required ?? []) {
         if (args[k] == null) return fail(id, -32602, `${name} needs { ${(tool.inputSchema.required ?? []).join(", ")} }`);
+      }
+      // The per-token bucket in app/mcp/route.ts does not know which tool ran, so
+      // without this an MCP client could restart a daemon 120x/min while the UI and
+      // the CLI share a 12/min bucket for the same operation. Deliberately the SAME
+      // key the route uses, so the two share one bucket instead of getting one each.
+      if (tool.limit) {
+        const suffix = tool.limit.keyArg ? String(args[tool.limit.keyArg] ?? "") : (actor ?? "mcp");
+        if (rateLimited(`${tool.limit.key}:${suffix}`, tool.limit.max, tool.limit.windowMs)) {
+          void audit({ action: "mcp.denied", actor, target: name, ok: false, detail: "rate limited" });
+          return ok(id, {
+            content: [{ type: "text", text: `error: ${name} is rate limited (${tool.limit.max} per ${Math.round(tool.limit.windowMs / 1000)}s). Wait and retry.` }],
+            isError: true,
+          });
+        }
       }
       // MCP tools call lib/host directly, so the ROUTE-level audit that covers
       // /api/v1 never runs for them. Without this, every write, delete and exec

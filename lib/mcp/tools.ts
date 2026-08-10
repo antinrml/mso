@@ -11,6 +11,7 @@ import { READ_TOOLS } from "./tools-read";
 const MUTATE_TOOLS: McpTool[] = [
   {
     name: "fs_write",
+    limit: { key: "fs.write", max: 120, windowMs: 60_000 },
     audit: { action: "fs.write" as const, targetArg: "path" },
     description:
       "Create or overwrite a text file on the VPS. Overwrites without warning — fs_read first if you need " +
@@ -25,6 +26,7 @@ const MUTATE_TOOLS: McpTool[] = [
   },
   {
     name: "fs_mkdir",
+    limit: { key: "fs.mkdir", max: 120, windowMs: 60_000 },
     audit: { action: "fs.mkdir" as const, targetArg: "path" },
     description: "Create a directory (and any missing parents) on the VPS.",
     scope: "write",
@@ -34,6 +36,7 @@ const MUTATE_TOOLS: McpTool[] = [
   },
   {
     name: "fs_move",
+    limit: { key: "fs.move", max: 120, windowMs: 60_000 },
     audit: { action: "fs.move" as const, targetArg: "from" },
     description: "Move or rename a file or directory. Refuses when the source holds credential paths.",
     scope: "write",
@@ -42,6 +45,7 @@ const MUTATE_TOOLS: McpTool[] = [
   },
   {
     name: "fs_copy",
+    limit: { key: "fs.copy", max: 60, windowMs: 60_000 },
     audit: { action: "fs.copy" as const, targetArg: "from" },
     description: "Copy a file or directory. The cockpit's own secrets are skipped rather than duplicated.",
     scope: "write",
@@ -50,6 +54,7 @@ const MUTATE_TOOLS: McpTool[] = [
   },
   {
     name: "fs_delete",
+    limit: { key: "fs.delete", max: 60, windowMs: 60_000 },
     audit: { action: "fs.delete" as const, targetArg: "path" },
     description:
       "Delete a file or directory on the VPS. PERMANENT — there is no trash and no undo. " +
@@ -62,6 +67,7 @@ const MUTATE_TOOLS: McpTool[] = [
 
   {
     name: "apps_power",
+    limit: { key: "managed-app", max: 12, windowMs: 60_000, keyArg: "id" },
     audit: { action: "managed-app.action" as const, targetArg: "id" },
     description:
       "Start, stop or restart a managed application on the VPS. Bounded to the known apps and the " +
@@ -83,6 +89,7 @@ const MUTATE_TOOLS: McpTool[] = [
   },
   {
     name: "exec_run",
+    limit: { key: "exec", max: 60, windowMs: 60_000 },
     audit: {
       action: "exec.run" as const,
       targetArg: "command",
@@ -111,6 +118,7 @@ const MUTATE_TOOLS: McpTool[] = [
   },
   {
     name: "browser_power",
+    limit: { key: "camoufox", max: 12, windowMs: 60_000 },
     audit: { action: "camoufox.power" as const, targetArg: "on" },
     description:
       "Start or stop the Camoufox browser session on the VPS. Starting boots a real Firefox on a headless " +

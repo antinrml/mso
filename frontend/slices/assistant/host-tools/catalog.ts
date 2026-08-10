@@ -89,11 +89,43 @@ const READ_TOOLS: HostTool[] = [
     group: "apps",
     label: "List apps",
     effect: "read",
-    description: "List installed host apps (name + slug).",
+    description:
+      "List the managed applications on this VPS (hermes, openclaw) with whether each is installed and running. This is NOT the mso app list (Files, Terminal, …) — those are UI windows with no server state; use app.open for those.",
     parameters: obj({}),
     run: async (api) => {
       const apps = await api.apps.list();
-      return apps.length ? apps.map((x) => `${x.name} (${x.slug})`).join("\n") : "no apps installed";
+      if (!apps.length) return "no managed applications on this host";
+      return apps
+        .map((x) => `${x.name} (${x.id}) — ${x.installed ? (x.running ? "running" : "installed, stopped") : "not installed"}`)
+        .join("\n");
+    },
+  },
+  {
+    name: "apps.logs",
+    group: "apps",
+    label: "App logs",
+    effect: "read",
+    description:
+      "Recent log output for a managed application. USE THIS to answer 'why is hermes down' — it reads the journal and changes nothing, where the same question through exec.run needs a command the user must approve. Call apps.list first for the ids.",
+    parameters: obj({ "id!": str("Managed app id from apps.list, e.g. hermes") }),
+    run: async (api, a) => {
+      const r = await api.apps.logs(String(a.id));
+      if (!r.available) return `no logs available for ${a.id}`;
+      return clip(r.entries.join("\n") || "(empty)");
+    },
+  },
+  {
+    name: "browser.status",
+    group: "apps",
+    label: "Browser status",
+    effect: "read",
+    description:
+      "Whether the Camoufox browser session (a real Firefox on a headless display) is installed and running. The viewer URL and its one-time VNC password are NOT returned — that profile holds live logins, so the user opens it from Settings themselves.",
+    parameters: obj({}),
+    run: async (api) => {
+      const s = await api.browser.status();
+      if (!s.installed) return "camoufox is not installed on this host";
+      return `camoufox is ${s.running ? "running" : "stopped"} (autostart ${s.autostart ? "on" : "off"})`;
     },
   },
   {

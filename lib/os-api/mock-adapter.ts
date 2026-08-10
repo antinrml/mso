@@ -56,9 +56,19 @@ export function MockAdapter(): OsApi {
         ]),
     },
     apps: {
-      list: () => delay([]),
-      start: (slug) => delay({ slug, state: "running" }, 400),
-      stop: (slug) => delay({ ok: true }),
+      list: () =>
+        delay([
+          { id: "hermes", name: "Hermes", installed: true, running: true },
+          { id: "openclaw", name: "OpenClaw", installed: true, running: false },
+        ]),
+      logs: (id) =>
+        delay({ available: true, entries: [`[mock] ${id}: nothing to report — this is mock mode`] }),
+      power: (id, action) =>
+        delay({ id, name: id, installed: true, running: action !== "stop" }, 400),
+    },
+    browser: {
+      status: () => delay({ installed: true, running: false, autostart: false }),
+      power: (on) => delay({ installed: true, running: on, autostart: false }, 400),
     },
   };
 }
