@@ -101,10 +101,10 @@ export { registerContextMenu, getContextMenuItems } from "./lib/context-menu";
 export type { MenuItem, ContextMenuCtx, ContextMenuProvider } from "./lib/context-menu";
 export { ContextMenu, ShellContextMenu, useContextMenu, useShellContextMenu } from "./components/shells/context-menu";
 export { ContextMenuHost } from "./components/shells/context-menu-host";
-export { useContextZone, ContextZone, attachZone, collectZones } from "./lib/context-zone";
+export { useContextZone, attachZone, collectZones } from "./lib/context-zone";
 export type { ZoneCtx, ZoneProvider, ZoneResult } from "./lib/context-zone";
 export { resetDesktopIcons, setAddDialog } from "./features/desktop-icons";
-export { registerWallpaper, getWallpaper, listWallpapers, useWallpapers } from "./lib/wallpaper-registry";
+export { registerWallpaper, getWallpaper, useWallpapers } from "./lib/wallpaper-registry";
 export type { WallpaperDescriptor, WallpaperProps } from "./lib/wallpaper-registry";
 export {
   usePublishInspector,
@@ -135,7 +135,6 @@ export { ApprovalCard } from "./components/approval-card";
 // active one is resolved by form factor.
 export {
   registerShell,
-  getShell,
   shellList,
   shellsForSurface,
   resolveShell,
@@ -165,7 +164,7 @@ export { AppFrame } from "./primitives/app-frame";
 export { MasterDetail } from "./primitives/master-detail";
 export { ResponsiveToolbar } from "./primitives/responsive-toolbar";
 export type { ToolbarItem } from "./primitives/responsive-toolbar";
-export { TouchList, TouchRow } from "./primitives/touch-list";
+export { TouchList } from "./primitives/touch-list";
 
 // ── Manifest-driven shell: the wrapper provider + feature/slot/brand registry ─
 export { AppShell } from "./provider/app-shell";

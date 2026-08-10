@@ -8,6 +8,22 @@ const DEBOUNCE_MS = 1500;
 /** Fired by the auth slice when a login lands (providers mount outside AuthGate). */
 export const AUTHED_EVENT = "mso:authed";
 
+// Both callers (appearance `tweaks` + quicklinks) mount together in os-root and each
+// used to GET the whole blob, so every boot paid two authenticated round-trips — and
+// every window focus while signed out fired two more 401s. One in-flight promise now
+// serves both. It clears on settle, so the focus/auth retry still refetches.
+let inflight: Promise<Record<string, unknown> | null> | null = null;
+
+export function pullPrefs() {
+  inflight ??= fetch("/api/prefs", { cache: "no-store" })
+    .then((r) => (r.ok ? (r.json() as Promise<Record<string, unknown>>) : null))
+    .catch(() => null) // offline / bad JSON — keep local state, stay silent
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
+
 // Shared server-sync seam for the appearance + quicklinks providers. Offline-first:
 // mount → GET /api/prefs → apply the stored section (server wins on initial load) →
 // from then on, debounce local changes into a POST. A failed GET (401 on the login
@@ -28,24 +44,19 @@ export function usePrefsSync<T>(opts: {
     if (IS_DEMO) return;
     let alive = true;
     const pull = async () => {
-      try {
-        const r = await fetch("/api/prefs", { cache: "no-store" });
-        if (!r.ok) {
-          failed.current = true;
-          return;
-        }
-        const data = (await r.json()) as Record<string, unknown>;
-        if (!alive) return;
-        const server = data[section];
-        if (server != null) {
-          echo.current = true; // don't POST back what we just applied
-          apply(server as T);
-        }
-        ready.current = true;
-        failed.current = false;
-      } catch {
-        failed.current = true; // offline — keep local state, stay silent
+      const data = await pullPrefs();
+      if (data == null) {
+        failed.current = true;
+        return;
       }
+      if (!alive) return;
+      const server = data[section];
+      if (server != null) {
+        echo.current = true; // don't POST back what we just applied
+        apply(server as T);
+      }
+      ready.current = true;
+      failed.current = false;
     };
     void pull();
     const retry = () => {

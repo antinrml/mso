@@ -11,8 +11,7 @@
 // policy, so for Hermes the result is ours, unchanged.
 //
 // Server-only (it pins the injected shim by hash, via node:crypto).
-// proxy-headers.ts must not import it: the frontend imports that module for
-// PROXY_BLOCKED_EXTERNALS.
+// proxy-headers.ts must not import it.
 
 type Policy = Map<string, string[]>;
 
@@ -60,7 +59,7 @@ export interface PolicyMount {
 //     cookie and cannot be an oracle — and fonts.gstatic.com breaks visibly.
 //   • img-src/font-src carry `https:`: chat avatars and remote webfont files are
 //     inert bytes, and blocking them broke visibly. connect-src names no foreign
-//     HOST beyond what the upstream itself declares — see PROXY_BLOCKED_EXTERNALS.
+//     HOST beyond what the upstream itself declares.
 //     Its one addition is the ws:// twin of the prefix (root-mounted only), which
 //     is the same origin under a scheme CSP will not match implicitly.
 // Who may frame us. The cockpit is a different origin now, so it has to be named —

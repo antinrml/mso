@@ -59,9 +59,6 @@ function syncShellCommands(): void {
     })),
   );
 }
-export function getShell(id: ShellId | null | undefined): ShellDescriptor | undefined {
-  return id ? REGISTRY.get(id) : undefined;
-}
 /** Registered shells in display order (for the switcher). */
 export function shellList(): ShellDescriptor[] {
   return order.map((id) => REGISTRY.get(id)).filter(Boolean) as ShellDescriptor[];

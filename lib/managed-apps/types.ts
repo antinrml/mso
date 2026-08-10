@@ -22,9 +22,6 @@ export interface ManagedAppDefinition {
   dashboardUrl: string;
   stateDirName: string;
   gradient: string;
-  /** Override for the upstream SPA build dir that feature discovery reads. Empty = use
-   *  the default. Absolute once resolved: the catalog expands a leading `~`. */
-  assetDir?: string;
   /** Override for the upstream state/install home. Empty = `~/<stateDirName>`. */
   homeDir?: string;
 }

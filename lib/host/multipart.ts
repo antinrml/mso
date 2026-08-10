@@ -37,23 +37,6 @@ export function boundaryFromContentType(ct: string | null): string {
   return b;
 }
 
-function indexOf(hay: Bytes, needle: Bytes, from: number): number {
-  outer: for (let i = from; i <= hay.length - needle.length; i++) {
-    for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer;
-    return i;
-  }
-  return -1;
-}
-
-type Bytes = Uint8Array<ArrayBufferLike>;
-
-function concat(a: Bytes, b: Bytes): Bytes {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
-}
-
 function parseHeaders(block: string): { name: string; filename?: string } {
   let name = "";
   let filename: string | undefined;
@@ -75,7 +58,12 @@ export async function* parseMultipart(
   const reader = stream.getReader();
   const delim = new TextEncoder().encode(`\r\n--${boundary}`);
   const headerEnd = new Uint8Array([CR, LF, CR, LF]);
-  let buf: Bytes = new Uint8Array(0);
+  const CRLF = new Uint8Array([CR, LF]);
+  // A Buffer, not a bare Uint8Array: Uint8Array#indexOf searches for a single
+  // BYTE VALUE, while Buffer#indexOf takes a subsequence — and subarray keeps the
+  // Buffer type, so every slice below stays searchable. This replaced a hand-rolled
+  // O(n*m) scan and an allocate-and-copy concat.
+  let buf: Buffer = Buffer.alloc(0);
   let done = false;
   let total = 0; // running bytes across all part bodies (the cap subject)
   let pulled = 0; // RAW bytes read from the stream — the security backstop
@@ -92,14 +80,14 @@ export async function* parseMultipart(
     // and OOM the host before any part-body counter runs.
     pulled += value.length;
     if (pulled > limit) throw new UploadTooLargeError(limit);
-    buf = concat(buf, value);
+    buf = Buffer.concat([buf, value]);
     return true;
   }
 
   // Skip the preamble up to the first boundary line.
   const first = new TextEncoder().encode(`--${boundary}`);
   for (;;) {
-    const i = indexOf(buf, first, 0);
+    const i = buf.indexOf(first);
     if (i >= 0) {
       buf = buf.subarray(i + first.length);
       break;
@@ -112,18 +100,18 @@ export async function* parseMultipart(
     while (buf.length < 2) if (!(await pull())) return;
     if (buf[0] === DASH && buf[1] === DASH) return; // closing boundary
     // consume the CRLF after the boundary token
-    let nl = indexOf(buf, new Uint8Array([CR, LF]), 0);
+    let nl = buf.indexOf(CRLF);
     while (nl !== 0) {
       if (!(await pull())) return;
-      nl = indexOf(buf, new Uint8Array([CR, LF]), 0);
+      nl = buf.indexOf(CRLF);
     }
     buf = buf.subarray(2);
 
     // Read this part's header block (terminated by CRLFCRLF).
-    let he = indexOf(buf, headerEnd, 0);
+    let he = buf.indexOf(headerEnd);
     while (he < 0) {
       if (!(await pull())) throw new HostError("malformed multipart header");
-      he = indexOf(buf, headerEnd, 0);
+      he = buf.indexOf(headerEnd);
     }
     const head = new TextDecoder().decode(buf.subarray(0, he));
     buf = buf.subarray(he + headerEnd.length);
@@ -133,7 +121,7 @@ export async function* parseMultipart(
     let ended = false;
     async function* partBody(): AsyncGenerator<Uint8Array> {
       for (;;) {
-        const d = indexOf(buf, delim, 0);
+        const d = buf.indexOf(delim);
         if (d >= 0) {
           if (d > 0) {
             total += d;

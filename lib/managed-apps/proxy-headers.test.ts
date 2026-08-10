@@ -1,61 +1,16 @@
 // Policy scoping + redirect plumbing for the managed-app proxy, unit-tested
 // straight off the pure helpers (the policy itself is proxy-csp.test.ts; the route
 // wiring is covered in app/api/v1/managed-apps/proxy.test.ts).
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  PROXY_BLOCKED_EXTERNALS,
   buildUpstreamHeaders,
   isServiceWorkerPath,
   proxyPrefix,
-  publicProxyUrl,
   rewriteLocation,
 } from "./proxy-headers";
 
 const PREFIX = proxyPrefix("hermes");
 const PREFIX_URL = `https://mso.rahmanef.com${PREFIX}/`;
-
-describe("publicProxyUrl", () => {
-  afterEach(() => {
-    delete process.env.OS_PUBLIC_ORIGIN;
-  });
-
-  it("prefers OS_PUBLIC_ORIGIN over anything a request can carry", () => {
-    process.env.OS_PUBLIC_ORIGIN = "https://mso.rahmanef.com";
-    const spoofed = new Request(`http://localhost:4005${PREFIX}/chat`, {
-      headers: { "x-forwarded-host": "evil.example", "x-forwarded-proto": "https", host: "evil.example" },
-    });
-    expect(publicProxyUrl(spoofed, "hermes")).toBe(PREFIX_URL);
-  });
-
-  it("ignores a malformed OS_PUBLIC_ORIGIN instead of emitting junk", () => {
-    process.env.OS_PUBLIC_ORIGIN = "mso.rahmanef.com";
-    const req = new Request(`http://localhost:4005${PREFIX}/chat`, { headers: { host: "mso.rahmanef.com" } });
-    expect(publicProxyUrl(req, "hermes")).toBe(`http://mso.rahmanef.com${PREFIX}/`);
-  });
-
-  it("trusts the real Host header over a client-settable X-Forwarded-Host", () => {
-    const spoofed = new Request(`http://localhost:4005${PREFIX}/chat`, {
-      headers: { host: "mso.rahmanef.com", "x-forwarded-host": "evil.example", "x-forwarded-proto": "https" },
-    });
-    // The host decides which origin the whole policy is scoped to.
-    expect(publicProxyUrl(spoofed, "hermes")).toBe(PREFIX_URL);
-  });
-
-  it("uses the hop the browser made, not the plain-http hop from Traefik", () => {
-    const req = new Request(`http://localhost:4005${PREFIX}/chat`, {
-      headers: { "x-forwarded-proto": "https,http", "x-forwarded-host": "mso.rahmanef.com" },
-    });
-    expect(publicProxyUrl(req, "hermes")).toBe(PREFIX_URL);
-  });
-
-  it("falls back to the Host header, then to the request URL", () => {
-    const withHost = new Request(`http://localhost:4005${PREFIX}/chat`, { headers: { host: "mso.rahmanef.com" } });
-    expect(publicProxyUrl(withHost, "hermes")).toBe(`http://mso.rahmanef.com${PREFIX}/`);
-    expect(publicProxyUrl(new Request(`http://localhost:4005${PREFIX}/chat`), "hermes")).toBe(
-      `http://localhost:4005${PREFIX}/`,
-    );
-  });
-});
 
 describe("buildUpstreamHeaders", () => {
   const base = new URL("http://127.0.0.1:9119");
@@ -88,22 +43,6 @@ describe("buildUpstreamHeaders", () => {
       "hermes",
     );
     expect(out.get("cookie")).toBe("hermes_session_at=upstream");
-  });
-});
-
-describe("PROXY_BLOCKED_EXTERNALS", () => {
-  it("names what nothing grants, and nothing the upstream policy already declares", () => {
-    const hosts = PROXY_BLOCKED_EXTERNALS.map((entry) => entry.host);
-    // Hermes ships no policy of its own, so its Google Fonts sheet has no source
-    // to be honoured from; OpenClaw calls generativelanguage without declaring it.
-    expect(hosts).toEqual(["fonts.googleapis.com", "generativelanguage.googleapis.com"]);
-    // Honoured by the intersection now (OpenClaw's own connect-src lists them).
-    expect(hosts).not.toContain("api.openai.com");
-    expect(hosts).not.toContain("tweakcn.com");
-    for (const entry of PROXY_BLOCKED_EXTERNALS) {
-      expect(["style-src", "connect-src"]).toContain(entry.directive);
-      expect(entry.effect.length).toBeGreaterThan(0);
-    }
   });
 });
 

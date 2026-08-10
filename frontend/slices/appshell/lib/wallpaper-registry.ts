@@ -44,10 +44,6 @@ export function getWallpaper(id: string): WallpaperDescriptor | undefined {
   return registry.get(id);
 }
 
-export function listWallpapers(): WallpaperDescriptor[] {
-  return snapshot;
-}
-
 /** Reactive list for the picker (re-renders when registrations change). */
 export function useWallpapers(): WallpaperDescriptor[] {
   return useSyncExternalStore(

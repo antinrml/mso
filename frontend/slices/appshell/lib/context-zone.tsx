@@ -50,24 +50,6 @@ export function useContextZone(provide: ZoneProvider) {
   }, []);
 }
 
-/** JSX form for when a ref is awkward. `display:contents` = zero layout box. */
-export function ContextZone({
-  provide,
-  children,
-  className,
-}: {
-  provide: ZoneProvider;
-  children: ReactNode;
-  className?: string;
-}) {
-  const ref = useContextZone(provide);
-  return (
-    <div ref={ref} className={className ?? "contents"}>
-      {children}
-    </div>
-  );
-}
-
 /** Walk target → parentElement, calling every zone en route; each zone's items
  *  become ONE group (innermost first). `sealed` = a zone said stop. */
 export function collectZones(

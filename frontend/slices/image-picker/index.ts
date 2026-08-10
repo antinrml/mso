@@ -2,12 +2,10 @@
  *  button (ImagePickerButton) that opens a dialog: Gallery (colours / gradients
  *  / textures) · Upload (inject your storage via `onUpload`) · Link (paste a
  *  URL) · Stock (curated set + keyless live search via /api/v1/stock/search —
- *  Openverse by default, Unsplash when the server holds a key). ImageBanner is
- *  the optional reposition-able band (page cover / profile header / hero). */
+ *  Openverse by default, Unsplash when the server holds a key). */
 
 export { ImagePickerButton } from "./components/image-picker-button";
 export { ImagePickerDialog } from "./components/image-picker-dialog";
-export { ImageBanner } from "./components/image-banner";
 
 export { parseImage, isCssImage, isUrlImage, imageRef } from "./lib/parseImage";
 export { imageStyle } from "./lib/imageStyle";

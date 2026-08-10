@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ComponentType } from "react";
 import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useApp } from "../lib/registry";
 import { WindowErrorBoundary } from "./window-error-boundary";
 import type { AppProps } from "../lib/types";
@@ -20,6 +21,7 @@ export function WindowContent({ app, payload, winId }: { app: string; payload?: 
   // matches, so `Comp` derives back to null (spinner) without a synchronous
   // setState reset in the effect (react-hooks/set-state-in-effect).
   const [loaded, setLoaded] = useState<{ key: string; Comp: ComponentType<AppProps> } | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   const Comp = loaded?.key === app ? loaded.Comp : null;
 
   useEffect(() => {
@@ -28,8 +30,14 @@ export function WindowContent({ app, payload, winId }: { app: string; payload?: 
     descriptor
       .load()
       .then((m) => alive && setLoaded({ key: app, Comp: m.default }))
-      .catch(() => {
-        /* leave the spinner; a failed chunk import is caught by the SW recovery */
+      .catch((e: unknown) => {
+        // Show the failure INSTEAD of spinning forever, then rethrow. The rethrow
+        // is the point: register-sw.tsx recovers a stale chunk from the global
+        // `unhandledrejection` event, and a rejection this catch swallowed never
+        // fires it — so the old `.catch(() => {})` left the user on a dead spinner
+        // and disabled the one thing that could have fixed it.
+        if (alive) setFailed(app);
+        throw e;
       });
     return () => {
       alive = false;
@@ -40,6 +48,17 @@ export function WindowContent({ app, payload, winId }: { app: string; payload?: 
     return (
       <div className="grid h-full place-items-center text-sm text-muted-foreground">
         Unknown app: {app}
+      </div>
+    );
+  }
+
+  if (!Comp && failed === app) {
+    return (
+      <div className="grid h-full place-items-center gap-3 p-6 text-center text-sm text-muted-foreground">
+        <p>Gagal memuat {descriptor.title}.</p>
+        <Button size="sm" variant="secondary" onClick={() => location.reload()}>
+          Muat ulang
+        </Button>
       </div>
     );
   }

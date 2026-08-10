@@ -246,67 +246,6 @@ export function isServiceWorkerPath(segments: string[]): boolean {
   return last !== undefined && SERVICE_WORKER_SCRIPTS.has(last.toLowerCase());
 }
 
-// The CSP source below must be the URL the BROWSER sees — Traefik terminates TLS
-// and forwards plain http, so req.url alone would emit a scheme that matches
-// nothing and white-screen the app. Precedence matters: X-Forwarded-Host is
-// client-settable, and the host in it decides which origin the whole policy is
-// scoped to, so it is consulted LAST. OS_PUBLIC_ORIGIN (deployment-owned) wins,
-// then the real Host header, then the forwarded pair, then the request URL.
-export function publicProxyUrl(req: Request, id: string): string {
-  const explicit = process.env.OS_PUBLIC_ORIGIN?.trim();
-  if (explicit) {
-    try {
-      return `${new URL(explicit).origin}${proxyPrefix(id)}/`;
-    } catch {
-      // Misconfigured value: fall through to the headers rather than emit junk.
-    }
-  }
-  const url = new URL(req.url);
-  const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0].trim();
-  const proto = forwarded || url.protocol.replace(":", "");
-  const host = req.headers.get("host") ?? req.headers.get("x-forwarded-host") ?? url.host;
-  return `${proto}://${host}${proxyPrefix(id)}/`;
-}
-
-/** An upstream subresource the containment policy refuses.
- *
- *  NO LONGER RENDERED. This fed a banner above the managed-app frame; that was
- *  removed by request (it showed on every feature view and could not be
- *  dismissed for good). The table is kept deliberately, not by accident: it is
- *  the only structured record of which hosts the app-policy ∩ containment-policy
- *  intersection kills and what each one costs the user, and its test asserts
- *  that. Nothing consumes it at runtime, so it no longer reaches the client
- *  bundle — expect a dead-code sweep to flag it, and read this before deleting. */
-export type BlockedExternal = {
-  host: string;
-  app: "hermes" | "openclaw";
-  /** The directive that refuses it — the one NOT widened to `https:`. */
-  directive: "style-src" | "connect-src";
-  /** What the user loses, in their words. */
-  effect: string;
-};
-
-// img-src/font-src were widened to `https:` (passive bytes), and proxy-csp.ts now
-// honours the external https hosts the UPSTREAM's own policy declares — so
-// OpenClaw keeps fonts.googleapis.com, api.openai.com and tweakcn.com. What is
-// left below is what nothing grants: a host Hermes needs but never declares (it
-// ships no policy at all), and one OpenClaw calls without declaring — blocked in
-// its own deployment too. Surfaced so the window can say so out loud instead of
-// the app silently half-working. Verified against the installed bundles.
-export const PROXY_BLOCKED_EXTERNALS: readonly BlockedExternal[] = [
-  {
-    host: "fonts.googleapis.com",
-    app: "hermes",
-    directive: "style-src",
-    effect: "Theme webfonts (Inter, IBM Plex, …) fall back to system faces.",
-  },
-  {
-    host: "generativelanguage.googleapis.com",
-    app: "openclaw",
-    directive: "connect-src",
-    effect: "The Gemini live-audio socket in chat cannot connect.",
-  },
-];
-
 // The policy itself lives in proxy-csp.ts: building it needs node:crypto (it pins
-// the injected shim by hash) and the frontend imports this module.
+// the injected shim by hash). Both modules are server-only — nothing under
+// frontend/ imports either one.

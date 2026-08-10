@@ -28,7 +28,6 @@ const definitions = {
     containerNames: ["hermes", "hermes-dashboard"],
     dashboardUrl: process.env.HERMES_DASHBOARD_URL ?? "http://127.0.0.1:9119",
     stateDirName: ".hermes",
-    assetDir: expandHome(process.env.HERMES_WEB_DIST),
     homeDir: expandHome(process.env.HERMES_HOME),
     gradient: "linear-gradient(160deg,#8b5cf6,#4f46e5)",
   },
@@ -43,7 +42,6 @@ const definitions = {
     containerNames: ["openclaw", "openclaw-gateway"],
     dashboardUrl: process.env.OPENCLAW_DASHBOARD_URL ?? "http://127.0.0.1:18789",
     stateDirName: ".openclaw",
-    assetDir: expandHome(process.env.OPENCLAW_CONTROL_UI_DIST),
     gradient: "linear-gradient(160deg,#f97316,#dc2626)",
   },
 } as const satisfies Record<ManagedAppId, ManagedAppDefinition>;

@@ -166,7 +166,7 @@ to `resources/` (rr) and drive any project from one manifest:
 - **`git add` aborts on a bad pathspec** and stages NOTHING new — after a
   `git rm`, don't re-list the removed file in `git add`; prefer `git add -A` and
   check `git status --short` before committing (a broken commit shipped once this way).
-- **Deploy demo (only if you re-create it — see above, it is not running):** from
+- **Deploy demo** (it IS running — `active`+`enabled`, 200 on 127.0.0.1:4006): from
   `/home/rahman/projects/mso-demo`: `git fetch origin -q && git reset --hard
   origin/main -q && bun run build && sudo systemctl restart mso-demo.service`.
   Mind the cwd — running the sync from the prod dir is a classic slip.
@@ -207,11 +207,10 @@ to `resources/` (rr) and drive any project from one manifest:
   `cp -p ~/.local/state/camoufox/session-backup/1/* <profile>/`, start. Roll back to `2`
   or `3` if generation `1` already captured the logged-out state.
 - Verify shell behaviour with **Playwright directly** — `os-browser/node_modules/playwright`
-  (CommonJS) is the repo's only install — at 1280 for desktop and 390 for mobile. (This
-  used to say "on the demo, via os-browser"; both are gone. There is no demo instance on
-  this host, and the `os-browser` SERVICE is stopped + disabled — only its Playwright
-  install is still used. Point Playwright at :4005 and log in, or build a throwaway with
-  `NEXT_PUBLIC_OS_DEMO=1` on another port.) Drive Spotlight with Meta+k; click the dock by
+  (CommonJS) is the repo's only install — at 1280 for desktop and 390 for mobile. The
+  `os-browser` SERVICE is gone (its source was deleted 2026-08-10; only the vendored
+  Playwright install remains). Point Playwright at the **demo on 127.0.0.1:4006** — it
+  runs, and demo mode skips login entirely — or at :4005 and log in. Drive Spotlight with Meta+k; click the dock by
   the BOTTOM-most `a[href="/<slug>"]` (the centre ones are the hidden Launchpad).
   `X-Content-Type-Options: nosniff` is set on all routes, so wrong MIME is fatal — keep
   static Content-Types correct.
