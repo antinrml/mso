@@ -31,6 +31,24 @@ function readSafeArea(): SafeArea {
   };
 }
 
+/** Every observable field except `safeArea`, which is a pure function of the
+ *  geometry compared here (device inset × orientation) — so an equal result means
+ *  the safe area is equal too, and we can skip reading it. Reading it is a
+ *  SYNCHRONOUS style recalc (getComputedStyle), and it used to run on every
+ *  single resize event. */
+export function sameGeometry(a: Responsive | null, b: Responsive): boolean {
+  return (
+    a !== null &&
+    a.isMobile === b.isMobile &&
+    a.device === b.device &&
+    a.vw === b.vw &&
+    a.vh === b.vh &&
+    a.pointer === b.pointer &&
+    a.orientation === b.orientation &&
+    a.breakpoint === b.breakpoint
+  );
+}
+
 // Deterministic SSR/first-paint default: desktop, so the window manager renders
 // until the on-mount measurement corrects it (same no-flash behaviour the old
 // inline useIsMobile had — it treated "unknown" as not-mobile).
@@ -64,14 +82,17 @@ export function ResponsiveProvider({
   const [state, setState] = useState<Responsive>(() => initial(device));
 
   useEffect(() => {
-    const compute = () => {
+    let last: Responsive | null = null;
+    let raf = 0;
+
+    const measure = () => {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
       const portrait = vh >= vw;
       const auto = vw < MOBILE_W || (coarse && portrait && vw < TABLET_W);
       const isMobile = device === "phone" ? true : device === "desktop" ? false : auto;
-      setState({
+      const next: Responsive = {
         formFactor: isMobile ? "mobile" : "desktop",
         isMobile,
         device,
@@ -80,15 +101,34 @@ export function ResponsiveProvider({
         pointer: coarse ? "coarse" : "fine",
         orientation: portrait ? "portrait" : "landscape",
         breakpoint: bucket(vw),
-        safeArea: readSafeArea(),
+        safeArea: last?.safeArea ?? { top: 0, right: 0, bottom: 0, left: 0 },
+      };
+      if (sameGeometry(last, next)) return; // same viewport → no new object, no re-render
+      next.safeArea = readSafeArea();
+      last = next;
+      setState(next);
+    };
+
+    // This value is consumed at the shell ROOT (Surface), so a new object here
+    // re-renders the entire tree. resize fires in bursts — a mobile URL-bar
+    // collapse, a soft keyboard, a desktop window drag — so coalesce to one
+    // measurement per frame (which is also when layout is settled, rather than
+    // mid-gesture with the layout already dirtied) and bail when nothing moved.
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
       });
     };
-    compute();
-    window.addEventListener("resize", compute);
-    window.addEventListener("orientationchange", compute);
+
+    measure();
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
     return () => {
-      window.removeEventListener("resize", compute);
-      window.removeEventListener("orientationchange", compute);
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
     };
   }, [device]);
 

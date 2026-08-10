@@ -117,6 +117,11 @@ export function DockIcon({
               activate();
             }
           }}
+          // The icon is the only child and lucide renders no <title>, so without
+          // this the link has NO accessible name — every app in the dock read as
+          // a blank link. The HoverPanel that carries app.title is `invisible`,
+          // i.e. out of the a11y tree. PlainIcon (below) already did this.
+          aria-label={running ? `${app.title} (running)` : app.title}
           className="relative block size-full drop-shadow-[0_6px_10px_rgba(0,0,0,0.3)]"
         >
           <AppIcon app={app} />

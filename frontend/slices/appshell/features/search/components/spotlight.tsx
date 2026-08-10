@@ -46,8 +46,9 @@ function SpotlightPanel() {
   // Debounced folder search under ~/projects (live) — opens Files at the hit.
   // Results are state, but "no query → no hits" is derived below (stale hits
   // stay visible during the debounce, matching the old behaviour).
-  const [found, setFound] = useState<{ key: string; hits: SearchHit[] } | null>(null);
+  const [found, setFound] = useState<{ key: string; hits: SearchHit[]; error?: string } | null>(null);
   const folderHits = useMemo(() => (q.trim() ? (found?.hits ?? []) : []), [q, found]);
+  const searchError = q.trim() && found?.key === q.trim() ? found.error : undefined;
   useEffect(() => {
     const query = q.trim();
     if (!query) return;
@@ -55,7 +56,13 @@ function SpotlightPanel() {
     const t = setTimeout(() => {
       search(query)
         .then((h) => alive && setFound({ key: query, hits: h }))
-        .catch(() => alive && setFound({ key: query, hits: [] }));
+        // Keep the reason. Reporting a dead host API as "No matches" is a lie the
+        // user cannot act on — an expired session looks exactly like an empty
+        // folder. Files does this right (use-files.ts toasts the real message).
+        .catch((e: unknown) => {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (alive) setFound({ key: query, hits: [], error: msg });
+        });
     }, 150);
     return () => {
       alive = false;
@@ -186,8 +193,14 @@ function SpotlightPanel() {
           <ResultList id={LISTBOX_ID} results={results} selIdx={selIdx} onHover={setSel} onPick={runAt} />
         )}
         {results.length === 0 && (
-          <p className="border-t border-border px-5 py-4 text-sm text-muted-foreground">
-            No matches for “{q}”.
+          <p
+            role={searchError ? "alert" : undefined}
+            className={cn(
+              "border-t border-border px-5 py-4 text-sm",
+              searchError ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {searchError ? `Pencarian gagal: ${searchError}` : `No matches for “${q}”.`}
           </p>
         )}
       </div>

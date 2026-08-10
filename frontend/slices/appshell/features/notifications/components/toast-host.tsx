@@ -31,7 +31,12 @@ export function ToastHost() {
     <div
       role="region"
       aria-label="Notifications"
-      className="pointer-events-none absolute right-3.5 top-9 z-[1000] flex flex-col items-end gap-2"
+      // `top` must clear the notch: every other top-anchored overlay (dynamic
+      // island, switcher, home, spotlight) offsets by --sai-top, which iOS floors
+      // at 44px. This was a hardcoded 36px, so on a notched phone the stack
+      // started inside the reserved band.
+      style={{ top: "max(2.25rem, calc(var(--sai-top) + 0.5rem))" }}
+      className="pointer-events-none absolute right-3.5 z-[1000] flex flex-col items-end gap-2"
     >
       {toasts.map((t) => {
         const Icon = toneIcon[t.tone];
@@ -66,7 +71,7 @@ export function ToastHost() {
               size="icon"
               aria-label="Dismiss"
               onClick={() => dismissToast(t.id)}
-              className="h-auto w-auto grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-[var(--hover-strong)]"
+              className="h-auto w-auto grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-[var(--hover-strong)]"
             >
               <X className="size-3.5" />
             </Button>

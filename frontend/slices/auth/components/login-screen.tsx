@@ -93,7 +93,7 @@ export function LoginCard({ onAuthed }: { onAuthed: () => void }) {
             {busy && <Loader2 className="size-4 animate-spin" />}
             Check again
           </Button>
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
@@ -103,11 +103,20 @@ export function LoginCard({ onAuthed }: { onAuthed: () => void }) {
             type="password"
             required
             placeholder="password"
+            aria-label="Password"
             autoComplete="current-password"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "login-error" : undefined}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          {/* role=alert: without a live region the failure text renders silently,
+              so a screen-reader user gets no signal that the password was wrong. */}
+          {error && (
+            <p id="login-error" role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
           <Button type="submit" className="w-full [@media(pointer:coarse)]:min-h-[44px]" disabled={busy}>
             {busy && <Loader2 className="size-4 animate-spin" />}
             Unlock

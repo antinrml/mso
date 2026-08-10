@@ -84,9 +84,22 @@ function RecentCard({ win, app, onResume }: { win: WindowState; app?: AppDescrip
   const ref = useRef<HTMLDivElement>(null);
   const { onPointerDown, draggedRef } = useSwipeUpClose(ref, () => closeWindow(win.id));
   return (
+    // A plain div with onClick is unreachable by keyboard. It stays a div (the
+    // swipe-up-close handler needs the ref, and a <button> would swallow the
+    // nested close button), so it carries the button role + a key handler by
+    // hand. iOS's equivalent, WindowPreview, is a real <Surface type="button">.
     <div
       ref={ref}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${win.title}`}
       onPointerDown={onPointerDown}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        onResume();
+      }}
       onClick={(e) => {
         e.stopPropagation(); // a card tap resumes; only empty space → home
         if (!draggedRef.current) onResume();
@@ -146,7 +159,7 @@ export function AppDrawer({ apps, onLaunch, onClose }: { apps: AppDescriptor[]; 
       </Button>
       <div className="mx-4 mt-1 flex h-11 items-center gap-3 rounded-full border border-border bg-card px-4">
         <Search className="size-4 text-muted-foreground" />
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search apps" className="w-full bg-transparent text-sm outline-none" />
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search apps" placeholder="Search apps" className="w-full bg-transparent text-sm outline-none" />
       </div>
       <div
         className="grid min-h-0 flex-1 grid-cols-4 content-start gap-x-3 gap-y-5 overflow-auto p-5"
