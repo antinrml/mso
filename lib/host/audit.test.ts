@@ -165,3 +165,17 @@ describe("readAuditTail", () => {
     expect(onlyExec).toHaveLength(2);
   });
 });
+
+describe("test-run guard", () => {
+  it("never appends to the default ~/.mso/audit.log from a test", async () => {
+    // Regression: dispatch.test.ts exercised the MCP dispatcher, the dispatcher
+    // audits, and two lines landed in the owner's real trail. Any suite that
+    // forgets to stub OS_AUDIT_LOG now writes nowhere instead of into their log.
+    vi.stubEnv("OS_AUDIT_LOG", "");
+    const home = path.join(os.homedir(), ".mso", "audit.log");
+    const before = await fs.readFile(home, "utf8").catch(() => "");
+    await audit({ action: "exec.run", target: "should-never-be-written" });
+    const after = await fs.readFile(home, "utf8").catch(() => "");
+    expect(after).toBe(before);
+  });
+});

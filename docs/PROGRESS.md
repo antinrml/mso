@@ -8,6 +8,56 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-10 (mcp, follow-up) — the trail the MCP tools were bypassing (DONE)
+
+Shipping the MCP server, the security story told to the owner was "scope is the
+containment, revoke is the kill switch". Both true, both weak without the third
+thing — seeing what already went through — and that was **missing**.
+
+`audit()` is called at the ROUTE layer for `/api/v1`. MCP tools call `lib/host`
+DIRECTLY (deliberately: that is how they inherit the path bounds and the credential
+denylist), so every `fs.write` / `fs.delete` / `fs.move` / `fs.copy` / `fs.mkdir` /
+`exec.run` / `camoufox.power` that arrived over MCP was **absent from
+`~/.mso/audit.log`, the only forensic record there is.**
+
+The dispatcher records it now — one place, not per tool. `McpTool.audit` names the
+action and which argument is the target; `dispatch()` writes it with
+`actor: mcp:<id>` (the same id Settings and `mso mcp list` show, so a line maps back
+to the revoke button) plus `meta.via="mcp"` and the acting scope. Failures too, with
+the reason, so a blocked path is visible rather than silent.
+
+A scope refusal writes `mcp.denied`. Nothing happened, which is exactly why it is
+worth a line: **a `read` connector repeatedly reaching for `exec_run` is what a
+prompt-injected model looks like from the outside**, and this is the only place that
+signal exists. Reads stay unlogged — bounded, high-volume, same rule the routes
+follow, and logging them would bury the lines that matter.
+
+`readAuditTail()` had had NO reader outside its own test since it was written, so
+the trail was unreadable without `cat`. Added `GET /api/v1/sys/audit` (session-gated,
+prefix + actor filters), `mso audit [n] [prefix]`, and a "Recent MCP activity" list
+in Settings → MCP. **Deliberately no MCP tool for any of it**: the trail records what
+every token did, and letting a token read it would let a compromised one check
+whether it had been noticed.
+
+Two tools added, tiered by blast radius rather than by which layer they land in:
+`apps_logs` is READ (a daemon's journal changes nothing, so "why is hermes down?" no
+longer costs a shell) and `apps_power` is WRITE, not exec (three verbs against known
+units — restarting a daemon should not mean handing over the ability to run
+anything). The catalog split at the 220-line ceiling along the same tiering:
+`tool-kit.ts` (shape + arg helpers), `tools-read.ts`, `tools.ts` (write/exec +
+assembly).
+
+**A bug this found in itself:** running the suite after wiring the dispatcher but
+before mocking `audit` put two real `mcp.denied` lines into the owner's live
+`~/.mso/audit.log` at 08:49:50. They are left in place — editing a tamper-evident
+log to hide your own noise is the wrong instinct — and `writeLine` now refuses the
+default path under `VITEST` unless `OS_AUDIT_LOG` is stubbed, with a regression test.
+
+Verified on the live :4005 build: `apps_logs` returns real hermes journal lines at
+read scope, `fs.write` lands in the trail with actor and target, the scope refusal
+lands as `mcp.denied`, `sys_stats` does not appear at all, and `mso audit` reads it
+back.
+
 ## 2026-08-10 (mcp) — the VPS is drivable from ChatGPT, off by default (DONE)
 
 An MCP server: OAuth 2.1 + PKCE in front of a hand-rolled JSON-RPC endpoint, so

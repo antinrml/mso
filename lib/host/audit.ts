@@ -121,6 +121,12 @@ export async function readAuditTail(opts?: { prefix?: string; limit?: number }):
 let _writeChain: Promise<void> = Promise.resolve();
 
 async function writeLine(line: string): Promise<void> {
+  // A test run must never append to the OWNER's forensic trail. This is not
+  // hypothetical: on 2026-08-10 two `mcp.denied` lines from lib/mcp/dispatch.test.ts
+  // landed in a real ~/.mso/audit.log, because that suite exercises the dispatcher
+  // and the dispatcher audits. audit.test.ts always stubs OS_AUDIT_LOG at a temp
+  // path, so this only silences the callers that forgot to.
+  if (process.env.VITEST && !process.env.OS_AUDIT_LOG) return;
   const file = auditPath();
   try {
     await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
