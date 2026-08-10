@@ -14,9 +14,11 @@
 > This file is kept for the REASONING it records — why the origin split exists, why
 > the CSP is shaped as it is — which remains valuable and is hard to recover.
 >
-> The earlier Convex + Control-Room-agent design (see `DESIGN-RECONCILE.md`, early
-> `PROGRESS.md` phases) was removed: mso runs **as a host process** and talks to
-> its own machine directly. No database, no external agent.
+> The earlier Convex + Control-Room-agent design was removed: mso runs **as a host
+> process** and talks to its own machine directly. No database, no external agent.
+> Its reconciliation note was deleted on 2026-08-10 —
+> `git show 421ab7f:docs/DESIGN-RECONCILE.md` — because the `mock-os/` tree it compared
+> against is gone; the early `PROGRESS.md` phases still record the shape.
 
 ## What it is
 

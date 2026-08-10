@@ -46,7 +46,18 @@ of them. Deleted 2026-07-30 in the same spirit: `PLAN.md` (the "master plan" —
 section contradicted by shipped code, and its one unique asset, a Control-Room-vs-MSO
 table, is descriptive rather than decision-carrying) and `MULTISHELL-PLAN.md` (its sibling
 repo is gone, all six phases are checked off, and PROGRESS.md:574 reverses its one unique
-decision). Both recoverable with `git show bccd0b1:docs/<name>`.
+decision). Both recoverable with `git show bccd0b1:docs/<name>`. Deleted 2026-08-10
+(`git show 421ab7f:docs/<name>`): `IOS-PARITY-REFACTOR-PLAN.md` (every phase ✅, and the
+`mock-os/` tree it refactored toward no longer exists), `DESIGN-RECONCILE.md` (self-labelled
+ARCHIVE, same missing tree), `MOBILE-RESPONSIVE-PLAN.md` (phases 1–4 shipped; phase 5 is the
+Playwright verification chore already described below), `SHELL-LAYOUT-KIT.md` (documented
+`AppHeader`/`AppInspector`, both deleted the same day), and `AUDIT-2026-06-14.md` +
+`SCORECARD-2026-06-14.md` (every row shipped or gone stale — one cites an `/api/v1/browser`
+route that does not exist and a coverage install that already happened). **`AUDIT-2026-06-11.md`
+STAYS** — five source comments cite its findings by number. `SHELL-FIDELITY-PLAN.md` and
+`DRAWER-MENU-BYOK-PLAN.md` also stay: both look finished and are not, each carrying an
+unstarted tail (phases D–F, and providers D2–D4). PROGRESS.md's pre-2026-06-15 tail (34
+entries) was trimmed the same day; it is one `git show` away.
 
 ## Architecture
 ```

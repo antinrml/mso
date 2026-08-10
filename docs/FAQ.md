@@ -89,10 +89,11 @@ adds the usual browser footprint — skip it on tiny boxes.
 
 ### How was the codebase audited?
 
-Two passes by the maintainer: `docs/AUDIT-2026-06-11.md` (initial cross-cutting
-sweep — security, perf, a11y, slice boundaries) and `docs/AUDIT-2026-06-14.md`
-(follow-up after the first round of fixes). The score trajectory across both
-passes lives in `docs/SCORECARD-2026-06-14.md`. A third pass on 2026-08-03 ran five
+The maintainer's initial cross-cutting sweep — security, perf, a11y, slice
+boundaries — is `docs/AUDIT-2026-06-11.md`; several source comments still cite its
+findings by number. A follow-up pass and its scorecard were deleted on 2026-08-10
+once every row had either shipped or gone stale (`git show
+421ab7f:docs/AUDIT-2026-06-14.md`). A third pass on 2026-08-03 ran five
 adversarially-verified lenses (over-engineering, security, Next 16/React 19,
 package-manager migration, repo health) — see the top of `docs/PROGRESS.md`. Quality
 gates run on every push via the pre-push hook: typecheck, lint, 1100+ vitest tests,
