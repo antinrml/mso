@@ -217,7 +217,20 @@ export async function proxy(request: NextRequest) {
 
   if (MATCHER_EXCLUDED.test(pathname)) return NextResponse.next();
 
-  const isApi = pathname.startsWith("/api/");
+  // The MCP endpoint and its OAuth discovery documents are JSON, not HTML, and are
+  // reached CROSS-ORIGIN by design (ChatGPT, Claude.ai, Cursor). They live outside
+  // /api deliberately: the depth-2 CSRF gate below would block every one of them,
+  // and it is the wrong control here — their credential is a bearer token, which a
+  // browser never attaches on its own, so there is no cross-site request to forge.
+  // Treated like /api for header purposes: no nonce, no document CSP.
+  // NOTE /oauth/authorize is NOT here on purpose — it is a real HTML consent page
+  // and must keep the nonce + document CSP. Only the JSON endpoints are listed.
+  const isMcp =
+    pathname === "/mcp" ||
+    pathname.startsWith("/.well-known/oauth-") ||
+    pathname === "/oauth/token" ||
+    pathname === "/oauth/register";
+  const isApi = pathname.startsWith("/api/") || isMcp;
   const isCamoufoxVnc = pathname.startsWith("/camoufox-vnc/");
 
   // Camoufox's VNC bridge — noVNC + websockify in front of x11vnc, i.e. live
@@ -248,8 +261,10 @@ export async function proxy(request: NextRequest) {
       : NextResponse.rewrite(target);
   }
 
-  // CSRF depth-2 for mutating /api (unchanged semantics).
-  if (MUTATING.has(request.method) && isApi && crossOriginMutation(request)) return blocked();
+  // CSRF depth-2 for mutating /api (unchanged semantics). `isMcp` is excluded —
+  // see the note above: bearer-authenticated, so same-origin proof is meaningless
+  // and enforcing it would break every remote MCP client.
+  if (MUTATING.has(request.method) && isApi && !isMcp && crossOriginMutation(request)) return blocked();
 
   // /api owns its own response headers (fs/raw sets `content-security-policy:
   // sandbox`, Cache-Control no-store) and serves no inline scripts — never stamp

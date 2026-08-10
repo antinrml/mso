@@ -259,6 +259,28 @@ to `resources/` (rr) and drive any project from one manifest:
   filtering is done in the script. `ci.yml` runs the raw fail-closed command on
   purpose: a release gate must not pass an audit it could not perform.
 
+## MCP server (`/mcp`) — optional, OFF by default
+An MCP endpoint so ChatGPT / Claude.ai / Cursor can drive the host. `lib/mcp/*`
+(pkce · scope · store · tools · dispatch) + `app/mcp/route.ts` + `app/oauth/*` +
+`app/.well-known/oauth-*`. **`OS_MCP_ENABLED=1` or every one of those routes 404s** —
+that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
+- **`/mcp` is deliberately NOT under `/api`.** `proxy.ts` blocks mutating `/api` that
+  cannot prove same-origin and an MCP client is cross-origin by definition; the bearer
+  is the control, not the CSRF gate. `proxy.ts` exempts `/mcp`, `/oauth/token`,
+  `/oauth/register` and `/.well-known/oauth-*` from BOTH that gate and the document
+  CSP. `/oauth/authorize` is NOT exempt — it is a real HTML page and needs its nonce.
+- **Every tool is a thin call into `lib/host`**, never node `fs`/`child_process`. That
+  is what makes the MCP surface inherit `OS_FS_*_ROOTS`, the credential denylist
+  (including `~/.mso` itself) and `exec.ts`'s destructive filter for free. A tool that
+  reimplements an operation reimplements its guard too — don't.
+- Scope ladder `read < write < exec`, picked per token on the consent page, capped by
+  `OS_MCP_MAX_SCOPE` (default `write`). `tools/list` filters by it AND `tools/call`
+  re-checks it — a client can call a name it was never shown.
+- Store is `~/.mso/mcp.json`, **sha256 only**, same atomic-write + fail-loud-on-corrupt
+  rule as `lib/auth/device-store.ts`. Codes are single-use, 60 s, deleted BEFORE the
+  token is minted. `browser_status` must never return the VNC password — that profile
+  holds a live Google session.
+
 ## CLI (`bin/mso`) — the web UI is only one frontend
 `bin/mso` reaches the same `/api` surface from a shell — every route has a named verb
 (enforced by a test in `bin/mso.test.ts`), plus `doctor`, `completion` and `--base`.

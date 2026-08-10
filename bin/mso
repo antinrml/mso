@@ -55,6 +55,7 @@
 #   prefs *              UI preferences: show | set
 #   models *             Model catalog: list | test
 #   skills               Skill catalog the assistant sees
+#   mcp *                MCP bearer tokens: list | revoke <id> | revoke all
 #   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)
 #
 #  Devices  (a local file — these work while the service is down)
@@ -228,6 +229,7 @@ U_memory="memory list|add <text>|rm <id>"
 U_config="config show|set <json>|rm <provider>"
 U_prefs="prefs show|set <json>"
 U_models="models list|test"
+U_mcp="mcp list|revoke <id>|revoke all"
 U_crud="crud list <dir> | get <path> | set <path> <cmd k=v…|text> | del <path> | cmds"
 U_api="api <METHOD> <path> [json]   e.g. mso api GET /api/v1/sys/stats"
 
@@ -397,6 +399,15 @@ case "$cmd" in
            dev_script "$1" "${@:2}" ;;
   revoke)  [ -n "${1-}" ] || die "usage: mso revoke <deviceId>  (ids: mso device list)"
            dev_script --revoke "$1" ;;
+  # ── MCP tokens (the bearers that let ChatGPT et al. drive this host) ─────
+  mcp)
+    case "${1:-list}" in
+      list)   jget "/api/mcp/tokens" ;;
+      revoke) [ -n "${2-}" ] || die "usage: mso mcp revoke <id|all>   (ids: mso mcp list)"
+              jdel "/api/mcp/tokens?id=$(enc "$2")" ;;
+      *) die "usage: mso $U_mcp" ;;
+    esac ;;
+
   whoami)  echo "cli device: $(cli_device)"; jget "/api/auth/me" ;;
   login)   rm -f "$JAR"; login; echo "logged in as device $(cli_device)" ;;
   logout)  [ -f "$JAR" ] && jpost "/api/auth/logout" >/dev/null 2>&1 || true

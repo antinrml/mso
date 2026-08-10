@@ -13,6 +13,7 @@ import { ThemeSection } from "./theme-section";
 import { AiSection } from "./ai-section";
 import { MemorySection } from "./memory-section";
 import { QuicklinksSection } from "./quicklinks-section";
+import { McpSection } from "./mcp-section";
 import { ServerSection } from "./server-section";
 import { CleanupSection } from "./cleanup-section";
 import { AboutSection } from "./about-section";
@@ -35,6 +36,8 @@ function SectionBody({ id }: { id: SectionId }) {
       );
     case "quicklinks":
       return <QuicklinksSection />;
+    case "mcp":
+      return <McpSection />;
     case "devices":
       return (
         <div className="space-y-4 sm:space-y-5">

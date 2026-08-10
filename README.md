@@ -63,6 +63,7 @@ For a real deployment, put MSO behind **Tailscale, a VPN, or a TLS reverse proxy
 **Extend** — Alfa AI, modular slices, and custom apps.
 
 - **Use BYOK AI** — Alfa uses credentials stored on your server, not committed to the repo.
+- **Drive the box from ChatGPT, Claude.ai or Cursor** — an optional MCP server (OAuth 2.1 + PKCE) exposes files, system health and, if you grant it, a shell. Off unless you set `OS_MCP_ENABLED=1`, scoped read/write/exec per token, revocable from Settings. See [docs/MCP.md](./docs/MCP.md).
 - **Add app slices** — features are modular under `frontend/slices/<slug>/`.
 - **Personalize the interface** — macOS, Windows, iOS, and Android shell layouts are UI preferences, not the core product.
 
@@ -159,6 +160,7 @@ An authenticated MSO session can read allowed files and run commands as the user
 - Treat any file Alfa reads as untrusted input. The approval card is the only thing between text hidden inside a file and an `exec.run`. Read the command on the card, not Alfa's summary of it.
 - Agents and Skills group tools for your own convenience. They are not a permission boundary: every agent can call every tool.
 - `exec.run` is not sandboxed. Its cwd is bounded to your write roots, but the command itself runs in your login shell as the service user. The destructive-command denylist is a short accident tripwire, not a guard.
+- The MCP server is off unless `OS_MCP_ENABLED=1`. When on, a bearer token is a standing credential with whatever scope you granted it: at `exec` it runs any command on the box as you, and every call and result goes to the client's provider. Grant `read` unless you need more, cap the ceiling with `OS_MCP_MAX_SCOPE`, and treat anything the model reads as untrusted — scope is what stops a prompt-injected file talking it into a write. See [docs/MCP.md](./docs/MCP.md).
 - MSO has not had a third-party security audit.
 
 More detail: [SECURITY.md](./SECURITY.md), [docs/FAQ.md](./docs/FAQ.md) and [docs/INSTALL.md](./docs/INSTALL.md).
@@ -256,6 +258,7 @@ Not currently supported:
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | App shell, host layer, slices, routing |
 | [docs/MANAGED-APPS.md](./docs/MANAGED-APPS.md) | Managing Hermes/OpenClaw, per-app origins, workspace modes |
 | [docs/MODELS-INTEGRATION.md](./docs/MODELS-INTEGRATION.md) | Alfa AI and BYOK model providers |
+| [docs/MCP.md](./docs/MCP.md) | The MCP server: connecting ChatGPT/Claude/Cursor, scopes, revoking |
 | [docs/FAQ.md](./docs/FAQ.md) | Security posture, device approval, costs, product boundaries |
 | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) | Common install, build, and deployment failures |
 | [SECURITY.md](./SECURITY.md) | Responsible disclosure and deployment warnings |
