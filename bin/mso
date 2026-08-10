@@ -54,8 +54,9 @@
 #   config *             BYOK provider + model: show | set | rm
 #   prefs *              UI preferences: show | set
 #   models *             Model catalog: list | test
-#   skills               Skill catalog the assistant sees
+#   skills [name]        Skill catalog the assistant sees; with a name, its SKILL.md
 #   mcp *                MCP bearer tokens: list | revoke <id> | revoke all
+#   oauth <prov> *       Provider sign-in (device code): start | poll
 #   audit [n] [prefix]   Audit trail, newest first (writes/exec/auth; reads are not logged)
 #   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)
 #
@@ -70,7 +71,7 @@
 #
 #  Service  (local systemd)
 #   service *            status | start | stop | restart | logs
-#   build                next build
+#   build                Compile HEAD out-of-tree (safe against the live checkout)
 #   deploy               next build, then restart the service
 #
 #  Escape hatches
@@ -134,7 +135,19 @@ need() { command -v "$1" >/dev/null || die "missing dependency: $1"; }
 need curl; need jq
 
 # ── local ops (no HTTP, no login) ───────────────────────────────────────────
-dev_script() { node "$ROOT/scripts/approve-device.js" "$@"; }
+# These edit ~/.mso/auth-devices.json on THIS machine. They are deliberately local
+# (they must keep working while the service is down) — but that makes them the one
+# family of verbs `--base` does not follow. Pointing at a remote host and running
+# `device approve` used to silently edit the LOCAL allowlist and report success,
+# so the operator believed they had approved a device that was still pending.
+dev_script() {
+  case "$B" in
+    http://127.0.0.1:*|http://localhost:*|http://[::1]:*) ;;
+    *) die "device commands edit the LOCAL allowlist (~/.mso/auth-devices.json) and cannot reach $B.
+  Run them ON that host, or over ssh:  ssh <host> mso device $*" ;;
+  esac
+  node "$ROOT/scripts/approve-device.js" "$@"
+}
 
 # ── auth ────────────────────────────────────────────────────────────────────
 PASS="${MSO_PASSWORD:-${OS_PASSWORD:-${OS_LOGIN_PASSWORD:-}}}"
@@ -221,16 +234,17 @@ verbs() {
 # so the help you get when you ask cannot disagree with the help you get when
 # you're wrong.
 U_camoufox="camoufox status|start|stop|session"
-U_mapp="mapp list|show <id>|logs <id>|backups <id>|jobs <id>|job <id> <jobId>|install <id>|update <id>"
+U_mapp="mapp list|show|logs|backups|jobs|job <id> <jobId>|pending <id>|install|update|power <id> <act>|cancel <id> <jobId>"
 U_term="term open [cwd] [cols] [rows]|input <id> <text>|resize <id> <cols> <rows>|stream <id>|close <id>"
 U_device="device list|pending|approve <id> [label]|revoke <id>|revoke all --yes"
 U_service="service status|start|stop|restart|logs [n]"
-U_threads="threads list|show <id>|rm <id>"
+U_threads="threads list|show <id>|save <json>|rm <id>"
 U_memory="memory list|add <text>|rm <id>"
 U_config="config show|set <json>|rm <provider>"
 U_prefs="prefs show|set <json>"
 U_models="models list|test"
 U_mcp="mcp list|revoke <id>|revoke all"
+U_oauth="oauth <provider> start|poll   e.g. mso oauth openai start"
 U_audit="audit [n] [prefix]   e.g. mso audit 20 exec."
 U_crud="crud list <dir> | get <path> | set <path> <cmd k=v…|text> | del <path> | cmds"
 U_api="api <METHOD> <path> [json]   e.g. mso api GET /api/v1/sys/stats"
@@ -296,7 +310,13 @@ case "$cmd" in
     chk "service unit"   "systemctl is-active --quiet mso.service" "mso.service not active — mso service start"
     chk "reachable"      "curl -fsS --max-time 5 '$B/api/health'"  "nothing answering at $B"
     d=$(cli_device)
-    chk "device known"   "dev_script --list | grep -q '$d'" "this CLI device is not approved — mso device approve $d 'mso cli'"
+    # Only meaningful against a local base — the allowlist lives on the host, and
+    # dev_script now refuses a remote one rather than reading the wrong file.
+    case "$B" in
+      http://127.0.0.1:*|http://localhost:*|http://[::1]:*)
+        chk "device known" "dev_script --list | grep -q '$d'" "this CLI device is not approved — mso device approve $d 'mso cli'" ;;
+      *) echo "  --  device known    (skipped: --base is remote; check it on that host)" ;;
+    esac
     chk "session"        "[ \"\$(rm -f '$JAR'; jget /api/auth/me | jq -r .authenticated)\" = true ]" "cannot sign in — see the checks above"
     echo
     [ "$fails" -eq 0 ] && echo "all good." || echo "$fails check(s) failed."
@@ -323,8 +343,15 @@ case "$cmd" in
       backups) jget "/api/v1/managed-apps/$(enc "${1:?id}")/backups" ;;
       jobs)    jget "/api/v1/managed-apps/$(enc "${1:?id}")/jobs" ;;
       job)     jget "/api/v1/managed-apps/$(enc "${1:?id}")/jobs/$(enc "${2:?jobId}")" ;;
+      # Cached result only. The live probe is `update <id> check` (POST), gated.
+      pending) jget "/api/v1/managed-apps/$(enc "${1:?id}")/update" ;;
       install) jpost "/api/v1/managed-apps/$(enc "${1:?id}")/install" "$(kv_args "${@:2}")" ;;
       update)  jpost "/api/v1/managed-apps/$(enc "${1:?id}")/update"  "$(kv_args "${@:2}")" ;;
+      # start|stop|restart|backup — MANAGED_APP_ACTIONS in lib/managed-apps/types.ts.
+      power)   [ -n "${2-}" ] || die "usage: mso mapp power <id> <start|stop|restart|backup>"
+               jpost "/api/v1/managed-apps/$(enc "${1:?id}")" "$(jq -n --arg a "$2" '{action:$a}')" ;;
+      cancel)  [ -n "${2-}" ] || die "usage: mso mapp cancel <id> <jobId>"
+               jdel "/api/v1/managed-apps/$(enc "${1:?id}")/jobs/$(enc "$2")" ;;
       *) die "usage: mso $U_mapp" ;;
     esac ;;
 
@@ -351,6 +378,7 @@ case "$cmd" in
     case "${1:-list}" in
       list) jget "/api/threads" ;;
       show) jget "/api/threads?id=$(enc "${2:?id}")" ;;
+      save) jpost "/api/threads" "${2:?json — {id,messages:[…]}}" ;;
       rm)   jdel "/api/threads?id=$(enc "${2:?id}")" ;;
       *) die "usage: mso $U_threads" ;;
     esac ;;
@@ -380,7 +408,7 @@ case "$cmd" in
       test) jpost "/api/models/test" ;;
       *) die "usage: mso $U_models" ;;
     esac ;;
-  skills) jget "/api/skills" ;;
+  skills) [ -n "${1-}" ] && jget "/api/skills?name=$(enc "$1")" || jget "/api/skills" ;;
   stock)  jget "/api/v1/stock/search?q=$(enc "${1:?query}")&page=${2:-1}" ;;
 
   # ── devices (local file, works even when the service is down) ────────────
@@ -401,6 +429,14 @@ case "$cmd" in
            dev_script "$1" "${@:2}" ;;
   revoke)  [ -n "${1-}" ] || die "usage: mso revoke <deviceId>  (ids: mso device list)"
            dev_script --revoke "$1" ;;
+  # ── provider OAuth (device-code, NOT a browser redirect) ─────────────────
+  oauth)
+    p="${1:?provider (e.g. openai)}"; sub="${2:-start}"
+    case "$sub" in
+      start|poll) jpost "/api/oauth/$(enc "$p")" "$(jq -n --arg a "$sub" '{action:$a}')" ;;
+      *) die "usage: mso $U_oauth" ;;
+    esac ;;
+
   # ── MCP tokens (the bearers that let ChatGPT et al. drive this host) ─────
   mcp)
     case "${1:-list}" in
@@ -430,7 +466,11 @@ case "$cmd" in
       logs)    journalctl -u mso.service -n "${2:-50}" --no-pager ;;
       *) die "usage: mso $U_service" ;;
     esac ;;
-  build)  (cd "$ROOT" && npm run build) ;;
+  # NOT `next build` — this is mso.service's WorkingDirectory, and a build here
+  # deletes .next under the running process, 404ing every chunk until a restart.
+  # verify-build.sh compiles HEAD in a temp dir instead. `deploy` is the in-place
+  # one, and it restarts immediately after.
+  build)  (cd "$ROOT" && bash scripts/verify-build.sh) ;;
   deploy) (cd "$ROOT" && npm run build) && sudo systemctl restart mso.service && echo "deployed → $B" ;;
 
   # ── editor-document CRUD (one pattern, all editor features) ──────────────

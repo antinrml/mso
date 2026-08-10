@@ -88,8 +88,9 @@ Commands:
   config *             BYOK provider + model: show | set | rm
   prefs *              UI preferences: show | set
   models *             Model catalog: list | test
-  skills               Skill catalog the assistant sees
+  skills [name]        Skill catalog the assistant sees; with a name, its SKILL.md
   mcp *                MCP bearer tokens: list | revoke <id> | revoke all
+  oauth <prov> *       Provider sign-in (device code): start | poll
   audit [n] [prefix]   Audit trail, newest first (writes/exec/auth; reads are not logged)
   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)
 
@@ -104,7 +105,7 @@ Commands:
 
  Service  (local systemd)
   service *            status | start | stop | restart | logs
-  build                next build
+  build                Compile HEAD out-of-tree (safe against the live checkout)
   deploy               next build, then restart the service
 
  Escape hatches

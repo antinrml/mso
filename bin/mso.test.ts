@@ -62,32 +62,66 @@ describe("bin/mso", () => {
         const p = path.join(dir, e.name);
         return e.isDirectory() ? walk(p) : e.name === "route.ts" ? [p] : [];
       });
-    const routes = walk(path.join(repo, "app/api")).map((p) =>
-      "/" + path.relative(repo, p).replace(/^app\//, "").replace(/\/route\.ts$/, ""),
-    );
+    // (method, path) pairs, not paths. A path-only check passed while POST
+    // /managed-apps/[id] (start/stop/restart/backup), DELETE
+    // .../jobs/[jobId] and GET /api/skills?name= had no verb at all — the file
+    // merely mentioned the path somewhere for a DIFFERENT method.
+    const files = walk(path.join(repo, "app/api"));
+    const routes = files.flatMap((p) => {
+      const route = "/" + path.relative(repo, p).replace(/^app\//, "").replace(/\/route\.ts$/, "");
+      const src = fs.readFileSync(p, "utf8");
+      return [...src.matchAll(/export async function (GET|POST|PUT|PATCH|DELETE)\b/g)].map(
+        (m) => `${m[1]} ${route}`,
+      );
+    });
     const cli = fs.readFileSync(CLI, "utf8");
 
-    // Browser-only surfaces: an OAuth redirect needs a browser to land on, the
-    // service worker is fetched by the browser itself, and the managed-app proxy
-    // exists to be iframed. /api/auth/devices reads the same store `mso device
-    // list` reads straight off disk, which also works with the service down.
+    // Not reachable from a shell, each for its own reason:
+    //  • /api/sw is fetched by the browser to install the service worker.
+    //  • the managed-app proxy exists to be iframed.
+    //  • /api/auth/devices reads the same store `mso device list` reads straight
+    //    off disk, which keeps working while the service is down.
+    // OAuth is NOT here any more: it is a device-code POST, not a redirect, so
+    // `mso oauth <provider> start|poll` covers it.
     const browserOnly = [
-      "/api/oauth/[provider]",
-      "/api/sw",
+      "GET /api/sw",
       "/api/v1/managed-apps/[id]/proxy/[[...path]]",
       "/api/auth/devices",
     ];
 
-    const uncovered = routes.filter((r) => {
-      if (browserOnly.includes(r)) return false;
-      // The CLI builds dynamic segments by interpolation, so compare on the
-      // literal chunks either side of a [param] rather than the whole path.
-      const parts = r.split("/").filter((s) => s && !s.startsWith("["));
+    // The CLI writes each call as `jget "/path"` / `jpost "/path"` / `jdel "/path"`,
+    // so the helper name carries the method. `reqraw` and a bare `req` are the
+    // escape hatches for the calls the json helpers cannot make — binary bodies
+    // (fs/raw, fs/zip), a live SSE stream (term/stream) and multipart (fs/upload)
+    // — and `curl` covers doctor's own probes. They are listed under the method
+    // they actually issue, so this stays a method check, not a free pass.
+    const HELPERS: Record<string, string[]> = {
+      GET: ["jget", "reqraw", "curl"],
+      POST: ["jpost", "req -F", "-X POST"],
+      PUT: ["jput"],
+      PATCH: ["jpatch"],
+      DELETE: ["jdel"],
+    };
+
+    const uncovered = routes.filter((mr) => {
+      const [method, route] = mr.split(" ");
+      if (browserOnly.some((b) => mr === b || route === b)) return false;
+      // Dynamic segments are built by interpolation, so match on the literal
+      // chunks either side of a [param].
+      const parts = route.split("/").filter((s) => s && !s.startsWith("["));
+      const stem = `/${parts.join("/")}`;
       const tail = parts[parts.length - 1];
-      return !cli.includes(`/${parts.join("/")}`) && !cli.includes(`/${tail}"`) && !cli.includes(`/${tail}?`);
+      return !HELPERS[method].some((h) => {
+        const i = cli.indexOf(h);
+        if (i < 0) return false;
+        // Look for the helper and the path on the same line.
+        return cli
+          .split("\n")
+          .some((line) => line.includes(h) && (line.includes(stem) || line.includes(`/${tail}"`) || line.includes(`/${tail}?`) || line.includes(`/${tail}/`)));
+      });
     });
     expect(uncovered).toEqual([]);
-    expect(routes.length).toBeGreaterThan(40);
+    expect(routes.length).toBeGreaterThan(50);
   });
 
   it("refuses `device revoke all` without --yes, and leaves the store intact", () => {
