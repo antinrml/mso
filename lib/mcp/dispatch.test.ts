@@ -1,8 +1,18 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 // The catalog reaches lib/camoufox + lib/managed-apps, which are `server-only`.
 // Next aliases that specifier internally; vitest does not, so stub it — same
 // pattern as lib/managed-apps/manager.test.ts.
 vi.mock("server-only", () => ({}));
+
+// Spy on the trail without writing to ~/.mso/audit.log. Everything else in
+// @/lib/host stays REAL — the point of these cases is that the dispatcher, not
+// each tool, is what records.
+const audited: { action: string; actor?: string; target?: string; ok?: boolean }[] = [];
+vi.mock("@/lib/host", async (orig) => {
+  const real = await orig<typeof import("@/lib/host")>();
+  return { ...real, audit: (e: { action: string }) => { audited.push(e); return Promise.resolve(); } };
+});
+
 const { dispatch, isNotification } = await import("./dispatch");
 const { TOOLS } = await import("./tools");
 
@@ -115,6 +125,46 @@ describe("catalog hygiene", () => {
   it("the irreversible tools carry destructiveHint so clients keep prompting", () => {
     for (const name of ["fs_delete", "exec_run", "browser_power"]) {
       expect(TOOLS.find((t) => t.name === name)?.annotations?.destructiveHint, name).toBe(true);
+    }
+  });
+});
+
+describe("audit trail", () => {
+  beforeEach(() => {
+    audited.length = 0;
+  });
+
+  it("records a scope refusal — a read token reaching for exec IS the injection signal", async () => {
+    await dispatch(call("exec_run", { command: "id" }), "read", "mcp:abc123");
+    expect(audited).toEqual([
+      expect.objectContaining({ action: "mcp.denied", actor: "mcp:abc123", target: "exec_run", ok: false }),
+    ]);
+  });
+
+  it("records a failed write with its target, so a blocked path is visible", async () => {
+    await dispatch(call("fs_write", { path: "/etc/shadow", content: "x" }), "write", "mcp:abc123");
+    expect(audited).toEqual([
+      expect.objectContaining({ action: "fs.write", actor: "mcp:abc123", target: "/etc/shadow", ok: false }),
+    ]);
+    expect(audited[0]).toMatchObject({ meta: { via: "mcp", scope: "write" } });
+  });
+
+  it("records exec_run with the command as the target", async () => {
+    await dispatch(call("exec_run", { command: "echo hi" }), "exec", "mcp:abc123");
+    expect(audited[0]).toMatchObject({ action: "exec.run", target: "echo hi" });
+  });
+
+  it("does NOT record reads — bounded and high-volume, same rule /api/v1 follows", async () => {
+    await dispatch(call("sys_stats"), "read", "mcp:abc123");
+    await dispatch(call("fs_list", { path: "~/projects" }), "read", "mcp:abc123");
+    await dispatch({ id: 1, method: "tools/list" }, "exec", "mcp:abc123");
+    expect(audited).toEqual([]);
+  });
+
+  it("every write/exec tool declares an audit action, and no read tool does", () => {
+    for (const t of TOOLS) {
+      if (t.scope === "read") expect(t.audit, t.name).toBeUndefined();
+      else expect(t.audit?.action, t.name).toBeTruthy();
     }
   });
 });

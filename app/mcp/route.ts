@@ -55,7 +55,9 @@ export async function POST(req: Request) {
   }
 
   void touchToken(token.hash).catch(() => {});
-  const result = await dispatch(body as Parameters<typeof dispatch>[0], token.scope);
+  // Same 16-char id the Settings table and `mso mcp list` show, so an audit line
+  // maps straight back to the token you would revoke.
+  const result = await dispatch(body as Parameters<typeof dispatch>[0], token.scope, `mcp:${token.hash.slice(0, 16)}`);
   return Response.json(result, { status: 200, headers: { "Cache-Control": "no-store" } });
 }
 

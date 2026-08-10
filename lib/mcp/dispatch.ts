@@ -1,3 +1,4 @@
+import { audit } from "@/lib/host";
 import { TOOLS, TOOLS_BY_NAME } from "./tools";
 import { allows, type Scope } from "./scope";
 
@@ -41,7 +42,12 @@ function toolList(scope: Scope) {
   }));
 }
 
-export async function dispatch(req: RpcRequest, scope: Scope): Promise<Record<string, unknown>> {
+/**
+ * @param actor identifies WHICH token acted, as `mcp:<id>` — the same id the
+ *   Settings table and `mso mcp list` show, so a line in the trail maps back to a
+ *   revoke button. Never the raw bearer.
+ */
+export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): Promise<Record<string, unknown>> {
   const id = req.id ?? null;
   switch (req.method) {
     case "initialize":
@@ -63,6 +69,10 @@ export async function dispatch(req: RpcRequest, scope: Scope): Promise<Record<st
       // Scope is re-checked HERE, not just at tools/list — a client can call any
       // name it likes, and the list is only a hint.
       if (!allows(scope, tool.scope)) {
+        // Logged even though nothing happened: a `read` connector repeatedly
+        // reaching for exec_run is what a prompt-injected model looks like from
+        // the outside, and it is the only place that signal is visible.
+        void audit({ action: "mcp.denied", actor, target: name, ok: false, detail: `scope ${scope} < ${tool.scope}` });
         return ok(id, {
           content: [{ type: "text", text: `error: this token holds scope "${scope}"; ${name} needs "${tool.scope}". Mint a new token in mso Settings → MCP.` }],
           isError: true,
@@ -71,14 +81,23 @@ export async function dispatch(req: RpcRequest, scope: Scope): Promise<Record<st
       for (const k of tool.inputSchema.required ?? []) {
         if (args[k] == null) return fail(id, -32602, `${name} needs { ${(tool.inputSchema.required ?? []).join(", ")} }`);
       }
+      // MCP tools call lib/host directly, so the ROUTE-level audit that covers
+      // /api/v1 never runs for them. Without this, every write, delete and exec
+      // that arrived over MCP would be missing from the one forensic trail there
+      // is — and "revoke the token" is not much of a control if you cannot see
+      // what it did first. Reads stay unaudited, same rule the routes follow.
+      const trail = tool.audit;
+      const target = trail?.targetArg != null ? String(args[trail.targetArg] ?? "") : undefined;
       try {
         const result = await tool.run(args);
+        if (trail) void audit({ action: trail.action, actor, target, ok: true, meta: { via: "mcp", scope } });
         return ok(id, { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }] });
       } catch (e) {
         // A handler failure stays INSIDE result with isError, never as a JSON-RPC
         // error object: ChatGPT hides protocol-level errors from the user, so the
         // person sees the model give up with no reason shown.
         const msg = e instanceof Error ? e.message : String(e);
+        if (trail) void audit({ action: trail.action, actor, target, ok: false, detail: msg.slice(0, 200), meta: { via: "mcp", scope } });
         return ok(id, { content: [{ type: "text", text: "error: " + msg.slice(0, 500) }], isError: true });
       }
     }

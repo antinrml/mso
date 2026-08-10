@@ -280,6 +280,15 @@ that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
   rule as `lib/auth/device-store.ts`. Codes are single-use, 60 s, deleted BEFORE the
   token is minted. `browser_status` must never return the VNC password — that profile
   holds a live Google session.
+- **The dispatcher writes the audit trail, because the tools bypass the one that
+  exists.** `audit()` is called at the ROUTE layer for `/api/v1`; MCP tools call
+  `lib/host` directly, so every write/delete/exec over MCP would otherwise be absent
+  from `~/.mso/audit.log`. `McpTool.audit` declares the action + which arg is the
+  target; `dispatch()` records it with `actor: mcp:<id>` (the id Settings shows) and
+  `meta.via = "mcp"`. Scope refusals log `mcp.denied` — that is the prompt-injection
+  signal. Reads stay unlogged, same rule the routes follow. `GET /api/v1/sys/audit`
+  reads it (session-gated); there is deliberately **no MCP tool** for it, or a
+  compromised token could check whether it had been noticed.
 
 ## CLI (`bin/mso`) — the web UI is only one frontend
 `bin/mso` reaches the same `/api` surface from a shell — every route has a named verb

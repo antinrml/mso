@@ -7,6 +7,15 @@ import { SettingsSection } from "@/features/shell-settings";
 import { toast } from "@/features/os-shell";
 import { IS_DEMO } from "@/lib/demo";
 
+type AuditRow = {
+  ts?: string;
+  action: string;
+  actor?: string | null;
+  target?: string;
+  ok?: boolean;
+  detail?: string;
+};
+
 type TokenRow = {
   id: string;
   label: string;
@@ -47,6 +56,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 
 export function McpSection() {
   const [state, setState] = useState<{ enabled: boolean; maxScope: string; tokens: TokenRow[] } | null>(null);
+  const [trail, setTrail] = useState<AuditRow[]>([]);
   const [origin, setOrigin] = useState("");
 
   const load = useCallback(() => {
@@ -62,6 +72,12 @@ export function McpSection() {
         setState(s);
       })
       .catch(() => toast("Couldn't load MCP tokens", { tone: "error" }));
+    // What those tokens actually DID. Revoking is a weak control if you cannot
+    // see the writes and commands that already went through.
+    fetch("/api/v1/sys/audit?actor=mcp%3A&limit=20", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { entries: [] }))
+      .then((d: { entries?: AuditRow[] }) => setTrail(d.entries ?? []))
+      .catch(() => setTrail([]));
   }, []);
 
   useEffect(load, [load]);
@@ -143,6 +159,24 @@ export function McpSection() {
                   );
                 })}
               </ul>
+            )}
+            {trail.length > 0 && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="pb-1.5 text-xs font-medium">Recent MCP activity</p>
+                <ul className="space-y-1">
+                  {trail.map((e, i) => (
+                    <li key={i} className="flex items-baseline gap-2 text-[11px]">
+                      <code className={e.ok === false ? "shrink-0 font-mono text-destructive" : "shrink-0 font-mono"}>{e.action}</code>
+                      <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{e.target ?? e.detail ?? ""}</span>
+                      <span className="shrink-0 text-muted-foreground">{e.ts ? new Date(e.ts).toLocaleString() : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="pt-1.5 text-[11px] text-muted-foreground">
+                  Reads are not logged (bounded and high-volume). Writes, deletes, commands and
+                  refused-for-scope attempts are. Full trail: <code className="font-mono">mso audit</code>.
+                </p>
+              </div>
             )}
             {live.length > 0 && (
               <Button

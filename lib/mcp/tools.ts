@@ -2,6 +2,7 @@ import {
   listDir, readFile, writeFile, makeDir, remove, move, copy, searchFs, usage,
   runCommand, stats, processes,
 } from "@/lib/host";
+import type { AuditAction } from "@/lib/host";
 import { camoufoxStatus, setCamoufoxEnabled } from "@/lib/camoufox/service";
 import { listManagedApps } from "@/lib/managed-apps/manager";
 import type { Scope } from "./scope";
@@ -20,6 +21,14 @@ export interface McpTool {
   inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
   annotations?: Record<string, boolean>;
   run: (a: Record<string, unknown>) => Promise<unknown>;
+  /** Which audit action this writes, and which argument names the target. Reads
+   *  are deliberately unaudited (bounded + high-volume, same rule the /api/v1
+   *  routes follow); a tool without this field writes nothing.
+   *
+   *  This exists because MCP tools call lib/host DIRECTLY. The /api/v1 routes
+   *  audit at the ROUTE layer, so without this every write, delete and exec that
+   *  arrived over MCP would be invisible in the only forensic trail there is. */
+  audit?: { action: AuditAction; targetArg?: string };
 }
 
 const str = (a: Record<string, unknown>, k: string): string => {
@@ -126,6 +135,7 @@ export const TOOLS: McpTool[] = [
 
   {
     name: "fs_write",
+    audit: { action: "fs.write" as const, targetArg: "path" },
     description:
       "Create or overwrite a text file on the VPS. Overwrites without warning — fs_read first if you need " +
       "the old contents. Bounded to OS_FS_WRITE_ROOTS (home + ~/projects by default).",
@@ -139,6 +149,7 @@ export const TOOLS: McpTool[] = [
   },
   {
     name: "fs_mkdir",
+    audit: { action: "fs.mkdir" as const, targetArg: "path" },
     description: "Create a directory (and any missing parents) on the VPS.",
     scope: "write",
     annotations: { idempotentHint: true },
@@ -147,6 +158,7 @@ export const TOOLS: McpTool[] = [
   },
   {
     name: "fs_move",
+    audit: { action: "fs.move" as const, targetArg: "from" },
     description: "Move or rename a file or directory. Refuses when the source holds credential paths.",
     scope: "write",
     inputSchema: S({ from: { type: "string" }, to: { type: "string" } }, ["from", "to"]),
@@ -154,6 +166,7 @@ export const TOOLS: McpTool[] = [
   },
   {
     name: "fs_copy",
+    audit: { action: "fs.copy" as const, targetArg: "from" },
     description: "Copy a file or directory. The cockpit's own secrets are skipped rather than duplicated.",
     scope: "write",
     inputSchema: S({ from: { type: "string" }, to: { type: "string" } }, ["from", "to"]),
@@ -161,6 +174,7 @@ export const TOOLS: McpTool[] = [
   },
   {
     name: "fs_delete",
+    audit: { action: "fs.delete" as const, targetArg: "path" },
     description:
       "Delete a file or directory on the VPS. PERMANENT — there is no trash and no undo. " +
       "Confirm with the user before calling this on anything you did not create in this conversation.",
@@ -172,6 +186,7 @@ export const TOOLS: McpTool[] = [
 
   {
     name: "exec_run",
+    audit: { action: "exec.run" as const, targetArg: "command" },
     description:
       "Run a shell command on the VPS as the owner and return stdout, stderr and exit code. " +
       "FULL HOST POWER — prefer fs_* and sys_* tools whenever they cover the task; they are bounded and " +
@@ -187,6 +202,7 @@ export const TOOLS: McpTool[] = [
   },
   {
     name: "browser_power",
+    audit: { action: "camoufox.power" as const, targetArg: "on" },
     description:
       "Start or stop the Camoufox browser session on the VPS. Starting boots a real Firefox on a headless " +
       "X display; the session self-terminates after 2h. Stop it when done — it holds a live logged-in profile.",

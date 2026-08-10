@@ -96,6 +96,35 @@ credentials never leave the box through a tool result.
 
 Grant `read` unless you actually need more, and mint a second token when you do.
 
+## Seeing what a token did
+
+Revoking is a weak control if you cannot see what already went through, so every
+mutating MCP call lands in the same audit trail (`~/.mso/audit.log`, JSONL) that
+the web UI's writes and commands do — with `actor` set to `mcp:<id>`, the same id
+the Settings table and `mso mcp list` show.
+
+```bash
+mso audit              # newest 50, everything
+mso audit 100 exec.    # just command execution
+mso audit 50 mcp.      # just scope refusals
+jq -c 'select(.actor|startswith("mcp:"))' ~/.mso/audit.log   # everything MCP did
+```
+
+Settings → MCP shows the last 20 MCP lines inline.
+
+What is recorded: `fs.write` `fs.mkdir` `fs.move` `fs.copy` `fs.delete`
+`exec.run` `camoufox.power`, each with its target and whether it succeeded, plus
+`mcp.denied` when a token asks for a tool above its scope. **That last one is the
+signal worth watching** — a `read` connector repeatedly reaching for `exec_run` is
+what a prompt-injected model looks like from the outside.
+
+Reads are NOT recorded. Same rule the `/api/v1` routes follow: they are bounded
+and high-volume, and logging them would bury the lines that matter.
+
+There is deliberately no MCP tool for reading the trail. It records what every
+token did; letting a token read it would let a compromised one check whether it
+had been noticed. `GET /api/v1/sys/audit` is session-gated, browser and CLI only.
+
 ## Revoking
 
 **mso → Settings → MCP**, or from the CLI:

@@ -56,6 +56,7 @@
 #   models *             Model catalog: list | test
 #   skills               Skill catalog the assistant sees
 #   mcp *                MCP bearer tokens: list | revoke <id> | revoke all
+#   audit [n] [prefix]   Audit trail, newest first (writes/exec/auth; reads are not logged)
 #   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)
 #
 #  Devices  (a local file — these work while the service is down)
@@ -230,6 +231,7 @@ U_config="config show|set <json>|rm <provider>"
 U_prefs="prefs show|set <json>"
 U_models="models list|test"
 U_mcp="mcp list|revoke <id>|revoke all"
+U_audit="audit [n] [prefix]   e.g. mso audit 20 exec."
 U_crud="crud list <dir> | get <path> | set <path> <cmd k=v…|text> | del <path> | cmds"
 U_api="api <METHOD> <path> [json]   e.g. mso api GET /api/v1/sys/stats"
 
@@ -407,6 +409,11 @@ case "$cmd" in
               jdel "/api/mcp/tokens?id=$(enc "$2")" ;;
       *) die "usage: mso $U_mcp" ;;
     esac ;;
+
+  # ── audit trail (the forensic record; MCP writes land here too) ──────────
+  audit)
+    q="limit=${1:-50}"; [ -n "${2-}" ] && q="$q&prefix=$(enc "$2")"
+    jget "/api/v1/sys/audit?$q" ;;
 
   whoami)  echo "cli device: $(cli_device)"; jget "/api/auth/me" ;;
   login)   rm -f "$JAR"; login; echo "logged in as device $(cli_device)" ;;

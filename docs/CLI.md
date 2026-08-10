@@ -90,6 +90,7 @@ Commands:
   models *             Model catalog: list | test
   skills               Skill catalog the assistant sees
   mcp *                MCP bearer tokens: list | revoke <id> | revoke all
+  audit [n] [prefix]   Audit trail, newest first (writes/exec/auth; reads are not logged)
   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)
 
  Devices  (a local file — these work while the service is down)
