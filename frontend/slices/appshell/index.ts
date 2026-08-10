@@ -49,7 +49,7 @@ export {
 // Reusable app-window chrome (all regions optional) + form/preview drawer, so
 // every app reads consistently: Sidebar→left Sheet, Inspector→right Sheet on
 // narrow containers; <FormDrawer> = dialog on desktop ⇄ bottom drawer on mobile.
-export { AppHeader, AppSidebar, AppInspector } from "./components/layout/app-chrome";
+export { AppSidebar } from "./components/layout/app-chrome";
 export {
   ResponsiveDialog,
   ResponsiveDialog as FormDrawer,
@@ -71,7 +71,7 @@ export type {
 } from "./lib/host-api";
 // F1–F20 window-manager + productivity libs (each module exports its own
 // public surface — commands/badges/layouts/recents/window-commands/window-title/
-// spaces/window-tabs/clipboard/share/lock/profiles/shortcuts/focus-mode/dnd/quick-look).
+// spaces/window-tabs/clipboard/lock/profiles/shortcuts/focus-mode).
 export * from "./lib/commands";
 export * from "./lib/badges";
 export * from "./lib/recents";
@@ -82,13 +82,10 @@ export * from "./lib/window-title";
 export * from "./lib/spaces";
 export * from "./lib/window-tabs";
 export * from "./lib/clipboard";
-export * from "./lib/share";
 export * from "./lib/lock";
 export * from "./lib/profiles";
 export * from "./lib/shortcuts";
 export * from "./lib/focus-mode";
-export * from "./lib/dnd";
-export * from "./lib/quick-look";
 export {
   useFocusedHotkey,
   inEditable,

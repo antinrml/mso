@@ -173,30 +173,18 @@ TLS (certbot). Keep `proxy_set_header Host $host;` and forward
 
 Either way: firewall :4005 (and :4002) so only the proxy / tailnet reaches them.
 
-## 6. Optional — the remote Browser app (`os-browser/`)
+## 6. Optional — the Browser app (Camoufox)
 
-A real headless Chromium on the VPS, driven by the Browser app. Skip it and
-everything else still works.
+The Browser app streams a real anti-fingerprinting Firefox from a headless X
+display over noVNC, run by the `camoufox-vnc.service` systemd USER unit whose
+ExecStart is `scripts/camoufox-vnc-service` in this repo. Skip it and everything
+else still works. See CLAUDE.md for the host-side prerequisites (`enable-linger`,
+the `XDG_RUNTIME_DIR` drop-in, and the VNC password file it refuses to start
+without).
 
-```bash
-cd os-browser
-npm install                 # installs playwright
-npx playwright install chromium --with-deps
-
-# it refuses to start without a secret (≥16 chars):
-OS_BROWSER_SECRET=$(openssl rand -hex 16) node server.mjs   # listens on 127.0.0.1:4002
-```
-
-Then in the main app's `.env.local`:
-
-```bash
-OS_BROWSER_URL=http://127.0.0.1:4002
-OS_BROWSER_SECRET=<the same secret>
-```
-
-Run it under systemd too (same pattern as step 4, `ExecStart=node server.mjs`,
-plus `Environment=OS_BROWSER_SECRET=...`). **Keep it on loopback** — the
-secret travels server-to-server only and must never be reachable publicly.
+An earlier `os-browser/` Playwright sidecar on :4002 filled this role; it was
+stopped, disabled, and finally deleted on 2026-08-10. Only its vendored
+Playwright install remains, used by `scripts/gen-readme-media.mjs`.
 
 ## 7. Optional — AI assistant (BYOK)
 

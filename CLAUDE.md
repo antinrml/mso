@@ -253,8 +253,8 @@ to `resources/` (rr) and drive any project from one manifest:
 (enforced by a test in `bin/mso.test.ts`), plus `doctor`, `completion` and `--base`.
 `scripts/install.sh` symlinks
 it to `~/.local/bin/mso` and symlinks `claude-skills/*` into `~/.claude/skills/`
-(`/mso`, `/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`,
-`/mso-browser-list`). `mso -h` lists every verb; `mso api <METHOD> <path> [json]` is
+(`/mso`, `/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`).
+`mso -h` lists every verb; `mso api <METHOD> <path> [json]` is
 the escape hatch for anything without a named verb.
 - **Every CLI caller must send `Origin: <base>`.** `proxy.ts` blocks mutating `/api`
   that cannot prove same-origin; a browser proves it with `Sec-Fetch-Site`, and the

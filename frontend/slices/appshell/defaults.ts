@@ -11,9 +11,7 @@ import { inspectorFeature } from "./features/inspector";
 import { notificationsFeature } from "./features/notifications";
 import { controlCenterFeature } from "./features/control-center";
 import { widgetsFeature } from "./features/widgets";
-import { quickLookFeature } from "./features/quick-look";
 import { clipboardFeature } from "./features/clipboard";
-import { shareFeature } from "./features/share";
 import { shortcutHelpFeature } from "./features/shortcut-help";
 import { lockScreenFeature } from "./features/lock-screen";
 
@@ -22,9 +20,7 @@ export { inspectorFeature } from "./features/inspector";
 export { notificationsFeature } from "./features/notifications";
 export { controlCenterFeature } from "./features/control-center";
 export { widgetsFeature } from "./features/widgets";
-export { quickLookFeature } from "./features/quick-look";
 export { clipboardFeature } from "./features/clipboard";
-export { shareFeature } from "./features/share";
 export { shortcutHelpFeature } from "./features/shortcut-help";
 export { lockScreenFeature } from "./features/lock-screen";
 
@@ -35,9 +31,7 @@ export { lockScreenFeature } from "./features/lock-screen";
 // from the array just doesn't mount).
 export const DEFAULT_FEATURES = [
   searchFeature,
-  quickLookFeature,
   clipboardFeature,
-  shareFeature,
   shortcutHelpFeature,
   lockScreenFeature,
   inspectorFeature,

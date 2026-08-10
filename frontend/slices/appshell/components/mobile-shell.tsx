@@ -48,8 +48,7 @@ export function MobileShell() {
   // effect-driven setState (react-hooks/set-state-in-effect). Gated like
   // UrlSync (manifest.routing): opted out, the URL never names an app, so the
   // grid-first default + gesture overrides behave exactly as before.
-  const { routing } = useShellConfig();
-  const { home, setHome } = useUrlHome(apps, routing);
+  const { home, setHome } = useUrlHome(apps);
 
   // The visible app is the FOCUSED window (front-most) — fall back to the newest
   // non-minimized one. `order` is append-only and doesn't track focus.

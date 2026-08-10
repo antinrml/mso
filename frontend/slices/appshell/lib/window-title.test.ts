@@ -8,7 +8,7 @@ vi.stubGlobal("document", { title: "Base Title" });
 describe("window-title sync", () => {
   beforeEach(() => {
     closeAll();
-    configureWindowTitle({ suffix: "Brand", enabled: true });
+    configureWindowTitle({ suffix: "Brand" });
     startWindowTitleSync();
   });
 
@@ -23,13 +23,6 @@ describe("window-title sync", () => {
     const id = openWindow("files", "Files");
     closeWindow(id);
     expect(document.title).toBe("Base Title");
-  });
-
-  it("opt-out freezes the title", () => {
-    configureWindowTitle({ enabled: false });
-    openWindow("files", "Files");
-    expect(document.title).toBe("Base Title");
-    configureWindowTitle({ enabled: true }); // restore for other tests
   });
 
   it("skips the suffix when the window title IS the brand", () => {

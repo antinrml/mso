@@ -122,11 +122,13 @@ case "$cmd" in
     case "$p" in /*) ;; *) p="/$p" ;; esac
     url="$base/studio$p"; echo "$url"
     if [ "${1:-}" = "--shot" ]; then
-      out="${2:-/tmp/studio-view.png}"
-      BR="${OS_BROWSER_SH:-/home/rahman/.claude/skills/mso/browser.sh}"
-      "$BR" go "$url" >/dev/null 2>&1; sleep 7; "$BR" shot "$out"  # needs a logged-in browser
+      # The os-browser sidecar that backed this was deleted 2026-08-10 (its unit
+      # had been stopped + disabled for months). Use /mso-camoufox, which drives a
+      # real logged-in Firefox on the host.
+      echo "--shot needs a logged-in browser: run /mso-camoufox, open the URL above, screenshot there." >&2
+      exit 2
     else
-      echo "# open that URL (logged-in browser) — Konva renders the doc; add --shot [out.png] to auto-screenshot"
+      echo "# open that URL (logged-in browser) — Konva renders the doc"
     fi ;;
   *) sed -n '2,20p' "$0" ;;
 esac

@@ -6,14 +6,13 @@ description: Drive ANY mso app from the CLI — one app→function→command mat
 # /mso-apps — every mso app from the CLI
 
 One reference for operating each app. Everything routes through three transports
-([/mso] owns them): `mso` (host fs/exec/sys + generic `crud`), `browser.sh`
-(real Chromium), `image-editor.sh` (editor-document CRUD). Deep dives:
+([/mso] owns them): `mso` (host fs/exec/sys + generic `crud`), `/mso-camoufox`
+(a real logged-in browser), `image-editor.sh` (editor-document CRUD). Deep dives:
 [/mso] (control + crud), [/mso-image-editor] (editor docs), [/mso-list] (LIVE audit
-of every function), [/mso-browser-list] (browser internals).
+of every function).
 
 ```bash
 OS=mso
-BR=/home/rahman/.claude/skills/mso/browser.sh
 IE=/home/rahman/.claude/skills/mso-image-editor/image-editor.sh
 ```
 
@@ -25,11 +24,11 @@ IE=/home/rahman/.claude/skills/mso-image-editor/image-editor.sh
 | **Code Editor** | tree, open, edit, save, new file | `$OS cat <f>` / `$OS write <f> <content>` (or edit directly — this box IS the VPS) |
 | **Terminal** | fs builtins + host shell passthrough | `$OS exec "<cmd>"` · `$OS ps` |
 | **System Monitor** | CPU/mem/disk gauges, process table | `$OS stats` · `$OS ps` (read-only) |
-| **Browser** | navigate, back/fwd/reload, click/type/scroll, read | `$BR go\|back\|reload\|click\|type\|key\|scroll\|content\|shot` |
+| **Browser** | navigate, back/fwd/reload, click/type/scroll, read | `# /mso-camoufox: go\|back\|reload\|click\|type\|key\|scroll\|content\|shot` |
 | **Media Viewer** | view image/video/audio, download | `$OS cat`/copy → **Read** the image here; `$OS exec "ffprobe <f>"` for AV |
 | **Media Studio** | layers/text/shapes/adjust/style canvas | `$IE …` (it's the image editor) — see [/mso-image-editor] |
 | **Image Editor** | full editor-document CRUD + render | `$IE open\|new\|run\|inspect\|save\|view` · `$OS crud set <doc.json> <cmd>` |
-| **Reel Editor** | timeline/clips/keyframes, render→.webm | asset prep `$OS exec "ffmpeg …"`; timeline + render = browser ([/os-browser]) |
+| **Reel Editor** | timeline/clips/keyframes, render→.webm | asset prep `$OS exec "ffmpeg …"`; timeline + render = browser ([/mso-camoufox]) |
 | **Settings** | devices, AI key (BYOK), server mock/live, theme | `node ~/projects/mso/scripts/approve-device.js <id>`; key → `~/.mso/config.json`; theme/server = UI |
 | **Assistant (Alfa)** | streaming chat + editor tool-calling | `POST /api/assistant` (needs BYOK key); for editing prefer deterministic `$IE`/`crud` |
 | **App Store / Create-App** | install/uninstall, runtime apps | built-ins = `shell.manifest.ts` (+redeploy); runtime cmd app == `$OS exec`; install = UI |

@@ -11,7 +11,7 @@ you *watch and click*, not a headless scraper. Use it when a site blocks the pla
 headless browser (Cloudflare, DataDome, LinkedIn, anything that fingerprints).
 
 **Camoufox IS the Browser app.** It replaced both the Playwright sidecar
-(`os-browser`, `:4002` — retired, kept only as dev tooling for `scripts/e2e`) and the
+(`os-browser`, `:4002` — deleted 2026-08-10) and the
 sandboxed-iframe browser that briefly followed it, because X-Frame-Options makes an
 iframe unable to render most of the real web.
 
@@ -107,7 +107,6 @@ profile in and out — the anti-detection value comes from a profile that looks 
 ## Related
 
 - `/mso` — the CLI and everything else on the host
-- `/mso-browser-list` — the retired Playwright sidecar (`:4002`), still used by
   `scripts/e2e` for screenshots
 - `skills/camoufox-browse` (bundled in MSO's own catalog) — the scripting-level
   Camoufox skill for the in-app assistant, from ClawHub

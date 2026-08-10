@@ -9,12 +9,11 @@ import { shellStore } from "./store-state";
 // whenever nothing is focused.
 
 let suffix = "";
-let enabled = true;
 let base: string | null = null;
 let started = false;
 
 function apply() {
-  if (!enabled || typeof document === "undefined") return;
+  if (typeof document === "undefined") return;
   if (base === null) base = document.title;
   const id = shellStore.getFocused();
   const win = id ? shellStore.getWindow(id) : undefined;
@@ -25,9 +24,8 @@ function apply() {
   document.title = suffix && win.title !== suffix ? `${win.title} — ${suffix}` : win.title;
 }
 
-export function configureWindowTitle(opts: { suffix?: string; enabled?: boolean }) {
+export function configureWindowTitle(opts: { suffix?: string }) {
   if (opts.suffix !== undefined) suffix = opts.suffix;
-  if (opts.enabled !== undefined) enabled = opts.enabled;
   apply();
 }
 

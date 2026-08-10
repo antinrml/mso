@@ -41,8 +41,7 @@ function AndroidShell() {
   // URL → surface (same derivation as the iOS shell): a pathname naming an app slug
   // shows the app pane (UrlSync opens/focuses its window); user gestures override,
   // keyed to the pathname made at — deep links AND back/forward, no effect setState.
-  const { routing } = useShellConfig();
-  const { home, setHome } = useUrlHome(apps, routing);
+  const { home, setHome } = useUrlHome(apps);
 
   const dockable = useMemo(() => apps.filter((a) => !a.noDock), [apps]);
   const pinned = useMemo(() => dockable.filter((a) => a.pinned), [dockable]);

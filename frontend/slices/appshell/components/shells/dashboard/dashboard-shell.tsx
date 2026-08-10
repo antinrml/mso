@@ -39,8 +39,7 @@ function DashboardShell() {
   // store), anything else shows Home. User gestures override, keyed to the
   // pathname they were made at, so the derivation wins again when the URL
   // actually changes — no effect-driven setState.
-  const { routing } = useShellConfig();
-  const { home, setHome } = useUrlHome(allApps, routing);
+  const { home, setHome } = useUrlHome(allApps);
 
   // The pane shows the FOCUSED window — fall back to the newest non-minimized
   // one (`order` is append-only and doesn't track focus).

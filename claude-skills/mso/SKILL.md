@@ -76,23 +76,12 @@ All under `/api/v1`, gated by the signed session cookie (sent automatically).
 browse anywhere), `OS_FS_WRITE_ROOTS` (default home+projects). Logic in
 `mso/lib/host/`. Change → `sudo systemctl restart mso`.
 
-## Real browser (Playwright, you can drive + see it)
+## Real browser
 
-Real headless Chromium runs as systemd `os-browser` (Playwright, loopback :4002,
-secret in `/home/rahman/projects/mso/os-browser/.env`). ONE persistent context
-(`~/.mso/chrome-profile`) → cookies/cache/session on disk, SHARED between the
-Browser app and the CLI. Renders any site (no X-Frame-Options).
-
-```bash
-SH=/home/rahman/.claude/skills/mso/browser.sh
-$SH go github.com           # navigate (bare words → google search)
-$SH shot /tmp/b.png         # screenshot → Read it to SEE the page
-$SH content                 # innerText
-$SH click 640 380 ; $SH type "hello" ; $SH key Enter ; $SH scroll 600
-$SH state ; $SH back ; $SH reload
-```
-Web OS reaches it via `/api/v1/browser/*` (cookie-auth → 127.0.0.1:4002).
-Restart: `sudo systemctl restart os-browser`. Code: `mso/os-browser/server.mjs`.
+Camoufox (anti-fingerprinting Firefox on a headless X display, streamed over
+noVNC). See `/mso-camoufox`. The old `os-browser` Playwright sidecar and its
+`browser.sh` driver were deleted 2026-08-10 — the unit had been stopped and
+disabled for months and nothing in the app called it.
 
 ## The web OS (mso)
 
@@ -112,12 +101,12 @@ Restart: `sudo systemctl restart os-browser`. Code: `mso/os-browser/server.mjs`.
   (`next start` :4005). Editing + rebuilding the repo IS deploying.
 - **Deploy a change**: edit → `cd ~/projects/mso && pnpm typecheck && pnpm build`
   → `sudo systemctl restart mso` → verify. `git push` is version-control only.
-- **Status**: `mso exec "systemctl is-active mso os-browser"`; site 200 check.
+- **Status**: `mso exec "systemctl is-active mso"`; site 200 check.
 - Audit everything: `node ~/.claude/skills/mso-list/audit.js` (13 endpoints).
 
 ## Safety
 
-- Restarting `mso` / `os-browser` is fine (task targets). Do NOT restart
+- Restarting `mso` is fine (task target). Do NOT restart
   `vps-control-room-*` without warning the user — separate live product.
 - `exec` is full shell as `rahman`. Confirm destructive commands (rm -rf, service
   changes) with the user first.

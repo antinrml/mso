@@ -36,20 +36,17 @@ export function AppShell({ manifest }: { manifest: ShellManifest }) {
   const features = manifest.features ?? [];
 
   // Tab title follows the focused window ("Files — Brand"); audit found it
-  // frozen on the SSR metadata. Opt out via manifest.titleSync: false.
+  // frozen on the SSR metadata.
   useEffect(() => {
-    configureWindowTitle({ suffix: manifest.brand.name, enabled: manifest.titleSync !== false });
-    if (manifest.titleSync !== false) startWindowTitleSync();
-  }, [manifest.brand.name, manifest.titleSync]);
+    configureWindowTitle({ suffix: manifest.brand.name });
+    startWindowTitleSync();
+  }, [manifest.brand.name]);
   const providers = features
     .map((f) => f.provider)
     .filter((p): p is ComponentType<{ children: ReactNode }> => Boolean(p));
   const shellConfig = useMemo(
-    () => ({
-      persistKey: manifest.persistKey ?? "appshell:layout",
-      routing: manifest.routing !== false,
-    }),
-    [manifest.persistKey, manifest.routing],
+    () => ({ persistKey: manifest.persistKey ?? "appshell:layout" }),
+    [manifest.persistKey],
   );
 
   return (
@@ -61,7 +58,7 @@ export function AppShell({ manifest }: { manifest: ShellManifest }) {
                 FeatureDescriptor.provider can call useApps()/useResponsive(). */}
             <AppRegistryProvider apps={manifest.apps}>
               <ResponsiveBoundary>
-                {manifest.routing !== false && <UrlSync apps={manifest.apps} />}
+                <UrlSync apps={manifest.apps} />
                 {withProviders(providers, <OsDesktop />)}
               </ResponsiveBoundary>
             </AppRegistryProvider>

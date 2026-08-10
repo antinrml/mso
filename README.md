@@ -140,7 +140,7 @@ Global options: `--base <url>` to target another instance, `--env <file>` to pic
 different secrets file. Device and service commands work even while the service is
 down. If you use [Claude Code](https://claude.com/claude-code), the installer also
 links the agent skills in `claude-skills/` into `~/.claude/skills/` — `/mso`,
-`/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`, `/mso-browser-list`.
+`/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`.
 
 ## Security warning
 

@@ -69,7 +69,6 @@ registerShortcuts("appshell", [
   { keys: "⌘I", label: "AI Inspector", group: "System" },
   { keys: "⌘/", label: "Keyboard shortcuts", group: "System" },
   { keys: "⌘⇧V", label: "Clipboard history", group: "System" },
-  { keys: "Space", label: "Quick Look (selected item)", group: "System" },
   { keys: "⌘Tab", label: "App switcher", group: "Windows" },
   { keys: "F3", label: "Mission Control", group: "Windows" },
   { keys: "⌘←/→", label: "Snap window left / right", group: "Windows" },

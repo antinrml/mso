@@ -12,7 +12,6 @@ import {
   hasCloseGuard,
   snapRect,
 } from "../lib/store";
-import { deliverDrop, dragCarriesPayload, readDragData } from "../lib/dnd";
 import { spaceOf, useActiveSpace } from "../lib/spaces";
 import { useGroupTop } from "../lib/window-tabs";
 import { TrafficLights } from "./traffic-lights";
@@ -136,21 +135,7 @@ export const Window = memo(function Window({ id, variant = "macos" }: { id: WinI
 
         {win.groupId && <TabStrip groupId={win.groupId} activeId={id} />}
 
-        <div
-          className="relative min-h-0 flex-1 overflow-hidden bg-background [container-type:inline-size]"
-          // Cross-app DnD: shell payloads route to the app's drop handler;
-          // native drags (file uploads) pass through untouched.
-          onDragOver={(e) => {
-            if (dragCarriesPayload(e)) {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "copy";
-            }
-          }}
-          onDrop={(e) => {
-            const data = readDragData(e);
-            if (data && deliverDrop(win.app, data)) e.preventDefault();
-          }}
-        >
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-background [container-type:inline-size]">
           <WindowContent app={win.app} payload={win.payload} winId={id} />
         </div>
 

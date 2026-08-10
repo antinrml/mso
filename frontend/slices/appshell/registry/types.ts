@@ -46,10 +46,6 @@ export type ShellManifest = {
   persistKey?: string;
   /** Consumer-injected capabilities (appearance/host) — keeps the shell generic. */
   capabilities?: ShellCapabilities;
-  /** Mirror focused app + deep path to the URL (catch-all route). Default on. */
-  routing?: boolean;
-  /** Sync document.title to the focused window ("App — Brand"). Default on. */
-  titleSync?: boolean;
 };
 
 /** Identity helper — gives a feature its type + a stable authoring shape. */
