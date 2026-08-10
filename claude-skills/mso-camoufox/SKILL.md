@@ -107,6 +107,7 @@ profile in and out — the anti-detection value comes from a profile that looks 
 ## Related
 
 - `/mso` — the CLI and everything else on the host
-  `scripts/e2e` for screenshots
+  (`scripts/gen-readme-media.mjs` is the only screenshot driver; `scripts/e2e`
+  is a vitest smoke test, not a screenshot tool)
 - `skills/camoufox-browse` (bundled in MSO's own catalog) — the scripting-level
   Camoufox skill for the in-app assistant, from ClawHub

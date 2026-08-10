@@ -68,7 +68,7 @@ export function SkillForm({
       <Field label="Color">
         <ColorPick value={color} onChange={setColor} options={SKILL_COLORS} />
       </Field>
-      <Field label="Instructions" hint="How the agent should use this skill — added to its system prompt.">
+      <Field label="Instructions" hint="Your own note on how to use this skill. NOT sent to the model — only the agent's persona reaches the system prompt.">
         <Textarea
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}

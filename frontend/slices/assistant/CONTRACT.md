@@ -11,8 +11,15 @@ unrelated things both called "skill".
 
 ## Tool
 
-**An operation the model can actually invoke.** If it is not here, the model cannot
-do it — there is no second list.
+**An operation the model can actually invoke.** If it is not here, *Alfa* cannot do
+it — this is the whole list **for Alfa**.
+
+It is NOT the whole list for the box. `lib/mcp/tools.ts` is a second, deliberately
+separate catalog for MCP clients (ChatGPT / Claude.ai / Cursor) — different
+transport, different guard (a scope tier, not an approval card), different
+handlers. See `docs/MCP.md`. The two are allowed to differ; they are not allowed
+to differ by accident, which is what the coverage test in
+`frontend/slices/assistant/host-tools/registry.test.ts` exists to catch.
 
 | | |
 |---|---|

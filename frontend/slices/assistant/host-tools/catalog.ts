@@ -18,11 +18,11 @@ const READ_TOOLS: HostTool[] = [
     group: "files",
     label: "List",
     effect: "read",
-    description: "List a directory's entries (name, file/dir kind, size). Inspect before writing or moving.",
+    description: "List a directory's entries (name, file/dir kind). Inspect before writing or moving. Sizes are NOT reported — do not infer that a file is empty.",
     parameters: obj({ "path!": str("Absolute directory path, e.g. /home/rahman/projects") }),
     run: async (api, a) => {
       const r = await api.fs.list(String(a.path));
-      const body = r.entries.map((e) => `${e.kind === "dir" ? "d" : "-"} ${e.name}${e.kind === "file" ? ` (${e.size}b)` : ""}`).join("\n");
+      const body = r.entries.map((e) => `${e.kind === "dir" ? "d" : "-"} ${e.name}`).join("\n");
       return `${r.path}\n${body || "(empty)"}`;
     },
   },
@@ -186,26 +186,6 @@ const READ_TOOLS: HostTool[] = [
         body: JSON.stringify({ text }),
       });
       return r.ok ? `remembered: ${text}` : "couldn't save the memory";
-    },
-  },
-  {
-    name: "memory.forget",
-    group: "agent",
-    label: "Forget",
-    effect: "read",
-    description:
-      "Remove saved fact(s) from long-term memory. Give a short phrase describing what to forget; every remembered fact containing it is deleted. Use only when the user asks to forget or correct something.",
-    parameters: obj({ "query!": str("A phrase identifying the fact(s) to forget") }),
-    run: async (_api, a) => {
-      const query = String(a.query ?? "").trim().toLowerCase();
-      if (!query) return "nothing to forget (empty query)";
-      const data = (await fetch("/api/memory", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : { memories: [] }))
-        .catch(() => ({ memories: [] }))) as { memories?: { id: string; text: string }[] };
-      const hits = (data.memories ?? []).filter((m) => m.text.toLowerCase().includes(query));
-      if (!hits.length) return `no saved memory matches "${a.query}"`;
-      for (const m of hits) await fetch(`/api/memory?id=${encodeURIComponent(m.id)}`, { method: "DELETE" }).catch(() => {});
-      return `forgot ${hits.length}: ${hits.map((m) => m.text).join("; ")}`;
     },
   },
 ];

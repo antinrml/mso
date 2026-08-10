@@ -9,12 +9,12 @@ build/
 next-env.d.ts
 .DS_Store
 .vercel
-# os-browser: track the service source, ignore its deps + local dev probes
+# os-browser: the sidecar's source was deleted 2026-08-10. Only the vendored
+# Playwright install survives (scripts/gen-readme-media.mjs imports it), so track
+# just the manifests that reproduce it.
 os-browser/*
-!os-browser/server.mjs
 !os-browser/package.json
 !os-browser/package-lock.json
-!os-browser/README.md
 convex-backend/
 .mso/
 # local session progress log (not tracked)

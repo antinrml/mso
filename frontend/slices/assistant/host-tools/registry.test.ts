@@ -7,13 +7,25 @@ import { findHostTool, HOST_AI_TOOLS } from "./registry";
 describe("host-tools registry", () => {
   it("classifies reads as read; fs mutations + exec as mutate", () => {
     const eff = (n: string) => findHostTool(n)?.effect;
-    for (const n of ["fs.list", "fs.read", "fs.search", "fs.usage", "sys.stats", "sys.processes", "apps.list", "skills.list", "skills.read", "memory.remember", "memory.forget"]) expect(eff(n)).toBe("read");
-    for (const n of ["fs.write", "fs.mkdir", "fs.move", "fs.copy", "fs.delete", "exec.run"]) expect(eff(n)).toBe("mutate");
+    for (const n of ["fs.list", "fs.read", "fs.search", "fs.usage", "sys.stats", "sys.processes", "apps.list", "skills.list", "skills.read", "memory.remember"]) expect(eff(n)).toBe("read");
+    for (const n of ["fs.write", "fs.mkdir", "fs.move", "fs.copy", "fs.delete", "exec.run", "memory.forget"]) expect(eff(n)).toBe("mutate");
   });
 
-  it("does NOT expose upload/browser/pty/app lifecycle in v1", () => {
-    for (const n of ["fs.remove", "fs.upload", "browser.act", "pty.open", "apps.start", "apps.stop"])
-      expect(findHostTool(n)).toBeUndefined();
+  it("memory.forget parks a card; memory.remember does not", () => {
+    // Asymmetric on purpose. remember ADDS one line and the owner can delete it.
+    // forget deletes EVERY fact containing a substring, rewrites the file with no
+    // backup, and cannot be undone — so one injected "forget everything" is
+    // availability loss unless a human sees the card first.
+    expect(findHostTool("memory.forget")?.effect).toBe("mutate");
+    expect(findHostTool("memory.remember")?.effect).toBe("read");
+  });
+
+  it("does NOT expose upload or PTY — a decision, not a backlog", () => {
+    // These stay off the model's list for reasons that still hold, and both are
+    // written down: multipart bytes are not a thing a model can produce
+    // (catalog.ts), and PTY keystrokes are neither audited nor reachable by the
+    // destructive-command filter. `fs.remove` is the old name of fs.delete.
+    for (const n of ["fs.remove", "fs.upload", "pty.open"]) expect(findHostTool(n)).toBeUndefined();
   });
 
   it("app.open advertises no app that opens a host shell", () => {

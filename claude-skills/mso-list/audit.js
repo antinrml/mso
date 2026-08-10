@@ -17,7 +17,18 @@ const BASE = process.env.OS_BASE || "https://mso.rahmanef.com";
 const PASS = process.env.OS_PASSWORD || fromEnvFile("OS_LOGIN_PASSWORD");
 const DEV =
   process.env.OS_DEVICE ||
-  (() => { try { return require("fs").readFileSync(require("os").homedir() + "/.mso/cli.device.id", "utf8").trim(); } catch { return "46e72d1e9b22372eb6bdd6b76b11192b"; } })();
+  (() => {
+    try {
+      return require("fs").readFileSync(require("os").homedir() + "/.mso/cli.device.id", "utf8").trim();
+    } catch {
+      // NO fallback constant. This used to default to an id committed in a PUBLIC
+      // repo and then tell the operator to approve it — which turns the device
+      // allowlist (the "something you have" factor) into password-only for anyone
+      // who read the source. `mso` creates the real id on first run.
+      console.error("no CLI device id — run `mso whoami` once to create ~/.mso/cli.device.id");
+      process.exit(1);
+    }
+  })();
 // proxy.ts blocks mutating /api without same-origin proof; Origin==Host is the
 // documented non-browser path.
 const ORIGIN = { origin: BASE };

@@ -11,7 +11,8 @@ export const READ_TOOLS: McpTool[] = [
   {
     name: "fs_list",
     description:
-      "List a directory on the VPS. Returns entries with name, type, size and mtime. " +
+      "List a directory on the VPS. Returns entries with name and type. Size is reported as 0 for " +
+      "every entry and is NOT a real size — never conclude a file is empty from it. " +
       "USE THIS FIRST to discover paths before reading or writing — guessing a path wastes a call. " +
       "Reads are bounded to OS_FS_READ_ROOTS and credential paths (~/.ssh, ~/.mso, cloud tokens) are refused.",
     scope: "read",

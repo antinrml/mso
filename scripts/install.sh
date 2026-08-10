@@ -264,6 +264,15 @@ if [ -d "$DIR/claude-skills" ] && [ -d "$(dirname "$SKILL_DIR")" ]; then
     fi
     ln -sfn "${s%/}" "$SKILL_DIR/$name"
   done
+  # Prune ours that no longer exist. Only symlinks POINTING INTO this repo's
+  # claude-skills are touched, so a hand-made or third-party skill is never
+  # removed. Without this a deleted skill kept a dangling entry forever and the
+  # agent still saw it listed (mso-browser-list did exactly that).
+  for l in "$SKILL_DIR"/*; do
+    [ -L "$l" ] || continue
+    tgt="$(readlink "$l")"
+    case "$tgt" in "$DIR/claude-skills/"*) [ -d "$tgt" ] || { rm -f "$l"; info "pruned stale skill $(basename "$l")"; } ;; esac
+  done
   ok "skills → $SKILL_DIR (/mso, /mso-camoufox, /mso-apps, /mso-list, …)"
 fi
 
@@ -286,5 +295,5 @@ cat <<EOF
 
   Logs:     journalctl -u mso -f
   Update:   re-run this installer (pull + rebuild + restart), or --uninstall to remove
-  Security: firewall :$PORT (and :4002) from the public net; review ~/.mso/audit.log
+  Security: firewall :$PORT from the public net; review ~/.mso/audit.log
 EOF

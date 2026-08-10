@@ -68,6 +68,26 @@ export const MUTATE_TOOLS: HostTool[] = [
     },
   },
   {
+    name: "memory.forget",
+    group: "agent",
+    label: "Forget",
+    effect: "mutate",
+    description:
+      "Remove saved fact(s) from long-term memory. Give a short phrase; EVERY remembered fact containing it is deleted and there is no undo, so prefer the narrowest phrase that identifies what the user meant. Use only when the user explicitly asks to forget or correct something.",
+    parameters: obj({ "query!": str("A phrase identifying the fact(s) to forget") }),
+    run: async (_api, a) => {
+      const query = String(a.query ?? "").trim().toLowerCase();
+      if (!query) return "nothing to forget (empty query)";
+      const data = (await fetch("/api/memory", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { memories: [] }))
+        .catch(() => ({ memories: [] }))) as { memories?: { id: string; text: string }[] };
+      const hits = (data.memories ?? []).filter((m) => m.text.toLowerCase().includes(query));
+      if (!hits.length) return `no saved memory matches "${a.query}"`;
+      for (const m of hits) await fetch(`/api/memory?id=${encodeURIComponent(m.id)}`, { method: "DELETE" }).catch(() => {});
+      return `forgot ${hits.length}: ${hits.map((m) => m.text).join("; ")}`;
+    },
+  },
+  {
     name: "exec.run",
     group: "terminal",
     label: "Run command",

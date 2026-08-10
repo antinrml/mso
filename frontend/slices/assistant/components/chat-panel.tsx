@@ -166,7 +166,7 @@ export function ChatPanel({
       const modeNote =
         api.mode === "live"
           ? " You are in LIVE mode on a production VPS; tool actions are real."
-          : " You are in MOCK mode; tool actions are simulated (no real VPS).";
+          : " You are in MOCK mode: fs, exec and sys tools are simulated (no real VPS). The skills.* and memory.* tools are NOT simulated — they read and write real host state even here.";
       try {
         const { history: next } = await runToolAgent(
           historyRef.current,

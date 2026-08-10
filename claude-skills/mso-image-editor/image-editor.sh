@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # image-editor.sh — drive the mso image editor HEADLESS from the CLI. Hits
 # POST/GET /api/v1/editor/exec (the same command registry the in-browser AI uses)
-# against a React-free Doc reducer + a skia renderer. No browser. The "session"
+# against a React-free Doc reducer. There is NO headless renderer — `view` prints a
+# URL you open in the real editor, and rendering happens there. The "session"
 # (current Doc) lives in a temp JSON file; each verb sends it and saves the result.
 #
 #   image-editor.sh new [WxH]          fresh blank doc (default 1080x1080)
@@ -11,8 +12,9 @@
 #   image-editor.sh tools              list every command + description
 #   image-editor.sh doc                print the raw session Doc JSON
 #   image-editor.sh save <path.json>   write the doc to a host file (CRUD persist)
-#   image-editor.sh view <path.json> [--shot [out.png]]
-#                                         URL to open in the REAL editor (+ auto-screenshot)
+#   image-editor.sh view <path.json>   URL to open in the REAL editor (renders there).
+#                                      --shot is GONE: it drove the os-browser
+#                                      sidecar, deleted 2026-08-10. Use /mso-camoufox.
 #
 # k=v values coerce: 12 / 1.5 → number, true/false → bool, else string.
 # Session file: $OS_EDITOR_SESSION (default $TMPDIR/mso-image-editor.session.json).
@@ -25,7 +27,10 @@ set -a; . "$ENVF" 2>/dev/null || true; set +a
 PASS="${OS_PASSWORD:-${OS_LOGIN_PASSWORD:-}}"
 # Share the one CLI device `mso` created + you approved, so this script never
 # needs its own approval round.
-DEV="${OS_DEVICE:-$(cat "$HOME/.mso/cli.device.id" 2>/dev/null || echo 46e72d1e9b22372eb6bdd6b76b11192b)}"
+# No fallback constant: an id committed to a public repo, approved on request, is
+# the second factor removed. `mso` writes the real one on first run.
+DEV="${OS_DEVICE:-$(cat "$HOME/.mso/cli.device.id" 2>/dev/null)}"
+[ -n "$DEV" ] || { echo "no CLI device id — run 'mso whoami' once to create ~/.mso/cli.device.id" >&2; exit 1; }
 # proxy.ts blocks mutating /api without same-origin proof; Origin==Host is the
 # documented non-browser path.
 ORIGIN=(-H "origin: $B")
