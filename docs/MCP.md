@@ -59,9 +59,15 @@ Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`.
 
 | Scope | Tools |
 |---|---|
-| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `browser_status` |
-| `write` | + `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` |
+| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `browser_status` |
+| `write` | + `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
 | `exec` | + `exec_run` `browser_power` |
+
+The tiering is about blast radius, not about which layer the call lands in.
+`apps_logs` reads a daemon's journal, so "why is hermes down?" is answerable from
+a `read` token — the same question through `exec_run` would need a full shell.
+`apps_power` is three verbs against known units, so restarting a daemon does not
+require handing one over either.
 
 `tools/list` is filtered by the token's scope, and `tools/call` re-checks it — a
 client that calls a tool it was never shown still gets refused.
@@ -113,7 +119,7 @@ jq -c 'select(.actor|startswith("mcp:"))' ~/.mso/audit.log   # everything MCP di
 Settings → MCP shows the last 20 MCP lines inline.
 
 What is recorded: `fs.write` `fs.mkdir` `fs.move` `fs.copy` `fs.delete`
-`exec.run` `camoufox.power`, each with its target and whether it succeeded, plus
+`exec.run` `managed-app.action` `camoufox.power`, each with its target and whether it succeeded, plus
 `mcp.denied` when a token asks for a tool above its scope. **That last one is the
 signal worth watching** — a `read` connector repeatedly reaching for `exec_run` is
 what a prompt-injected model looks like from the outside.
@@ -161,7 +167,9 @@ failure mode for an endpoint whose top scope is a shell.
 lib/mcp/pkce.ts       S256 verify, base64url, hashing, redirect_uri rules
 lib/mcp/scope.ts      the read/write/exec ladder + the env kill switch
 lib/mcp/store.ts      ~/.mso/mcp.json — clients, codes, tokens (hashed)
-lib/mcp/tools.ts      the catalog; every handler is a thin call into lib/host
+lib/mcp/tool-kit.ts   the McpTool shape + arg helpers shared by both tiers
+lib/mcp/tools-read.ts the read tier — observability, no way to change anything
+lib/mcp/tools.ts      the write + exec tiers, and the assembled catalog
 lib/mcp/dispatch.ts   JSON-RPC: initialize / ping / tools.list / tools.call
 app/mcp/route.ts      the endpoint — bearer, rate limits, dispatch
 app/oauth/*           authorize (consent) · token · register (DCR)

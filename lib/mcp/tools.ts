@@ -1,138 +1,14 @@
-import {
-  listDir, readFile, writeFile, makeDir, remove, move, copy, searchFs, usage,
-  runCommand, stats, processes,
-} from "@/lib/host";
-import type { AuditAction } from "@/lib/host";
-import { camoufoxStatus, setCamoufoxEnabled } from "@/lib/camoufox/service";
-import { listManagedApps } from "@/lib/managed-apps/manager";
-import type { Scope } from "./scope";
+import { writeFile, makeDir, remove, move, copy, runCommand } from "@/lib/host";
+import { setCamoufoxEnabled } from "@/lib/camoufox/service";
+import { performManagedAppAction } from "@/lib/managed-apps/manager";
+import { isManagedAppId } from "@/lib/managed-apps/catalog";
+import { type McpTool, str, opt, S, PATH_P } from "./tool-kit";
+import { READ_TOOLS } from "./tools-read";
 
-// The MCP tool catalog. EVERY handler goes through lib/host — never node fs or
-// child_process directly — so all of it inherits the bounds that already guard
-// /api/v1: OS_FS_READ_ROOTS / OS_FS_WRITE_ROOTS, the credential denylist
-// (~/.ssh, ~/.mso itself, cloud + AI tokens), realpath escape checks, and the
-// catastrophic-command filter in exec.ts. That is the whole reason this file is
-// thin: a tool that reimplemented an operation would reimplement its guard too.
-
-export interface McpTool {
-  name: string;
-  description: string;
-  scope: Scope;
-  inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
-  annotations?: Record<string, boolean>;
-  run: (a: Record<string, unknown>) => Promise<unknown>;
-  /** Which audit action this writes, and which argument names the target. Reads
-   *  are deliberately unaudited (bounded + high-volume, same rule the /api/v1
-   *  routes follow); a tool without this field writes nothing.
-   *
-   *  This exists because MCP tools call lib/host DIRECTLY. The /api/v1 routes
-   *  audit at the ROUTE layer, so without this every write, delete and exec that
-   *  arrived over MCP would be invisible in the only forensic trail there is. */
-  audit?: { action: AuditAction; targetArg?: string };
-}
-
-const str = (a: Record<string, unknown>, k: string): string => {
-  const v = a[k];
-  if (typeof v !== "string" || !v) throw new Error(`${k} must be a non-empty string`);
-  return v;
-};
-const opt = (a: Record<string, unknown>, k: string): string | undefined =>
-  typeof a[k] === "string" && a[k] ? (a[k] as string) : undefined;
-
-const S = (properties: Record<string, unknown>, required?: string[]) =>
-  ({ type: "object" as const, properties, ...(required ? { required } : {}) });
-
-const PATH_P = { path: { type: "string", description: "Absolute path on the VPS, or ~/… for the owner's home." } };
-const READ_ONLY = { readOnlyHint: true, idempotentHint: true };
-
-export const TOOLS: McpTool[] = [
-  {
-    name: "fs_list",
-    description:
-      "List a directory on the VPS. Returns entries with name, type, size and mtime. " +
-      "USE THIS FIRST to discover paths before reading or writing — guessing a path wastes a call. " +
-      "Reads are bounded to OS_FS_READ_ROOTS and credential paths (~/.ssh, ~/.mso, cloud tokens) are refused.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S({ ...PATH_P, includeHidden: { type: "boolean", description: "Include dotfiles. Default true." } }, ["path"]),
-    run: (a) => listDir(str(a, "path"), a.includeHidden !== false),
-  },
-  {
-    name: "fs_read",
-    description:
-      "Read a text file on the VPS and return its contents. For binary files this will be garbage — " +
-      "check the extension from fs_list first. NOT for finding a file: use fs_search.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S(PATH_P, ["path"]),
-    run: async (a) => ({ path: a.path, content: await readFile(str(a, "path")) }),
-  },
-  {
-    name: "fs_search",
-    description:
-      "Find DIRECTORIES whose name contains a fragment, recursively, under a root. Use it to locate a " +
-      "project folder before fs_list — it is bounded and needs no shell scope, unlike exec_run with find. " +
-      "It does NOT match file names or file contents; fs_list the directory it returns.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S({
-      query: { type: "string", description: "Substring matched against directory names." },
-      root: { type: "string", description: "Where to search from. Defaults to ~/projects." },
-    }, ["query"]),
-    run: (a) => searchFs(str(a, "query"), { root: opt(a, "root") }),
-  },
-  {
-    name: "fs_usage",
-    description: "Disk usage for a path: total, used and free bytes. Use for 'is the VPS full?'.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S(PATH_P, ["path"]),
-    run: (a) => usage(str(a, "path")),
-  },
-  {
-    name: "sys_stats",
-    description:
-      "Live VPS health: CPU load, memory, disk, uptime. USE THIS for 'how is the server doing' — " +
-      "it is one cheap call and needs no shell scope.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S({}),
-    run: () => stats(),
-  },
-  {
-    name: "sys_processes",
-    description: "Top processes by CPU with pid, command, cpu% and memory%. Use to find what is eating the box.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S({}),
-    run: () => processes(),
-  },
-  {
-    name: "apps_list",
-    description:
-      "List the managed applications mso can install and control on this VPS, with install and running state. " +
-      "This is NOT the mso app list (Files, Terminal, …) — those are UI surfaces with no server state.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S({}),
-    run: () => listManagedApps(),
-  },
-  {
-    name: "browser_status",
-    description:
-      "State of the Camoufox anti-fingerprinting browser (a real Firefox on a headless display). " +
-      "Returns installed/running/autostart only. The viewer URL and its one-time VNC password are DELIBERATELY not " +
-      "returned here — that session holds live Google and LinkedIn logins, so its credentials never leave " +
-      "the box through a tool result. Open Settings in mso to get them.",
-    scope: "read",
-    annotations: READ_ONLY,
-    inputSchema: S({}),
-    run: async () => {
-      const s = await camoufoxStatus();
-      return { installed: s.installed, running: s.running, autostart: s.enabled };
-    },
-  },
-
+// The write and exec tiers. Each carries an `audit` descriptor — the dispatcher,
+// not the tool, writes the trail, because these call lib/host directly and so
+// never pass the route-layer audit that covers /api/v1.
+const MUTATE_TOOLS: McpTool[] = [
   {
     name: "fs_write",
     audit: { action: "fs.write" as const, targetArg: "path" },
@@ -185,6 +61,27 @@ export const TOOLS: McpTool[] = [
   },
 
   {
+    name: "apps_power",
+    audit: { action: "managed-app.action" as const, targetArg: "id" },
+    description:
+      "Start, stop or restart a managed application on the VPS. Bounded to the known apps and the " +
+      "three verbs — restarting a daemon should not require handing over a shell, so this sits at " +
+      "write scope rather than exec. Check apps_list or apps_logs first.",
+    scope: "write",
+    annotations: { destructiveHint: true },
+    inputSchema: S({
+      id: { type: "string", description: "Managed app id from apps_list." },
+      action: { type: "string", enum: ["start", "stop", "restart"], description: "start | stop | restart" },
+    }, ["id", "action"]),
+    run: (a) => {
+      const id = str(a, "id");
+      const action = str(a, "action");
+      if (!isManagedAppId(id)) throw new Error(`unknown managed application "${id}" — call apps_list for valid ids`);
+      if (!["start", "stop", "restart"].includes(action)) throw new Error("action must be start, stop or restart");
+      return performManagedAppAction(id, action as "start" | "stop" | "restart");
+    },
+  },
+  {
     name: "exec_run",
     audit: { action: "exec.run" as const, targetArg: "command" },
     description:
@@ -216,4 +113,6 @@ export const TOOLS: McpTool[] = [
   },
 ];
 
+export const TOOLS: McpTool[] = [...READ_TOOLS, ...MUTATE_TOOLS];
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
+export type { McpTool } from "./tool-kit";

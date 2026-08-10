@@ -261,7 +261,7 @@ to `resources/` (rr) and drive any project from one manifest:
 
 ## MCP server (`/mcp`) — optional, OFF by default
 An MCP endpoint so ChatGPT / Claude.ai / Cursor can drive the host. `lib/mcp/*`
-(pkce · scope · store · tools · dispatch) + `app/mcp/route.ts` + `app/oauth/*` +
+(pkce · scope · store · tool-kit · tools-read · tools · dispatch) + `app/mcp/route.ts` + `app/oauth/*` +
 `app/.well-known/oauth-*`. **`OS_MCP_ENABLED=1` or every one of those routes 404s** —
 that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
 - **`/mcp` is deliberately NOT under `/api`.** `proxy.ts` blocks mutating `/api` that
