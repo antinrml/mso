@@ -8,6 +8,48 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-10 (mcp) — the VPS is drivable from ChatGPT, off by default (DONE)
+
+An MCP server: OAuth 2.1 + PKCE in front of a hand-rolled JSON-RPC endpoint, so
+ChatGPT / Claude.ai / Cursor can call the same host operations the web UI does.
+Ported from the `models-rahmanef-com` implementation (read `web/convex/mcp*.ts` and
+`web/app/{mcp,oauth,.well-known}` for the original) — but that one is Convex-backed
+and mso has no database, so clients, codes and tokens live in `~/.mso/mcp.json` under
+the same atomic-write + fail-loud-on-corrupt rules as `lib/auth/device-store.ts`.
+
+**The kill switch is real.** Without `OS_MCP_ENABLED=1` every route 404s — `/mcp`,
+both `.well-known` documents, all three `/oauth` endpoints. Not an unauthenticated
+surface: no surface. Demo mode forces it off regardless.
+
+**Tools are thin calls into `lib/host`, and that is the whole security design.** The
+MCP surface inherits `OS_FS_*_ROOTS`, the credential denylist (`~/.ssh`, cloud and AI
+tokens, and `~/.mso` itself), the realpath escape checks and `exec.ts`'s destructive
+filter for free. Verified live on prod: a read-scope token asking for
+`~/.mso/config.json` gets `Access to credential/sensitive files is blocked`, so it
+cannot exfiltrate the BYOK key or the device allowlist. `browser_status` withholds the
+Camoufox viewer URL and VNC password on purpose — that profile holds a live Google
+session, and a tool result is a thing that leaves the box.
+
+Scope ladder `read < write < exec`, chosen per token on the consent screen and capped
+by `OS_MCP_MAX_SCOPE`. `tools/list` filters by it AND `tools/call` re-checks it, because
+a client can call a name it was never shown.
+
+`/mcp` is deliberately NOT under `/api`: `proxy.ts` blocks mutating `/api` that cannot
+prove same-origin and an MCP client is cross-origin by definition. The bearer is the
+control, not the CSRF gate. `proxy.ts` exempts `/mcp`, `/oauth/token`, `/oauth/register`
+and `/.well-known/oauth-*` from that gate and the document CSP; `/oauth/authorize` is
+NOT exempt — it is a real page and keeps its nonce.
+
+**Verified end to end on the live :4005 build**, not just in tests: discovery returns
+the right origin, a bearer-less POST 401s with `WWW-Authenticate` + `resource_metadata`,
+DCR mints a client and rejects a plaintext redirect_uri, the token endpoint answers a
+bogus code with `invalid_grant`, a read token lists exactly 8 read tools and gets real
+`sys_stats` back, the same token is refused `exec_run` with a message that says how to
+fix it, and `mso mcp revoke` kills it mid-flight. 53 unit tests alongside.
+
+Shipped ON with `OS_MCP_MAX_SCOPE=exec` at the owner's request — the ceiling, not the
+default; every token still starts at `read` on the consent screen.
+
 ## 2026-08-10 — audit follow-up: −4.4k lines, two eager chains off first load (DONE)
 
 A 13-agent audit (6 dimension scanners, each with an adversarial verifier that had to
