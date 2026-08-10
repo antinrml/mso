@@ -8,6 +8,78 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-10 (parity) — three tool surfaces, one gate (DONE)
+
+A 13-agent parity audit across Alfa (function calling), MCP (ChatGPT/Claude/Cursor)
+and the CLI (`bin/mso`, how an external agent drives the box). 58 claims, **53
+survived** adversarial verification. 11 capabilities were parity 3-ways, 7 absences
+were documented decisions, and **the rest was drift** — nobody decided it.
+
+**The headline was backwards from the guess.** A remote ChatGPT connector had MORE
+reach over this box than the owner's own in-browser assistant: MCP shipped
+`apps_logs` / `apps_power` / `browser_status` / `browser_power` this morning and
+Alfa had none of them — while Alfa's `apps.list` had been answering "no apps
+installed" for months, because `/api/v1/apps` returns `[]` by construction and the
+port's `apps.start`/`apps.stop` pointed at routes that do not exist.
+
+Alfa now has all four (power tools park an approval card, which MCP has no
+equivalent of), and `lib/mcp/parity.test.ts` is the gate: a capability must exist
+in BOTH catalogs or be named with a reason, a stale exemption fails too, and a tool
+classified mutate on one surface may not be read on the other. **Unifying the two
+catalogs was considered and rejected** — they share zero names, descriptions or
+handlers, so a shared registry would be an abstraction over two consumers that
+legitimately differ. The defect was never duplication, it was silence.
+
+**Bugs the audit found in code shipped hours earlier:**
+- `dispatch.ts` recorded `ok: true` for anything that did not throw. `runCommand`
+  REFUSES a destructive command by *returning* code 126 — so a blocked `rm -rf /`
+  landed in the trail as a successful `exec.run`, `exec.blocked` could never be
+  emitted over MCP, and every non-zero exit read as success. Live proof was in the
+  log. Now mirrors the route line for line, with `detail: exit N` it never recorded.
+- MCP's token bucket is tool-blind, so a **write**-scope token holding no shell
+  could restart a daemon 120×/min against the UI's 12. Each mutating tool now
+  mirrors its route's limit on the SAME key, so they share one allowance.
+- `POST /api/v1/camoufox/service` had no rate limit at all — fine while a UI toggle
+  was the only caller, not fine once a bearer could reach it.
+- The camoufox port adapter sent `{enabled}` to a route reading `{action}`. Types
+  missed it: the port's body is `unknown`.
+
+**Security, in things that were already live:**
+- `/api/skills` followed symlinks with no check, **outside the fs jail and outside
+  the credential denylist**, so a symlinked `SKILL.md` served its target from
+  anywhere. Now the resolved path must still be named `SKILL.md`. Containment could
+  not be the rule — every `~/.claude/skills` entry links into `claude-skills/`,
+  deliberately not a scanned root.
+- Recalled memories were spliced into the SYSTEM prompt **unframed**, and
+  `memory.remember` runs with no card — so any file Alfa read could propose a
+  "fact" that then reappeared as system text in every later turn of every thread.
+  Now framed as data. `memory.forget` (unbounded substring delete, no backup, no
+  card) moved to the mutate catalog.
+- `audit.js` and `image-editor.sh` fell back to a device id **committed in a public
+  repo**, and `audit.js` printed it with instructions to APPROVE it — which turns
+  the device allowlist into password-only for anyone who read the source.
+
+**`~/.claude/skills` was not a skills root**, so the five `/mso*` documents that
+describe how to drive mso were the one catalog mso could not see: 89 skills served,
+zero of them `mso*`. Adding the root found nothing on its own — those entries are
+symlinks and `Dirent.isDirectory()` is an lstat. 115 reachable now, all five among
+them.
+
+**CLI**: `bin/mso.test.ts` compared PATHS while promising method coverage, so five
+routes had no verb (`mapp power`, `mapp cancel`, `mapp pending`, `threads save`,
+`skills <name>`). Tightened to (method, path). `mso build` ran `next build` inside
+mso.service's WorkingDirectory without restarting — the exact sequence CLAUDE.md
+forbids — and now runs `verify-build.sh`. `mso --base <remote> device approve`
+edited the LOCAL allowlist and reported success; it refuses a non-loopback base now.
+
+Doc sweep: `/mso-apps` told an agent to drive the browser with verbs that never
+existed (a prior commit rewrote only the left half of the cell, leaving the list
+behind a `# ` so pasting it is a silent no-op); `/mso-list` claimed to probe every
+endpoint while probing 13 of ~36; `CONTRACT.md`'s "there is no second list" was
+falsified the day MCP shipped; `fs.list` advertised sizes that are always 0, so
+Alfa would call every file empty; `mso search` was documented as searching file
+CONTENTS while it matches directory names.
+
 ## 2026-08-10 (mcp, follow-up) — the trail the MCP tools were bypassing (DONE)
 
 Shipping the MCP server, the security story told to the owner was "scope is the
