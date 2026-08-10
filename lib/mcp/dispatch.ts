@@ -90,7 +90,14 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       const target = trail?.targetArg != null ? String(args[trail.targetArg] ?? "") : undefined;
       try {
         const result = await tool.run(args);
-        if (trail) void audit({ action: trail.action, actor, target, ok: true, meta: { via: "mcp", scope } });
+        if (trail) {
+          // `ok: true` used to be unconditional here, which made the trail lie about
+          // the one tool that matters most: runCommand REFUSES a destructive command
+          // by RETURNING code 126, so a blocked `rm -rf /` was recorded as a
+          // successful exec.run, and `exec.blocked` could never be emitted over MCP.
+          const o = trail.outcome?.(result);
+          void audit({ action: o?.action ?? trail.action, actor, target, ok: o?.ok ?? true, detail: o?.detail, meta: { via: "mcp", scope } });
+        }
         return ok(id, { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }] });
       } catch (e) {
         // A handler failure stays INSIDE result with isError, never as a JSON-RPC

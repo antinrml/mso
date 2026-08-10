@@ -22,7 +22,17 @@ export interface McpTool {
    *  This exists because MCP tools call lib/host DIRECTLY. The /api/v1 routes
    *  audit at the ROUTE layer, so without this every write, delete and exec that
    *  arrived over MCP would be invisible in the only forensic trail there is. */
-  audit?: { action: AuditAction; targetArg?: string };
+  audit?: {
+    action: AuditAction;
+    targetArg?: string;
+    /** Derive the outcome from the RESULT, for a handler that reports failure by
+     *  returning rather than throwing. Without it the dispatcher can only record
+     *  "did not throw", which is a lie for anything that has an exit code.
+     *  Only exec_run needs this — `setCamoufoxEnabled` throws, and the fs helpers
+     *  throw, so the catch branch already records those correctly. Deliberately
+     *  NOT a generic result→outcome mapper: one call site is not a pattern. */
+    outcome?: (result: unknown) => { ok: boolean; action?: AuditAction; detail?: string };
+  };
 }
 
 export const str = (a: Record<string, unknown>, k: string): string => {

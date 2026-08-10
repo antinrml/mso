@@ -151,7 +151,21 @@ describe("audit trail", () => {
 
   it("records exec_run with the command as the target", async () => {
     await dispatch(call("exec_run", { command: "echo hi" }), "exec", "mcp:abc123");
-    expect(audited[0]).toMatchObject({ action: "exec.run", target: "echo hi" });
+    expect(audited[0]).toMatchObject({ action: "exec.run", target: "echo hi", ok: true, detail: "exit 0" });
+  });
+
+  it("records a REFUSED command as exec.blocked, not a successful exec.run", async () => {
+    // runCommand refuses by RETURNING {code:126}, not by throwing, so "did not
+    // throw" is not success. This shipped wrong on 2026-08-10: a blocked command
+    // landed in the trail as ok:true, and exec.blocked could never be emitted over
+    // MCP at all. Mirrors app/api/v1/exec/run/route.ts.
+    await dispatch(call("exec_run", { command: "rm -rf /" }), "exec", "mcp:abc123");
+    expect(audited[0]).toMatchObject({ action: "exec.blocked", ok: false });
+  });
+
+  it("records a non-zero exit as a failure, with the code", async () => {
+    await dispatch(call("exec_run", { command: "exit 3" }), "exec", "mcp:abc123");
+    expect(audited[0]).toMatchObject({ action: "exec.run", ok: false, detail: "exit 3" });
   });
 
   it("does NOT record reads — bounded and high-volume, same rule /api/v1 follows", async () => {

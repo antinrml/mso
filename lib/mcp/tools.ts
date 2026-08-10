@@ -83,7 +83,19 @@ const MUTATE_TOOLS: McpTool[] = [
   },
   {
     name: "exec_run",
-    audit: { action: "exec.run" as const, targetArg: "command" },
+    audit: {
+      action: "exec.run" as const,
+      targetArg: "command",
+      // runCommand REFUSES by returning {code:126, stderr:"refused: …"}, it does not
+      // throw — so "the handler did not throw" is not success here. Mirrors
+      // app/api/v1/exec/run/route.ts:39-45 exactly; the two must not disagree about
+      // what the same command did.
+      outcome: (r) => {
+        const { code, stderr } = r as { code: number; stderr: string };
+        const blocked = code === 126 && stderr.startsWith("refused:");
+        return { ok: !blocked && code === 0, action: blocked ? "exec.blocked" : "exec.run", detail: `exit ${code}` };
+      },
+    },
     description:
       "Run a shell command on the VPS as the owner and return stdout, stderr and exit code. " +
       "FULL HOST POWER — prefer fs_* and sys_* tools whenever they cover the task; they are bounded and " +
