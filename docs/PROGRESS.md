@@ -8,6 +8,73 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-11 — shells to their 2026 specs, and a backup for the state that had none (DONE)
+
+Five parallel packages on strictly disjoint file sets, each reviewed against its own
+diff. The reviewers caught two packages that reported themselves complete and were
+not — Windows had not actually resized Start search results, and the parity package
+had fixed half of the adapter bug. Both closed before the gates ran.
+
+**Windows 11** — learn.microsoft.com's icon table (updated 2026-08-05): 16px title
+bar / context menu / tray, 24px taskbar + search + all-apps, 32px Start pins, at
+100% scale. We had 20px taskbar glyphs, 28px list rows, 40px pins. Title bar was
+34px against Win11's 32, which rendered the 46px caption buttons as 46×34.
+
+**A measurement worth recording.** Live it renders 42px bar / 35px buttons / 21px
+icons — because `--font-scale` is 0.875 on this box. 42/0.875 = 48, 35/0.875 = 40,
+21/0.875 = 24, exactly. **Windows chrome is sized in rem and follows the a11y font
+scale; iOS chrome is px and does not.** rem is the better a11y behaviour, so this is
+recorded rather than "fixed" — but the two shells answering the same setting
+differently is a real inconsistency and the next person should know before they
+match one to the other.
+
+**iOS 26** — the home screen is a fixed 6×4 grid, 24 icons per page, horizontal
+paging, 4-slot dock. Ours was one vertical scroller with three hardcoded dots. Now
+`grid-rows-6` + `overflow-hidden` with pages derived from the app count. Verified in
+a real browser: icon 60.00×60.00, six rows, `scrollHeight − clientHeight === 0`.
+**The plan for this was wrong** and that is the lesson: it claimed there was no
+pagination, when the DOM had always rendered "Go to page 1/2/3". The agent was told
+to MEASURE before changing anything, which is the only reason the paging that
+already worked survived.
+
+**Android** — M3 Expressive replaced duration+easing with physics springs: spatial
+(may overshoot) for movement, effects (must not) for colour/opacity, three speeds
+each. CSS has no spring, so each token is a real spring sampled into `linear()`. Six
+M3 tokens collapse to three curves — a spring's normalised shape depends only on its
+damping ratio; stiffness only scales time, which the durations carry. Durations are
+multiples of `--shell-dur` ON PURPOSE: the reduce-motion block collapses that to
+1ms, and hard-coded ms would have silently opted every Android animation out of it.
+The notification shade had been animating UPWARD against the pull-down that summons
+it. Ceiling, written in the CSS: a `linear()` cannot be interrupted and re-targeted
+mid-flight the way a real spring can.
+
+**Parity** — `apps_power` exposed three of the four actions `MANAGED_APP_ACTIONS`
+declares; it reads the constant now instead of retyping it. `apps_list` returned a
+bare array over MCP against the route's `{apps:[…]}`. Underneath both, the real bug:
+`lib/os-api/http-adapter` never unwrapped those envelopes AND never translated the
+wire's six-value `state` into the `running` boolean the port promises — so Alfa said
+"no managed applications", and after a successful start, "undefined: stopped".
+**Third drift at that seam this week** (wrong URL in `7ed3ff5`, then unwrapped-but-
+untranslated, now the mapping); `lib/os-api/http-adapter.test.ts` is the first thing
+pinning any of it.
+
+Alfa rendered every failure as "Couldn't reach the assistant" — including a 429,
+which sent people back to Send, the one action guaranteed not to work while the
+window is open. Four branches now.
+
+**Backup** — Playbooks, Agents, Automations, window layout and desktop icons were
+localStorage-only: clearing site data destroyed them with no recovery path.
+Settings → Backup exports every mso-owned key as one versioned JSON and imports it
+back. Keys are chosen by prefix rule plus a small allowlist rather than a hardcoded
+list that goes stale silently, and `mso.device.id` is denied on purpose — restoring
+one machine's device identity onto another is not a backup.
+Disclosed in the UI: `mso:tweaks` and `mso:quicklinks` also sync via `/api/prefs`,
+where the server wins on initial load, so an import of those two is overwritten at
+the next sign-in. The real fix POSTs prefs after a restore.
+
+Gates: typecheck, lint, 1230 tests, coverage 19.7%, cycles clean, browser e2e green
+at 1280 and 390 against the deployed build.
+
 ## 2026-08-10 (parity) — three tool surfaces, one gate (DONE)
 
 A 13-agent parity audit across Alfa (function calling), MCP (ChatGPT/Claude/Cursor)
