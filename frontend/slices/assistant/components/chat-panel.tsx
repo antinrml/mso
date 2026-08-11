@@ -12,7 +12,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { errText } from "./error-text";
-import { useToolsSupported } from "../lib/use-tools-supported";
 import {
   registerAlfaRunner,
   updateAlfa,
@@ -69,7 +68,6 @@ export function ChatPanel({
 }) {
   const api = useOsApi();
   const ios = useActiveShell().id === "ios";
-  const toolsSupported = useToolsSupported();
   // The display list lives in the SHARED Alfa store, not in this component. That
   // is what makes the per-app Alfa sheet show this very conversation instead of a
   // second, disconnected one — and it is less memory, not more: one array for
@@ -228,22 +226,12 @@ export function ChatPanel({
       <div
         className={cn(
           "px-3 py-1 text-center text-[11px] font-medium",
-          !toolsSupported
-            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-            : api.mode === "live"
-              ? "bg-destructive/10 text-destructive"
-              : "bg-muted text-muted-foreground",
+          api.mode === "live" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
         )}
       >
-        {/* Three states, not two. `api.mode` only says which DATA source the tools
-            would hit — it says nothing about whether the model can call one, and on
-            a chat-only provider the old two-state banner promised a VPS the
-            assistant could not touch. */}
-        {!toolsSupported
-          ? "CHAT ONLY — this provider cannot call tools. Switch provider in Settings → AI to let Alfa act."
-          : api.mode === "live"
-            ? "● LIVE — Alfa acts on your real VPS; every change needs your approval"
-            : "MOCK — actions are simulated (switch to Live in Settings → Server)"}
+        {api.mode === "live"
+          ? "● LIVE — Alfa acts on your real VPS; every change needs your approval"
+          : "MOCK — actions are simulated (switch to Live in Settings → Server)"}
       </div>
       {messages.length === 0 ? (
         <div className="flex-1 overflow-y-auto">

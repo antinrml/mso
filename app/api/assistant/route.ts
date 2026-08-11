@@ -216,8 +216,11 @@ export async function POST(req: Request) {
       const emit = (event: string, data: unknown) => safeEnqueue(sse(event, data));
       try {
         if (isCodex && codexBundle) {
-          // Chat-only OAuth path (no tools) through the ChatGPT Codex backend.
-          await streamCodex({ bundle: codexBundle, model: codexModel, messages: rawMessages, system: sys, signal: req.signal, emit });
+          // ChatGPT Codex OAuth backend (Responses API). It carries tools like any
+          // other provider — this branch used to drop them and call itself
+          // "chat-only", which is why the UI advertised a tool catalog the model
+          // never received.
+          await streamCodex({ bundle: codexBundle, model: codexModel, messages: rawMessages, tools, system: sys, signal: req.signal, emit });
         } else if (resolved?.protocol === "anthropic") {
           ai = anthropic.messages.stream(
             {
