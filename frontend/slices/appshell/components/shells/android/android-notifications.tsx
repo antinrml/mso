@@ -40,9 +40,21 @@ export function AndroidNotifications({ open, onClose }: { open: boolean; onClose
   if (!open) return null;
 
   return (
-    <div className="absolute inset-0 z-[45] flex flex-col bg-black/40" onClick={onClose}>
+    // Scrim = opacity only → M3 EFFECTS default (k=1600, ζ=1, ~186ms), critically
+    // damped so the dim can never overshoot past its target alpha and flicker.
+    // It had no animation at all before; the black wash appeared in one frame.
+    <div className="absolute inset-0 z-[45] flex flex-col bg-black/40 animate-in fade-in duration-[var(--m3-dur-effects)] ease-[var(--m3-effects)]" onClick={onClose}>
+      {/* The shade is pulled DOWN from the top edge, but it was animating with
+          `appOpen`, which travels 14px UPWARD from below — the panel arrived moving
+          against the gesture that summoned it. It now slides down from -100% (its
+          own height, above the viewport) on the M3 SPATIAL SLOW spring (k=200,
+          ζ=0.8, ~511ms): a full-width surface, so the slow tier.
+          The 1.5% overshoot briefly parks the panel ~7px low, exposing a sliver of
+          scrim above it. That IS the spring, and it is what makes the shade read as
+          having mass. If it ever looks like a bug, the fix is to make the panel
+          taller than its clip — not to flatten the curve. */}
       <div
-        className="flex max-h-[85%] flex-col overflow-hidden rounded-b-[1.75rem] border-b border-border bg-card text-foreground shadow-2xl [animation:appOpen_var(--shell-dur)_var(--shell-ease)]"
+        className="flex max-h-[85%] flex-col overflow-hidden rounded-b-[1.75rem] border-b border-border bg-card text-foreground shadow-2xl animate-in slide-in-from-top duration-[var(--m3-dur-spatial-slow)] ease-[var(--m3-spatial)]"
         onClick={(e) => e.stopPropagation()}
         style={{ paddingTop: "var(--sai-top, 0px)" }}
       >
@@ -68,8 +80,24 @@ export function AndroidNotifications({ open, onClose }: { open: boolean; onClose
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {items.map((n) => (
-                <div key={n.id} className="flex items-start gap-3 rounded-2xl bg-muted/60 p-3.5">
+              {/* Staggered row entry is the M3 Expressive signature the shade was
+                  missing — the panel arrived and its contents were simply already
+                  there. Transform-only (no fade) to keep this file's one rule: a
+                  single animation never carries both a spatial and an effects
+                  property. The step is capped at 5 slots, otherwise a 40-item log
+                  would still be dealing rows out two seconds after the pull. The
+                  delay is expressed in terms of --m3-dur-effects so that it, like
+                  every duration here, collapses under prefers-reduced-motion. */}
+              {items.map((n, i) => (
+                <div
+                  key={n.id}
+                  // fill-mode-backwards is not optional with a delay: without it the
+                  // row paints at its FINAL position for the length of the delay,
+                  // then snaps back to the start to animate. That flash is the whole
+                  // reason delayed CSS animations get called broken.
+                  className="flex items-start gap-3 rounded-2xl bg-muted/60 p-3.5 animate-in slide-in-from-top-2 fill-mode-backwards duration-[var(--m3-dur-spatial)] ease-[var(--m3-spatial)]"
+                  style={{ animationDelay: `calc(var(--m3-dur-effects) * ${Math.min(i, 5) * 0.25})` }}
+                >
                   <span className={cn("mt-1 size-2 shrink-0 rounded-full", TONE_DOT[n.tone] ?? "bg-muted-foreground")} />
                   <div className="min-w-0 flex-1">
                     <div className="line-clamp-3 text-sm">{n.message}</div>

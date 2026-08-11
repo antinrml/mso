@@ -9,7 +9,12 @@ import type { HostTool } from "./types";
 // pty.ts states that keystrokes are unaudited and the destructive-command regex
 // cannot reach them. registry.test.ts already keeps `pty.open` away from the
 // model; this keeps the window that wraps it away too.
-const SHELL_APPS = new Set(["claude-code", "os-terminal"]);
+//
+// EXPORTED only so registry.test.ts can pin these strings against the two
+// AppDescriptors that own them. They are matched by VALUE: rename either
+// descriptor's `id` and this set quietly matches nothing, app.open starts
+// accepting the renamed app, and every test still passes.
+export const SHELL_APPS = new Set(["claude-code", "os-terminal"]);
 
 // The READ half. Mutating tools live in catalog-mutate.ts.
 const READ_TOOLS: HostTool[] = [

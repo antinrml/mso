@@ -97,7 +97,12 @@ export const Window = memo(function Window({ id, variant = "macos" }: { id: WinI
       >
         {isWin ? (
           <div
-            className="flex h-[34px] shrink-0 cursor-grab items-center border-b border-border bg-[var(--mica-win,var(--card))] font-[family-name:var(--shell-font)] active:cursor-grabbing"
+            // 32px, not 34: Windows 11's title bar is 32px at 100% scale and its caption
+            // buttons are 46x32. win-caption.tsx already sets w-[46px] but inherits the
+            // height from here, so a 34px row rendered them 46x34 — two pixels tall
+            // everywhere, which is exactly the kind of thing that reads as "not quite
+            // Windows" without being nameable.
+            className="flex h-8 shrink-0 cursor-grab items-center border-b border-border bg-[var(--mica-win,var(--card))] font-[family-name:var(--shell-font)] active:cursor-grabbing"
             onPointerDown={onBarDown}
             onDoubleClick={() => toggleMaximize(id)}
             onContextMenu={ctx.open}

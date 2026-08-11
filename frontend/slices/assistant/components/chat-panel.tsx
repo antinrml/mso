@@ -11,6 +11,7 @@ import {
 } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { errText } from "./error-text";
 import {
   registerAlfaRunner,
   updateAlfa,
@@ -38,16 +39,6 @@ import { useThreadPersistence } from "./use-thread-persistence";
 import { useAlfaRunner } from "./use-alfa-runner";
 
 const SUGGESTED = ["Show system stats", "List ~/projects", "Create notes.txt in ~/projects with a TODO"];
-
-function errText(err: unknown): string {
-  const code = err instanceof Error ? err.message : "";
-  if (code.startsWith("no_api_key")) {
-    const provider = code.split(":")[1] || "selected provider";
-    return `No API key set for ${provider}. Add it in Settings → AI, then save and test that provider.`;
-  }
-  if (code === "unauthorized") return "Session expired — sign in again.";
-  return "Couldn't reach the assistant. Try again.";
-}
 
 let seq = 0;
 const nextId = () => `m${Date.now()}-${seq++}`;

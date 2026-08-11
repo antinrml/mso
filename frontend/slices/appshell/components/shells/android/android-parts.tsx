@@ -10,6 +10,7 @@ import { ChevronLeft, Search, X } from "lucide-react";
 import { shellStore, closeWindow, closeAll } from "../../../lib/store";
 import { useSwipeUpClose } from "../../../hooks/use-swipe-close";
 import { AppIcon } from "../../app-icon";
+import { M3_PRESS } from "./android-motion";
 import type { AppDescriptor, WindowState } from "../../../lib/types";
 
 // 3-button gesture/nav row. 48px button row (--android-nav) + the device
@@ -29,7 +30,11 @@ export function NavBar({ inactive = false, onBack, onHome, onRecents }: { inacti
       inert={inactive}
       aria-hidden={inactive}
     >
-      <Button type="button" variant="ghost" onClick={onBack} aria-label="Back" className="h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center">
+      {/* The nav row had NO press feedback at all — on a touch device a tap that
+          moves nothing reads as a dropped input, which is why Back/Home/Recents
+          felt dead even after they were made visible. M3 spatial-FAST (k=800,
+          ζ=0.6): small element, and the 9.3% overshoot is the release. */}
+      <Button type="button" variant="ghost" onClick={onBack} aria-label="Back" className={`h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center active:scale-90 ${M3_PRESS}`}>
         <ChevronLeft className="size-6" />
       </Button>
       {/* border-current, not border-foreground/70: these two are drawn as outlines,
@@ -37,10 +42,10 @@ export function NavBar({ inactive = false, onBack, onHome, onRecents }: { inacti
           drift from it. (border-foreground/70 was also silently dead until the
           @layer base fix in globals.css — every border-<color> utility was being
           overridden by an unlayered `*` rule.) */}
-      <Button type="button" variant="ghost" onClick={onHome} aria-label="Home" className="h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center">
+      <Button type="button" variant="ghost" onClick={onHome} aria-label="Home" className={`h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center active:scale-90 ${M3_PRESS}`}>
         <span className="size-4 rounded-full border-2 border-current opacity-80" />
       </Button>
-      <Button type="button" variant="ghost" onClick={onRecents} aria-label="Recents" className="h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center">
+      <Button type="button" variant="ghost" onClick={onRecents} aria-label="Recents" className={`h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center active:scale-90 ${M3_PRESS}`}>
         <span className="size-3.5 rounded-[3px] border-2 border-current opacity-80" />
       </Button>
     </div>
@@ -50,11 +55,18 @@ export function NavBar({ inactive = false, onBack, onHome, onRecents }: { inacti
 export function Recents({ order, apps, onResume, onHome }: { order: string[]; apps: AppDescriptor[]; onResume: (id: string) => void; onHome: () => void }) {
   const wins = order.map((id) => shellStore.getWindow(id)).filter(Boolean) as WindowState[];
   return (
-    <div className="absolute inset-0 z-[30] flex flex-col bg-background/90 backdrop-blur-xl" onClick={onHome}>
+    // Recents used to appear with NO animation whatsoever — a full-screen blurred
+    // scrim popping in one frame, which reads as a glitch rather than as a switcher
+    // arriving. Split by family, deliberately: the scrim is pure opacity, so it gets
+    // the critically-damped EFFECTS spring (k=1600, ζ=1, ~186ms) and cannot
+    // overshoot; the card deck moves, so it gets SPATIAL default (k=380, ζ=0.8,
+    // ~371ms) and is allowed to. One animation covering both would have had to pick
+    // one curve and be wrong for the other half.
+    <div className="absolute inset-0 z-[30] flex flex-col bg-background/90 backdrop-blur-xl animate-in fade-in duration-[var(--m3-dur-effects)] ease-[var(--m3-effects)]" onClick={onHome}>
       {/* Empty deck must stay tappable-through: the inner container fills the
           overlay (no Clear-all bar), so swallowing clicks would trap the user
           with no exit (NavBar sits under the z-30 overlay). */}
-      <div className="flex min-h-0 flex-1 items-center gap-3 overflow-x-auto p-5" onClick={(e) => { if (wins.length > 0) e.stopPropagation(); }}>
+      <div className="flex min-h-0 flex-1 items-center gap-3 overflow-x-auto p-5 animate-in slide-in-from-bottom-4 duration-[var(--m3-dur-spatial)] ease-[var(--m3-spatial)]" onClick={(e) => { if (wins.length > 0) e.stopPropagation(); }}>
         {wins.length === 0 && <div className="m-auto text-sm text-muted-foreground">No recent apps · tap to go home</div>}
         {wins.map((w) => (
           <RecentCard key={w.id} win={w} app={apps.find((a) => a.id === w.app)} onResume={() => onResume(w.id)} />
@@ -130,8 +142,12 @@ function RecentCard({ win, app, onResume }: { win: WindowState; app?: AppDescrip
 
 export function AppCell({ app, onClick }: { app: AppDescriptor; onClick: () => void }) {
   return (
-    <Button type="button" variant="ghost" onClick={onClick} className="h-auto p-0 font-normal hover:bg-transparent flex flex-col items-center gap-1.5">
-      <span className="size-14"><AppIcon app={app} /></span>
+    // Press scales the ICON, not the whole cell: scaling the cell drags the label
+    // with it and the text goes blurry mid-transform on a low-DPI panel. `group`
+    // + `group-active:` is required because the :active is on the Button while the
+    // thing that moves is its child. Spatial-FAST — an icon is a small element.
+    <Button type="button" variant="ghost" onClick={onClick} className="group h-auto p-0 font-normal hover:bg-transparent flex flex-col items-center gap-1.5">
+      <span className={`size-14 group-active:scale-90 ${M3_PRESS}`}><AppIcon app={app} /></span>
       {/* Colour is INHERITED, deliberately: this cell renders both on the home grid
           (over the wallpaper, where the parent sets white + a shadow) and inside the
           App Drawer (a light bg-background/95 sheet, where white would be invisible).
@@ -145,7 +161,15 @@ export function AppDrawer({ apps, onLaunch, onClose }: { apps: AppDescriptor[]; 
   const [q, setQ] = useState("");
   const list = useMemo(() => apps.filter((a) => a.title.toLowerCase().includes(q.toLowerCase())), [apps, q]);
   return (
-    <div className="absolute inset-0 z-[30] flex flex-col bg-background/95 backdrop-blur-xl [animation:appOpen_var(--shell-dur)_var(--shell-ease)]">
+    // Spatial SLOW (k=200, ζ=0.8, ~511ms): M3 picks the speed tier from the SIZE of
+    // the moving element, and this is a full-screen surface. Only the model changed
+    // here — a 300ms cubic-bezier for the sampled spring — because appOpen's 14px
+    // UPWARD travel was already the right direction: the drawer is opened from the
+    // "All apps" target at the BOTTOM of the home surface, so it should arrive
+    // rising from where the finger was. (That target is drawn as a grabber but is a
+    // plain tap — there is no swipe-up gesture in this shell, only usePullDown for
+    // the shade and useSwipeUpClose for Recents cards.)
+    <div className="absolute inset-0 z-[30] flex flex-col bg-background/95 backdrop-blur-xl [animation:appOpen_var(--m3-dur-spatial-slow)_var(--m3-spatial)]">
       {/* Visually a thin pull handle, but a ≥36px hit area (same treatment as
           the iOS home indicator) so it's actually closable by thumb. */}
       <Button

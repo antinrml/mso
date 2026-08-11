@@ -1,7 +1,14 @@
 "use client";
 /* Windows 11 taskbar — centered Start + search + per-window buttons, system
    tray clock on the right. Buttons drive the shared store (focus/minimize/
-   restore), mirroring real taskbar click behavior. */
+   restore), mirroring real taskbar click behavior.
+   METRICS (learn.microsoft.com/windows/apps/design/iconography/app-icon-construction,
+   100% scale): 48px bar (h-12), 40px buttons (size-10), 24px icons on that row
+   (size-6). Every one was a size small — 36px buttons, 20px app icons, a 14px Start
+   mark, a 16px Task View glyph — so the bar rendered ~90% beside a real Windows 11
+   one. The search box is the exception: its magnifier went 14px → 16px (the system-
+   glyph row), NOT 24px, because it is a LABELLED box and a 24px magnifier beside a
+   12px label reads as a button whose caption fell off. */
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
@@ -49,18 +56,18 @@ export function Taskbar({ onTaskView }: { onTaskView?: () => void }) {
           <StartButton open={startOpen} onClick={() => setStartOpen((o) => !o)} onTaskView={onTaskView} />
           <Button type="button" variant="ghost"
             onClick={toggleSpotlight}
-            className="h-auto p-0 font-normal hover:bg-transparent flex h-9 items-center gap-2 rounded-md border border-border bg-background/60 px-3 text-xs text-muted-foreground hover:bg-muted"
+            className="h-auto p-0 font-normal hover:bg-transparent flex h-10 items-center gap-2 rounded-md border border-border bg-background/60 px-3 text-xs text-muted-foreground hover:bg-muted"
           >
-            <Search className="size-3.5" /> Search
+            <Search className="size-4" /> Search
           </Button>
           {onTaskView && (
             <Button type="button" variant="ghost"
               onClick={onTaskView}
               title="Task View"
               aria-label="Task View"
-              className="h-auto p-0 font-normal hover:bg-transparent grid size-9 place-items-center rounded-md hover:bg-muted"
+              className="h-auto p-0 font-normal hover:bg-transparent grid size-10 place-items-center rounded-md hover:bg-muted"
             >
-              <LayoutGrid className="size-4" />
+              <LayoutGrid className="size-6" />
             </Button>
           )}
           {pinnedApps.length > 0 && <span className="mx-1 h-6 w-px bg-border" />}
@@ -72,7 +79,7 @@ export function Taskbar({ onTaskView }: { onTaskView?: () => void }) {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-0.5">
-          <ControlCenterDesktop />
+          <ControlCenterDesktop size={40} />
           <Clock />
         </div>
       </div>
@@ -102,11 +109,13 @@ function StartButton({ open, onClick, onTaskView }: { open: boolean; onClick: ()
         onClick={onClick}
         onContextMenu={menu.open}
         aria-label="Start"
-        className={cn(`h-auto p-0 font-normal hover:bg-transparent grid size-9 place-items-center rounded-md hover:bg-muted ${open ? "bg-muted" : ""}`)}
+        className={cn(`h-auto p-0 font-normal hover:bg-transparent grid size-10 place-items-center rounded-md hover:bg-muted ${open ? "bg-muted" : ""}`)}
       >
+        {/* 11px tiles + 2px gutter = a 24px mark. Tiles were 6px (size-1.5) → a 14px
+            mark, so Start read as a speck between two 24px neighbours. */}
         <span className="grid grid-cols-2 gap-[2px]">
           {[0, 1, 2, 3].map((i) => (
-            <span key={i} className="size-1.5 rounded-[1px] bg-primary" />
+            <span key={i} className="size-[11px] rounded-[1px] bg-primary" />
           ))}
         </span>
       </Button>
@@ -123,9 +132,9 @@ function PinnedApp({ app, running }: { app: AppDescriptor; running: boolean }) {
       onClick={() => openWindow(app.id, app.title, app.defaultSize, undefined, { multi: app.multi })}
       title={app.title}
       aria-label={app.title}
-      className={cn(`h-auto p-0 font-normal hover:bg-transparent relative grid size-9 place-items-center rounded-md hover:bg-muted ${running ? "bg-muted" : ""}`)}
+      className={cn(`h-auto p-0 font-normal hover:bg-transparent relative grid size-10 place-items-center rounded-md hover:bg-muted ${running ? "bg-muted" : ""}`)}
     >
-      <span className="size-5">
+      <span className="size-6">
         <AppIcon app={app} />
       </span>
       <span
@@ -155,10 +164,10 @@ function TaskButton({ id }: { id: string }) {
           onClick={onClick}
           onContextMenu={menu.open}
           title={win.title}
-          className={cn(`h-auto p-0 font-normal hover:bg-transparent relative flex h-9 items-center gap-2 rounded-md px-2 hover:bg-muted ${active ? "bg-muted" : ""}`)}
+          className={cn(`h-auto p-0 font-normal hover:bg-transparent relative flex h-10 items-center gap-2 rounded-md px-2 hover:bg-muted ${active ? "bg-muted" : ""}`)}
         >
           {app && (
-            <span className="size-5">
+            <span className="size-6">
               <AppIcon app={app} />
             </span>
           )}
@@ -193,6 +202,10 @@ function TaskButton({ id }: { id: string }) {
 }
 
 // Clock doubles as the Notification Center toggle, like the real Win11 tray.
+// h-10 like every other button in this bar: the tray sits on the same 40px row as
+// Start and the task buttons, and at h-9 its hover pill was 4px shorter than its
+// neighbours' — visible on hover as a step in the row. (ControlCenterDesktop, the
+// other tray button, is still a 28px box and lives in another slice.)
 function Clock() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -203,7 +216,7 @@ function Clock() {
     <Button type="button" variant="ghost"
       onClick={toggleNotificationCenter}
       aria-label="Notifications"
-      className="h-auto p-0 font-normal hover:bg-transparent flex h-9 min-w-9 flex-col items-end justify-center gap-0 rounded-md px-2 text-[11px] leading-tight text-muted-foreground hover:bg-muted"
+      className="h-auto p-0 font-normal hover:bg-transparent flex h-10 min-w-10 flex-col items-end justify-center gap-0 rounded-md px-2 text-[11px] leading-tight text-muted-foreground hover:bg-muted"
     >
       <span>{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       <span>{now.toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "numeric" })}</span>

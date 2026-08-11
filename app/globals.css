@@ -420,10 +420,35 @@ body {
   --shell-font: Roboto, "Google Sans Text", system-ui, var(--font-ui);
   /* M3 Expressive spring-ish enter: a mild overshoot (y>1) gives app-open a
      lively settle. Android-only + enter-only (no exit/geometry glide on mobile),
-     so it can't cause dismiss bounce; reduce-motion still collapses --shell-dur. */
+     so it can't cause dismiss bounce; reduce-motion still collapses --shell-dur.
+     Kept because features/notifications/components/dynamic-island.tsx still reads
+     --shell-ease; the M3 tokens below supersede it inside the Android shell. */
   --shell-ease: cubic-bezier(0.2, 0.9, 0.3, 1.06);
   --shell-dur: 300ms;
   --shell-dur-slow: 400ms;
+
+  /* Material 3 Expressive replaced duration+easing with PHYSICS: spatial springs
+     for anything that moves (may overshoot) and effects springs for colour and
+     opacity (must not). CSS has no spring primitive, so each token below is a real
+     spring sampled into linear().
+     Six M3 tokens collapse into three curves because a spring's normalised SHAPE
+     depends only on its damping ratio — stiffness only scales time, which is what
+     the durations carry.
+     The durations are multiples of --shell-dur ON PURPOSE: the reduce-motion block
+     further down collapses --shell-dur to 1ms, and hard-coded milliseconds here
+     would silently opt every Android animation out of that.
+     CEILING: a linear() cannot be interrupted and re-targeted mid-flight the way a
+     real spring can — it always restarts from zero velocity. Swap for a JS spring
+     only if an interruptible gesture ever needs it. */
+  --m3-spatial-fast: linear(0, 0.0857, 0.2789, 0.504, 0.7122, 0.8779, 0.9931, 1.0608, 1.0905, 1.0935, 1.0805, 1.0604, 1.0392, 1.0208, 1.0069, 0.9978, 0.9928, 0.9911, 0.9915, 0.993, 1); /* k=800  ζ=0.6 */
+  --m3-spatial: linear(0, 0.0538, 0.1769, 0.3268, 0.477, 0.6125, 0.7266, 0.8174, 0.8862, 0.936, 0.9702, 0.9923, 1.0055, 1.0123, 1.0149, 1.0149, 1.0135, 1.0113, 1.009, 1.0068, 1); /* k=380  ζ=0.8 */
+  --m3-effects: linear(0, 0.1712, 0.4382, 0.6532, 0.7972, 0.8856, 0.9371, 0.966, 0.9819, 0.9905, 1); /* ζ=1.0, never overshoots */
+  --m3-dur-spatial-fast: calc(var(--shell-dur) * 1.073); /* 322ms @300 — small elements */
+  --m3-dur-spatial: calc(var(--shell-dur) * 1.237); /* 371ms */
+  --m3-dur-spatial-slow: calc(var(--shell-dur) * 1.703); /* 511ms — large surfaces */
+  --m3-dur-effects-fast: calc(var(--shell-dur) * 0.403); /* 121ms */
+  --m3-dur-effects: calc(var(--shell-dur) * 0.620); /* 186ms */
+  --m3-dur-effects-slow: calc(var(--shell-dur) * 0.877); /* 263ms */
   --shell-icon-radius: 50%;
 }
 /* Top safe-area floor per touch shell — the back/nav buttons + top bars must

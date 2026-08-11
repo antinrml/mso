@@ -72,8 +72,8 @@ managed-app and browser tools before Alfa had them.
 The tiering is about blast radius, not about which layer the call lands in.
 `apps_logs` reads a daemon's journal, so "why is hermes down?" is answerable from
 a `read` token — the same question through `exec_run` would need a full shell.
-`apps_power` is three verbs against known units, so restarting a daemon does not
-require handing one over either.
+`apps_power` is four verbs (start, stop, restart, backup) against known units, so
+restarting a daemon does not require handing one over either.
 
 `tools/list` is filtered by the token's scope, and `tools/call` re-checks it — a
 client that calls a tool it was never shown still gets refused.

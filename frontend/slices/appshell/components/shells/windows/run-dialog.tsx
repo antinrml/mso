@@ -82,7 +82,13 @@ export function RunDialog({ onClose }: { onClose: () => void }) {
         className="absolute bottom-[60px] left-3 z-[6001] w-[400px] max-w-[92vw] rounded-lg border border-border bg-card p-4 shadow-2xl"
       >
         <div className="mb-3 flex items-center gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary/15 text-primary">
+          {/* 32px plate, was 36px. Win+R's header icon is the classic 32px dialog
+              icon at 100% scale, and 36px is not a size Windows draws at all — it
+              was just "a bit bigger than the 32px Start pins" by accident. The 20px
+              glyph stays: 20-in-32 is the ~62% inset Windows uses when it has to
+              plate a glyph, and shrinking it too would have made the plate read as
+              an empty chip. */}
+          <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/15 text-primary">
             <Terminal className="size-5" aria-hidden />
           </span>
           <div>

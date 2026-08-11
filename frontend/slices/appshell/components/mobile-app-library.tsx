@@ -95,10 +95,14 @@ export function MobileAppLibrary({
             <div className="grid grid-cols-4 gap-x-3 gap-y-4">
               {folderApps.map((a) => (
                 <Button key={a.id} type="button" variant="ghost" onClick={() => onOpen(a)} className="h-auto p-0 hover:bg-transparent flex flex-col items-center gap-1.5">
-                  <span className="aspect-square w-full max-w-[56px]">
+                  {/* 60px, the iPhone icon size — an opened App Library folder shows
+                      full-size icons, not the shrunken ones the closed card packs
+                      into its 2×2 preview. Was 56px. The 4-column card is ~69px per
+                      cell here, so 60 fits without reflowing the overlay. */}
+                  <span className="aspect-square w-full max-w-[60px]">
                     <AppIcon app={a} />
                   </span>
-                  <span className="max-w-full truncate text-[11px] font-medium">{a.title}</span>
+                  <span className="max-w-full truncate text-[11px] font-medium leading-[13px]">{a.title}</span>
                 </Button>
               ))}
             </div>

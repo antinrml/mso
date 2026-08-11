@@ -2,6 +2,7 @@ import { writeFile, makeDir, remove, move, copy, runCommand } from "@/lib/host";
 import { setCamoufoxEnabled } from "@/lib/camoufox/service";
 import { performManagedAppAction } from "@/lib/managed-apps/manager";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
+import { MANAGED_APP_ACTIONS, type ManagedAppAction } from "@/lib/managed-apps/types";
 import { type McpTool, str, opt, S, PATH_P } from "./tool-kit";
 import { READ_TOOLS } from "./tools-read";
 
@@ -70,21 +71,29 @@ const MUTATE_TOOLS: McpTool[] = [
     limit: { key: "managed-app", max: 12, windowMs: 60_000, keyArg: "id" },
     audit: { action: "managed-app.action" as const, targetArg: "id" },
     description:
-      "Start, stop or restart a managed application on the VPS. Bounded to the known apps and the " +
-      "three verbs — restarting a daemon should not require handing over a shell, so this sits at " +
+      "Start, stop, restart or back up a managed application on the VPS. Bounded to the known apps and " +
+      "those four verbs — restarting a daemon should not require handing over a shell, so this sits at " +
       "write scope rather than exec. Check apps_list or apps_logs first.",
     scope: "write",
     annotations: { destructiveHint: true },
+    // The verb list is READ from MANAGED_APP_ACTIONS, never retyped. It was retyped,
+    // and `backup` — a real action with a real route, taken automatically before
+    // every update — was missing from the enum AND from the guard below, so an MCP
+    // client could not take one and was told the tool only did three things.
     inputSchema: S({
       id: { type: "string", description: "Managed app id from apps_list." },
-      action: { type: "string", enum: ["start", "stop", "restart"], description: "start | stop | restart" },
+      action: { type: "string", enum: [...MANAGED_APP_ACTIONS], description: MANAGED_APP_ACTIONS.join(" | ") },
     }, ["id", "action"]),
     run: (a) => {
       const id = str(a, "id");
       const action = str(a, "action");
       if (!isManagedAppId(id)) throw new Error(`unknown managed application "${id}" — call apps_list for valid ids`);
-      if (!["start", "stop", "restart"].includes(action)) throw new Error("action must be start, stop or restart");
-      return performManagedAppAction(id, action as "start" | "stop" | "restart");
+      if (!(MANAGED_APP_ACTIONS as readonly string[]).includes(action))
+        throw new Error(`action must be one of ${MANAGED_APP_ACTIONS.join(", ")}`);
+      // `{ app }`, matching POST /api/v1/managed-apps/[id]. Same capability, same
+      // envelope — a client that learned the shape from the CLI or the route must
+      // not have to learn a second one here.
+      return performManagedAppAction(id, action as ManagedAppAction).then((app) => ({ app }));
     },
   },
   {

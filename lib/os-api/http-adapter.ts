@@ -1,4 +1,5 @@
 import { API_VERSION, type OsApi, type SysStats } from "./types";
+import type { ManagedAppView } from "@/lib/managed-apps/types";
 import { uploadChunked } from "./upload";
 
 // /api/v1 routes return `{ error: "..." }` (lib/host/api-error). Surface that
@@ -14,6 +15,30 @@ async function errorFromResponse(res: Response): Promise<Error> {
   }
   return new Error(message || `${res.status} ${res.statusText}`.trim());
 }
+
+// Two DIFFERENT shapes, which is the whole problem. The port promises a
+// `running` boolean (appshell owns it and does not export the name, so it is
+// derived, never re-typed); the routes send a `ManagedAppView`, whose liveness is
+// a six-value `state` enum and which carries no `running` key at all. Typing the
+// response as the port's type would compile and still hand callers `undefined`.
+type ManagedApp = Awaited<ReturnType<OsApi["apps"]["list"]>>[number];
+
+// `import type` only — types.ts is server-adjacent and must not ride into the
+// browser bundle behind this client adapter.
+type ManagedAppWire = Pick<ManagedAppView, "id" | "name" | "installed" | "state">;
+
+// `unhealthy` and `starting` are UP, and getting that wrong is not cosmetic:
+// `unhealthy` is a live unit whose /health probe failed, `starting` is one with a
+// start still in flight (manager.ts:98 sets it for the whole operation). Both
+// answer "yes" to "is the daemon up?", and Alfa renders this boolean as the words
+// "running" / "installed, stopped" — so mapping them to false tells the operator
+// their daemon is down while it is serving traffic, right after a start that worked.
+const toSummary = (a: ManagedAppWire): ManagedApp => ({
+  id: a.id,
+  name: a.name,
+  installed: a.installed,
+  running: a.state === "running" || a.state === "unhealthy" || a.state === "starting",
+});
 
 // Live adapter → REST + SSE against the VPS daemon / Control Room agent at
 // {baseUrl}/api/v1. Auth = the signed session cookie, sent automatically on
@@ -90,9 +115,18 @@ export function HttpAdapter(cfg: { url?: string }): OsApi {
       processes: () => req("GET", "/sys/processes"),
     },
     apps: {
-      list: () => req("GET", "/managed-apps"),
+      // UNWRAP, then TRANSLATE. Both managed-app routes answer in an envelope —
+      // `{apps:[…]}` and `{app:{…}}` — while the port promises the payload, and
+      // `req` is generic, so TypeScript inferred the envelope AS the payload and
+      // no shape error was visible anywhere. `apps.list()` handed callers an
+      // object whose `.length` is undefined, which is why Alfa still answered "no
+      // managed applications on this host" even after the URL was repointed to fix
+      // exactly that, and `apps.power()` returned `{app}`, so the tool reported
+      // "undefined: stopped" after a start that had in fact worked.
+      list: async () => (await req<{ apps: ManagedAppWire[] }>("GET", "/managed-apps")).apps.map(toSummary),
       logs: (id) => req("GET", `/managed-apps/${encodeURIComponent(id)}/logs`),
-      power: (id, action) => req("POST", `/managed-apps/${encodeURIComponent(id)}`, { body: { action } }),
+      power: async (id, action) =>
+        toSummary((await req<{ app: ManagedAppWire }>("POST", `/managed-apps/${encodeURIComponent(id)}`, { body: { action } })).app),
     },
     browser: {
       status: () => req("GET", "/camoufox/service"),

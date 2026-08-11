@@ -78,7 +78,11 @@ export const READ_TOOLS: McpTool[] = [
     scope: "read",
     annotations: READ_ONLY,
     inputSchema: S({}),
-    run: () => listManagedApps(),
+    // `{ apps: [...] }`, not a bare array — GET /api/v1/managed-apps is the authority
+    // on this shape and `mso mapp list` already prints its envelope. Returning the
+    // array raw meant one capability answered in two shapes depending on which
+    // surface asked, which is exactly the drift the parity gate exists to stop.
+    run: async () => ({ apps: await listManagedApps() }),
   },
   {
     name: "apps_logs",

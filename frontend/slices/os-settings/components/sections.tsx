@@ -16,6 +16,7 @@ import { QuicklinksSection } from "./quicklinks-section";
 import { McpSection } from "./mcp-section";
 import { ServerSection } from "./server-section";
 import { CleanupSection } from "./cleanup-section";
+import { BackupSection } from "./backup-section";
 import { AboutSection } from "./about-section";
 
 // The section content — one functional panel per SectionId, shared verbatim by
@@ -59,6 +60,8 @@ function SectionBody({ id }: { id: SectionId }) {
       return <ServerSection />;
     case "cleanup":
       return <CleanupSection />;
+    case "backup":
+      return <BackupSection />;
     case "about":
       return <AboutSection />;
   }
@@ -96,7 +99,7 @@ export function SectionDetail({ id }: { id: SectionId }) {
 // inset to the label. Tapping a row drills the MasterDetail into the section
 // content; the back arrow returns here. No large title in-pane — the mobile
 // app-chrome header already paints "Settings" (avoids a double title); no search
-// pill either (8 sections don't warrant one, and a dead field is a fake affordance).
+// pill either (ten sections don't warrant one, and a dead field is a fake affordance).
 export function SectionList({
   active,
   onSelect,

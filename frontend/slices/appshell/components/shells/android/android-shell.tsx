@@ -2,8 +2,11 @@
 /* Android (Material-You) mobile shell — same store + apps as every other shell,
    one fullscreen app at a time (mirrors MobileShell). Chrome: pull-DOWN on the home
    surface → the REAL Control Center feature (controlCenter slot; the old fake Shade
-   is gone), big clock + date on the wallpaper, search pill → Spotlight, swipe-up App
-   Drawer, gesture nav (back / home / recents), and a Recents card deck. Transparent
+   is gone), big clock + date on the wallpaper, search pill → Spotlight, an App Drawer
+   opened by TAPPING the bottom "All apps" target — it is drawn as a grabber, but no
+   swipe-up gesture is wired here, and this line claiming one is what sent a later
+   motion comment on to justify an animation direction by a gesture that does not
+   exist — gesture nav (back / home / recents), and a Recents card deck. Transparent
    root: the shared <Wallpaper> shows through, like every other shell. Bottom inset
    system: the root sets `--android-nav` (NavBar row height); every surface that must
    clear the bottom chrome pads with `calc(var(--android-nav) + var(--sai-bottom))`. */
@@ -21,6 +24,7 @@ import { useShellConfig } from "../../../registry/shell-config";
 import { ShellUIProvider, type ShellUI } from "../../../registry/shell-ui";
 import { Clock } from "../../clock";
 import { AppCell, AppDrawer, NavBar, Recents } from "./android-parts";
+import { M3_PRESS } from "./android-motion";
 import { ShellContextMenu, useShellContextMenu } from "../context-menu";
 import type { AppDescriptor } from "../../../lib/types";
 import { useInspectorInfo } from "../../../lib/inspector";
@@ -134,7 +138,7 @@ function AndroidShell() {
           <button
             type="button"
             onClick={toggleSpotlight}
-            className="mt-4 flex h-11 shrink-0 items-center gap-3 rounded-full border border-border bg-card/80 px-4 text-left shadow-sm backdrop-blur"
+            className={`mt-4 flex h-11 shrink-0 items-center gap-3 rounded-full border border-border bg-card/80 px-4 text-left shadow-sm backdrop-blur active:scale-[0.97] ${M3_PRESS}`}
           >
             <Search className="size-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">Search</span>
@@ -156,9 +160,13 @@ function AndroidShell() {
               <AppCell key={a.id} app={a} onClick={() => launch(a)} />
             ))}
           </div>
+          {/* 0.97, not the 0.90 the icon-only buttons get: this target carries an
+              11px text label, and scaling type resamples it — blurry for the length
+              of the press on a low-DPI panel. Same reason AppCell scales its icon
+              and leaves its label alone, and the same 0.97 the search pill uses. */}
           <Button type="button" variant="ghost"
             onClick={() => setDrawer(true)}
-            className="h-auto p-0 font-normal hover:bg-transparent mx-auto mb-1 mt-auto flex flex-col items-center gap-0.5 text-[11px] text-muted-foreground"
+            className={`h-auto p-0 font-normal hover:bg-transparent mx-auto mb-1 mt-auto flex flex-col items-center gap-0.5 text-[11px] text-muted-foreground active:scale-[0.97] ${M3_PRESS}`}
           >
             <span className="h-1 w-9 rounded-full bg-foreground/30" />
             All apps
@@ -167,9 +175,16 @@ function AndroidShell() {
 
         <NavBar inactive={showApp} onBack={goHome} onHome={goHome} onRecents={() => setRecents(true)} />
 
-        {/* fullscreen app */}
+        {/* Fullscreen app. Open = M3 SPATIAL SLOW (k=200, ζ=0.8, ~511ms). The speed
+            tier is chosen by the SIZE of the thing that moves, not by how far it
+            moves: this is the largest surface in the shell, so "slow" is right even
+            though appOpen only travels 14px. Most of the perceived movement is over
+            by ~40% of that; the tail is the settle, which is exactly the part a
+            cubic-bezier cannot express. Transform-only on purpose — no opacity,
+            because pairing an effects fade with a spatial slide inside ONE animation
+            would force a single easing on both families. */}
         {showApp && activeApp && top && (
-          <div className="absolute inset-0 z-[20] flex flex-col bg-background [animation:appOpen_var(--shell-dur)_var(--shell-ease)] [transform-origin:center_bottom]">
+          <div className="absolute inset-0 z-[20] flex flex-col bg-background [animation:appOpen_var(--m3-dur-spatial-slow)_var(--m3-spatial)] [transform-origin:center_bottom]">
             {/* M3 top app bar: flat surface (bg-card, hairline divider), leading
                 ArrowLeft up-affordance, Title Large regular weight — not a colored
                 brand header. The per-app color still reads on the icon + recents. */}
@@ -177,12 +192,16 @@ function AndroidShell() {
               className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-3 text-foreground"
               style={{ height: "calc(3rem + var(--sai-top, 0px))", paddingTop: "var(--sai-top, 0px)" }}
             >
-              <Button type="button" variant="ghost" onClick={goHome} aria-label="Back" className="-ml-2 h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center"><ArrowLeft className="size-5" /></Button>
+              {/* Top-bar icon buttons get the same spatial-FAST press as the nav row:
+                  small elements, so "fast" (k=800, ζ=0.6, ~322ms, 9.3% overshoot).
+                  The overshoot is what makes a press feel like a physical button
+                  releasing rather than a scale tween returning. */}
+              <Button type="button" variant="ghost" onClick={goHome} aria-label="Back" className={`-ml-2 h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center active:scale-90 ${M3_PRESS}`}><ArrowLeft className="size-5" /></Button>
               <span className="flex-1 truncate text-[19px] font-normal">{activeApp.title}</span>
               {appActions.length > 0 && (
                 <>
-                <Button type="button" variant="ghost" aria-label="Ask Alfa" onClick={toggleInspector} className="h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center"><Sparkles className="size-5" /></Button>
-                <Button type="button" variant="ghost" aria-label="Actions" onClick={() => setActionsOpen(true)} className="-mr-2 h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center"><MoreHorizontal className="size-5" /></Button>
+                <Button type="button" variant="ghost" aria-label="Ask Alfa" onClick={toggleInspector} className={`h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center active:scale-90 ${M3_PRESS}`}><Sparkles className="size-5" /></Button>
+                <Button type="button" variant="ghost" aria-label="Actions" onClick={() => setActionsOpen(true)} className={`-mr-2 h-auto p-0 font-normal hover:bg-transparent grid size-12 place-items-center active:scale-90 ${M3_PRESS}`}><MoreHorizontal className="size-5" /></Button>
               </>
               )}
             </header>

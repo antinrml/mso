@@ -2,6 +2,7 @@
 
 import type { ComponentType } from "react";
 import {
+  DatabaseBackup,
   Info,
   Link2,
   Paintbrush,
@@ -15,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export type SectionId =
-  | "appearance" | "theme" | "ai" | "quicklinks" | "mcp" | "devices" | "server" | "cleanup" | "about";
+  | "appearance" | "theme" | "ai" | "quicklinks" | "mcp" | "devices" | "server" | "cleanup" | "backup" | "about";
 
 // Semantic buckets for the iOS grouped index (mobile). Reorder-safe: the mobile
 // cards derive from this field, not an index slice, so adding/reordering a
@@ -41,6 +42,10 @@ export const SECTIONS: ReadonlyArray<{
   { id: "devices", label: "Devices", blurb: "Approved browsers and sessions", icon: ShieldCheck, color: "#30d158", group: "system" },
   { id: "server", label: "Server", blurb: "Mock or live host data", icon: Server, color: "#ff9f0a", group: "system" },
   { id: "cleanup", label: "Cleanup", blurb: "Free disk space safely", icon: Trash2, color: "#64d2ff", group: "system" },
+  // Sits immediately before About because About owns "Reset MSO", the one
+  // button that destroys exactly what Backup exists to save — a user reaching
+  // for the reset should have passed the backup row on the way there.
+  { id: "backup", label: "Backup", blurb: "Export or restore browser data", icon: DatabaseBackup, color: "#a2845e", group: "system" },
   { id: "about", label: "About", blurb: "System info and reset", icon: Info, color: "#8e8e93", group: "system" },
 ];
 

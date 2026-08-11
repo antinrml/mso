@@ -9,6 +9,14 @@ unrelated things both called "skill".
 
 ---
 
+> **Where this lives, and how to not lose it.** Agents, Skills and Automations are
+> per-browser localStorage (`alfa.*`), so clearing site data destroys them and there
+> is no server copy. **Settings → Backup** exports every mso-owned key as one JSON
+> file and imports it back. The `alfa.` prefix is matched by rule, so a new
+> `alfa.something` key is covered automatically; a key outside every prefix has to be
+> added to `MSO_LOCAL_STATE.extra` in `appshell/lib/local-state.ts` or it silently
+> will not be in the backup.
+
 ## Tool
 
 **An operation the model can actually invoke.** If it is not here, *Alfa* cannot do

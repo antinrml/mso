@@ -86,6 +86,7 @@ export * from "./lib/lock";
 export * from "./lib/profiles";
 export * from "./lib/shortcuts";
 export * from "./lib/focus-mode";
+export * from "./lib/local-state";
 export {
   useFocusedHotkey,
   inEditable,

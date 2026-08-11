@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { HOST_TOOLS } from "./catalog";
+// Still the os-terminal BARREL, spelled the long way: vitest.config.mts lists the
+// `@` alias before `@/features`, so `@/features/os-terminal` resolves to
+// <root>/features and fails to load under vitest only. Same workaround as
+// lib/mcp/parity.test.ts.
+import { claudeCodeApp, osTerminalApp } from "@/frontend/slices/os-terminal";
+import { HOST_TOOLS, SHELL_APPS } from "./catalog";
 import { findHostTool, HOST_AI_TOOLS } from "./registry";
 
-// Pure-data test: no React / no shell (the catalog + registry only pull the
-// schema helpers + type-only imports, so this runs in the node env).
+// Runs in the node env: the catalog + registry pull only the schema helpers and
+// type-only imports. The one exception is that barrel, imported for the two
+// AppDescriptors below — it is `lazy()` + icons and touches no DOM, which is the
+// only reason it is safe here. Do not reach for the shell barrel to get
+// BUILTIN_APPS instead; that drags the whole window runtime into a data test.
 describe("host-tools registry", () => {
   it("classifies reads as read; fs mutations + exec as mutate", () => {
     const eff = (n: string) => findHostTool(n)?.effect;
@@ -39,6 +47,20 @@ describe("host-tools registry", () => {
     for (const shell of ["terminal", "claude-code", "claude code", "shell"])
       expect(open?.description.toLowerCase()).not.toContain(shell + ",");
     expect(open?.description).toMatch(/Terminals are not on this list/);
+  });
+
+  it("SHELL_APPS still names the two apps that actually mount a PTY", () => {
+    // The guard in catalog.ts compares app.open's argument to STRING ids. Nothing
+    // else connects those strings to the descriptors they refer to, so renaming
+    // `claude-code` or `os-terminal` in the os-terminal barrel would leave the set
+    // matching nothing — app.open would open a window that auto-runs
+    // `claude --dangerously-skip-permissions`, from a READ-tier tool that parks no
+    // approval card, and this whole file would still be green. The set equality is
+    // the guard; the two literals are the pin, so even a correctly-synced rename
+    // has to come through here on purpose.
+    expect(osTerminalApp.id).toBe("os-terminal");
+    expect(claudeCodeApp.id).toBe("claude-code");
+    expect([...SHELL_APPS].sort()).toEqual([claudeCodeApp.id, osTerminalApp.id].sort());
   });
 
   it("derives one AiTool per catalog tool with an object input_schema", () => {

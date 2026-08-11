@@ -7,11 +7,12 @@ import type { AppDescriptor } from "../lib/types";
 import { AppIcon } from "./app-icon";
 import { Slot } from "../registry/feature-registry";
 import { MobileAppLibrary } from "./mobile-app-library";
-import { AppActionSheet, AppsGrid } from "./mobile-home-parts";
+import { AppActionSheet, AppsGrid, useHomePages } from "./mobile-home-parts";
 import { ShellContextMenu, useShellContextMenu } from "./shells/context-menu";
 
-// Paged iPhone home: [Today widgets] · [App grid] · [App Library]. The status
-// clock, dock, page dots and home-indicator persist across pages.
+// Paged iPhone home: [Today widgets] · [App grid ×N] · [App Library]. The dock,
+// page dots and home-indicator persist across pages. The app grid is N pages of
+// 24 (iPhone's 6×4), not one vertical scroller — see mobile-home-parts.
 export function MobileHome({
   apps,
   dockApps,
@@ -32,9 +33,11 @@ export function MobileHome({
   indicator: React.ReactNode;
 }) {
   const pagerRef = useRef<HTMLDivElement>(null);
-  const [page, setPage] = useState(1); // 0 widgets · 1 apps · 2 library
+  const [page, setPage] = useState(1); // 0 widgets · 1…N apps · N+1 library
   const [ctxApp, setCtxApp] = useState<AppDescriptor | null>(null); // long-press sheet
   const menu = useShellContextMenu("ios", "mobile"); // home background long-press menu
+  const gridPages = useHomePages(apps);
+  const pageCount = gridPages.length + 2; // + Today + App Library
 
   // Open on the app grid (the middle page), like iPhone's default home.
   useLayoutEffect(() => {
@@ -83,7 +86,12 @@ export function MobileHome({
       {/* Top safe-area spacer: reserves the notch / Dynamic-Island zone (a real
           phone's hardware lives here) and owns the swipe-down gesture →
           Notification Center (left half) / Control Center (right half).
-          Deliberately empty — no status clock (not useful in a VPS cockpit). */}
+          Deliberately empty — no status clock (not useful in a VPS cockpit).
+          This 2.25rem is ON TOP of --sai-top, which globals.css floors at 2.75rem
+          for data-shell="ios" — they ADD, so iOS starts the pager 80px down even in
+          a browser reporting no inset. Read that before "reclaiming" space here:
+          80px + 34px of dots + a 100px dock block + a 36px indicator = 250px, and
+          what is left is what caps the home icon (60px at 844 tall, 45.5 at 667). */}
       <div
         className="shrink-0 [touch-action:none]"
         style={{ height: "calc(2.25rem + var(--sai-top))" }}
@@ -96,21 +104,24 @@ export function MobileHome({
         className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <Page active={page === 0}>
-          {/* Own scroller so tall Today widgets scroll (pages 1/2 already do) */}
+          {/* Today keeps its OWN scroller — a widget stack is genuinely taller than
+              the page. The app pages deliberately do not scroll (see AppsGrid). */}
           <div className="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Slot region="today" />
           </div>
         </Page>
-        <Page active={page === 1}>
-          <AppsGrid apps={apps} onLaunch={onLaunch} onSearch={onSearch} onContext={setCtxApp} />
-        </Page>
-        <Page active={page === 2}>
+        {gridPages.map((tiles, i) => (
+          <Page key={tiles[0]?.key ?? `home-${i}`} active={page === i + 1}>
+            <AppsGrid tiles={tiles} onLaunch={onLaunch} onSearch={onSearch} onContext={setCtxApp} />
+          </Page>
+        ))}
+        <Page active={page === pageCount - 1}>
           <MobileAppLibrary apps={apps} onOpen={onLaunch} />
         </Page>
       </div>
 
       <div className="flex justify-center gap-0.5 pb-1.5 pt-1">
-        {[0, 1, 2].map((i) => (
+        {Array.from({ length: pageCount }, (_, i) => (
           <button
             key={i}
             type="button"

@@ -7,6 +7,11 @@ import { SnapLayoutsMenu } from "./snap-layouts";
 import type { WinId } from "../lib/types";
 
 // Windows 11 caption buttons (minimize / maximize-restore / close), right-aligned.
+// No app icon here, by design: window.tsx's Windows title bar is title-text + these
+// three buttons, and Win11's own title bars only show a 16px app icon when the app
+// asks for one. Nothing to resize — the 10px SVGs below are Segoe Fluent CAPTION
+// glyphs, which are 10px in a 46x32 button and have no relation to the 16px
+// title-bar APP-icon row in the Fluent icon table. Don't grow them to 16px.
 export function WinCaption({
   id, maximized, onMinimize, onMaximize, onClose,
 }: {

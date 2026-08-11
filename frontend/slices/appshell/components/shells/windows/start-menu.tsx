@@ -94,7 +94,11 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
                 onClick={() => launch(app)}
                 className={`${NEUTRAL} flex w-full items-center justify-start gap-3 rounded-md px-2 py-1.5 hover:bg-muted`}
               >
-                <span className="size-7">
+                {/* 24px — the "Start all apps / search results" row of
+                    learn.microsoft.com/windows/apps/design/iconography/app-icon-construction
+                    at 100% scale. Was 28px (size-7), a size that appears nowhere in
+                    that table, so the list sat visibly heavier than a real one. */}
+                <span className="size-6">
                   <AppIcon app={app} />
                 </span>
                 <span className="truncate text-sm">{app.title}</span>
@@ -111,7 +115,13 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
                 onClick={() => launch(app)}
                 className={`${NEUTRAL} flex flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-muted`}
               >
-                <span className="size-10">
+                {/* This ONE grid renders two different rows of the Fluent table:
+                    Start pins (32px) and, when `searching`, search results — which
+                    the table puts at 24px alongside All apps. Was a flat 40px
+                    (size-10), the taskbar BUTTON size and no icon size at all, so
+                    pins overflowed the tile and every search hit rendered as if it
+                    were a pinned tile. */}
+                <span className={searching ? "size-6" : "size-8"}>
                   <AppIcon app={app} />
                 </span>
                 <span className="w-full truncate text-center text-[11px]">{app.title}</span>
@@ -138,7 +148,10 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
                   onClick={() => launch(app)}
                   className={`${NEUTRAL} flex items-center justify-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted`}
                 >
-                  <span className="size-7">
+                  {/* Recommended is a list row, not a pin, so it takes the same
+                      24px as All apps. Was 28px (size-7) — off-table, and it made
+                      a recommendation look more important than a pinned app. */}
+                  <span className="size-6">
                     <AppIcon app={app} />
                   </span>
                   <span className="truncate text-xs">{app.title}</span>

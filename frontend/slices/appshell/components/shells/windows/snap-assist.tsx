@@ -89,9 +89,15 @@ function Candidate({ id, app, onPick }: { id: string; app: ReturnType<typeof use
       className="h-auto p-0 font-normal hover:bg-transparent group flex flex-col overflow-hidden rounded-xl border border-border bg-background text-left shadow transition hover:-translate-y-0.5 hover:ring-2 hover:ring-primary"
     >
       <div className="h-6 w-full" style={{ background: a?.gradient ?? "var(--muted)" }} />
+      {/* 40px, and deliberately NOT snapped to the Fluent icon table: real Snap
+          Assist shows a live window thumbnail here, and this icon is standing in
+          for that thumbnail, not acting as an icon. Forcing it to 32px (the largest
+          table row) would shrink the card's subject below its own caption strip. */}
       <div className="grid flex-1 place-items-center py-4">
         {a && <span className="size-10 opacity-90"><AppIcon app={a} /></span>}
       </div>
+      {/* The strip below IS a title bar, so 16px is the right row and already was.
+          Left alone on purpose — do not "align" it with the 40px above. */}
       <div className="flex items-center gap-1.5 border-t border-border px-2 py-1.5">
         {a && <span className="size-4 shrink-0"><AppIcon app={a} /></span>}
         <span className="min-w-0 flex-1 truncate text-xs font-medium">{win.title}</span>
