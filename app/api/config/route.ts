@@ -53,6 +53,13 @@ export async function GET() {
 
   return NextResponse.json({
     provider,
+    // Whether the ACTIVE provider path can carry function calls at all. The
+    // ChatGPT Codex OAuth backend cannot — app/api/assistant/route.ts takes a
+    // chat-only branch for it and drops `tools` entirely. Until this existed the
+    // UI advertised "22 tools" and "Alfa acts on your real VPS" on that provider
+    // while the model correctly answered that it had none, which reads as the
+    // assistant being broken rather than the provider being chat-only.
+    toolsSupported: provider !== "openai-codex",
     model: cfg.model || defaultModelFor(provider),
     hasApiKey: key.length > 0,
     apiKeyMasked: stored ? mask(stored) : "",

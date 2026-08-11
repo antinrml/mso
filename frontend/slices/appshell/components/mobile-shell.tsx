@@ -239,13 +239,18 @@ export function MobileShell() {
             </div>
           </header>
           {/* The home-indicator overlays the content edge-to-edge (real-iOS), so
-              raise --sai-bottom INSIDE the app pane to include its 34px zone —
-              every app already pads with var(--sai-bottom), so bumping the var
-              clears the pill centrally without double-padding anyone. */}
+              --sai-bottom INSIDE the app pane must clear its 34px band — every app
+              already pads with var(--sai-bottom), so setting the var here clears the
+              pill centrally without double-padding anyone.
+              max(), NOT env() + 34px. On a notched iPhone env(safe-area-inset-bottom)
+              is ALREADY the 34px home-indicator zone, and our pill is drawn INSIDE
+              that same physical band — adding them reserved 68px and pushed every
+              app's bottom row visibly up the screen. On a device that reports 0 the
+              floor still applies, so nothing regresses where the sum used to be right. */}
           <main
             onScrollCapture={(e) => setAppScrolled((e.target as HTMLElement).scrollTop > 4)}
             className="relative min-h-0 flex-1 overflow-auto [container-type:inline-size]"
-            style={{ "--sai-bottom": "calc(env(safe-area-inset-bottom, 0px) + 34px)" } as React.CSSProperties}
+            style={{ "--sai-bottom": "max(env(safe-area-inset-bottom, 0px), 34px)" } as React.CSSProperties}
           >
             <WindowContent app={top.app} payload={top.payload} />
           </main>

@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AIStore } from "../lib/store";
+import { useToolsSupported } from "../lib/use-tools-supported";
 import { OS_TOOLS } from "../lib/tools";
 import { GlyphTile } from "./agent-avatar";
 
@@ -16,14 +17,19 @@ import { GlyphTile } from "./agent-avatar";
 // persona the system context for the next reply; "New agent" opens the editor.
 export function AgentSwitcher({ store, onNew }: { store: AIStore; onNew: () => void }) {
   const a = store.activeAgent;
+  const toolsSupported = useToolsSupported();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg p-1 pr-2 outline-none hover:bg-accent [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px]">
         <GlyphTile glyph={a.glyph} color={a.color} size={30} />
         <div className="text-left leading-tight">
           <div className="text-[13px] font-semibold">{a.name}</div>
+          {/* OS_TOOLS.length is what the CATALOG holds, which is not what the model
+              receives: a chat-only provider gets none of them. Printing the catalog
+              size unconditionally is how the header came to say "22 tools" next to an
+              assistant that correctly reported having zero. */}
           <div className="text-[10px] text-muted-foreground">
-            {OS_TOOLS.length} tools
+            {toolsSupported ? `${OS_TOOLS.length} tools` : "chat only"}
           </div>
         </div>
         <ChevronDown className="size-3.5 text-muted-foreground" />

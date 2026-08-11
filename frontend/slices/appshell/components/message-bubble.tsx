@@ -2,6 +2,7 @@
 
 import { Sparkles, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { mdToHtml } from "../features/widgets/components/md";
 
 export type ChatRole = "user" | "assistant" | "tool";
 
@@ -67,7 +68,25 @@ export function MessageBubble({ message, ios }: { message: ChatMessage; ios?: bo
               ),
         )}
       >
-        {message.text || <span className="text-muted-foreground">…</span>}
+        {!message.text ? (
+          <span className="text-muted-foreground">…</span>
+        ) : isUser ? (
+          message.text
+        ) : (
+          // Assistant text is MARKDOWN. The model emits **bold**, `code`, bullets
+          // and fenced blocks on nearly every turn, and rendering it literally is
+          // why the thread read as unfinished — a wall of asterisks and backticks.
+          // mdToHtml escapes first and emits a fixed tag set (see md.test.ts),
+          // which is what makes dangerouslySetInnerHTML defensible on text that is
+          // model output, i.e. untrusted.
+          // USER text stays literal on purpose: someone typing ** means **.
+          // whitespace-normal because mdToHtml already turned newlines into <br/>;
+          // leaving the parent's pre-wrap on would double every line break.
+          <span
+            className="block whitespace-normal [&_code]:font-mono [&_pre]:whitespace-pre [&_strong]:font-semibold"
+            dangerouslySetInnerHTML={{ __html: mdToHtml(message.text) }}
+          />
+        )}
       </div>
     </div>
   );

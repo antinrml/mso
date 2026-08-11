@@ -459,8 +459,21 @@ body {
    installed PWA (display-mode: standalone), so the browser tab / desktop
    PhoneFrame preview stays visually unchanged while the real app clears the bar. */
 [data-shell="ios"] { --sai-top: max(env(safe-area-inset-top, 0px), 2.75rem); }
-@media (display-mode: standalone) {
-  [data-shell="android"] { --sai-top: max(env(safe-area-inset-top, 0px), 1.5rem); }
+/* Android floors BOTH insets, in every display mode.
+   It used to floor only --sai-top, only at 1.5rem (24px), and only inside
+   `display-mode: standalone`. Three problems on a real phone, all reported from
+   one: 24px is a 2019 status bar — a punch-hole or curved-corner device needs
+   ~36px, so the home grid and the top of every app sat UNDER the cutout; the
+   standalone gate meant an installed-to-home-screen PWA that Chrome does not
+   report as standalone got no floor at all; and --sai-bottom had no floor, so on
+   gesture navigation the 48px nav row sat beneath the system gesture bar and its
+   Back/Home/Recents could not be tapped.
+   max() throughout, so a device that reports a LARGER inset still wins and nothing
+   is capped. The desktop PhoneFrame preview gains 36px of top chrome, which is the
+   honest thing for a preview of a device that has a status bar. */
+[data-shell="android"] {
+  --sai-top: max(env(safe-area-inset-top, 0px), 2.25rem);
+  --sai-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
 }
 /* OS reduced-motion: collapse durations to ~instant. 1ms (not 0) so animationend
    still fires — the window close/minimize finalize on that event. Scoped narrowly
