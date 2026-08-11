@@ -55,6 +55,7 @@
 #   prefs *              UI preferences: show | set
 #   models *             Model catalog: list | test
 #   skills [name]        Skill catalog the assistant sees; with a name, its SKILL.md
+#   changelog            What shipped, newest first (same text Settings → About shows)
 #   mcp *                MCP bearer tokens: list | revoke <id> | revoke all
 #   oauth <prov> *       Provider sign-in (device code): start | poll
 #   audit [n] [prefix]   Audit trail, newest first (writes/exec/auth; reads are not logged)
@@ -409,6 +410,9 @@ case "$cmd" in
       *) die "usage: mso $U_models" ;;
     esac ;;
   skills) [ -n "${1-}" ] && jget "/api/skills?name=$(enc "$1")" || jget "/api/skills" ;;
+  # Generated from git subjects by scripts/gen-changelog.mjs; `jq -r` because the
+  # value is a markdown document, not a data structure to pretty-print.
+  changelog) jget "/api/changelog" | jq -r .markdown ;;
   stock)  jget "/api/v1/stock/search?q=$(enc "${1:?query}")&page=${2:-1}" ;;
 
   # ── devices (local file, works even when the service is down) ────────────
