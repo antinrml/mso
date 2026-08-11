@@ -27,6 +27,13 @@ export function useEditor() {
         const seed = disk[path] ?? SEED_FILES[path] ?? "";
         return { ...b, [path]: seed };
       });
+      // A SEED path is fictional demo content — `/Projects/counter.tsx` and friends
+      // exist only in seed.ts. Asking the host for one always fails, and it did:
+      // opening the editor on a live server fired GET /api/v1/fs/read for a path
+      // that cannot exist, logging an error on every open. The catch below hid it
+      // from the user but not from the console, and a browser e2e caught it.
+      // openPath() (a real cross-app "open this file") still always reads.
+      if (path in SEED_FILES) return;
       // Best-effort live hydrate; ignore failures (mock / missing file).
       api.fs
         .read(path)

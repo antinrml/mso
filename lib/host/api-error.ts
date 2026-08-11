@@ -13,6 +13,17 @@ export function apiError(
 ): NextResponse {
   if (e instanceof HostError)
     return NextResponse.json({ error: e.message }, { status: 400 });
+  // A missing path or a permission denial is a fact about the REQUEST, not a
+  // server fault. They used to fall through to 500, which sends a client (and a
+  // reader of the logs) hunting a broken server when the file simply is not there
+  // — a browser e2e caught it as `500 GET /api/v1/fs/read` for a path that had
+  // been opened from mock data. The message stays generic: the raw Node error
+  // carries an absolute path and must not reach the client.
+  const code = (e as NodeJS.ErrnoException)?.code;
+  if (code === "ENOENT" || code === "ENOTDIR")
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (code === "EACCES" || code === "EPERM")
+    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
   console.error(`[api/v1/${route}]`, e);
   return NextResponse.json(
     { error: fallback.error ?? "Operation failed" },

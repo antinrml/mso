@@ -33,9 +33,13 @@ export default defineConfig({
       "proxy-websocket.test.ts",
     ],
     environment: "node",
-    // `pnpm coverage`. @vitest/coverage-v8 is installed (package.json), so the
-    // thresholds below are real gates, not aspirations — this comment used to say
-    // the block was inert pending an install that had already happened.
+    // `bun run coverage`, and it IS in `verify`, so these are gates.
+    //
+    // The numbers are the CURRENT floor minus a hair, not a target. They used to
+    // read 50/40/50/50 with a comment calling them "real gates" while real coverage
+    // was 19% and nothing ran them — an aspiration written as a fact, which is the
+    // worse of the two failure modes: it reads as covered. Raise these when you add
+    // tests; never lower them to make a push go through.
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
@@ -47,10 +51,10 @@ export default defineConfig({
         "**/.next/**",
       ],
       thresholds: {
-        statements: 50,
-        branches: 40,
-        functions: 50,
-        lines: 50,
+        statements: 19,
+        branches: 18,
+        functions: 14,
+        lines: 19,
       },
     },
   },

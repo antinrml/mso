@@ -240,16 +240,18 @@ to `resources/` (rr) and drive any project from one manifest:
   `fs`/`child_process` straight from a route.
 - Solo-dev: push direct to `main` once `bun run verify` is green (typecheck + lint +
   test + check + audit). Conventional commits + Claude co-author.
-- **The gates live in an UNTRACKED `.git/hooks/pre-push`**, so no commit can carry
-  them and an sc-git hook reinstall silently drops them. Four guards run, ~70 s per
-  push: sc-git `ci.js --skip build` (typecheck/lint/test, Guard 1), `check-cycles.mjs`
-  (1b), `scripts/audit.mjs` (1c), `scripts/verify-build.sh` (1d). A fifth, Guard 2, is
-  a self-hosted-Convex auto-deploy that is a silent no-op here — there is no `convex/`
-  dir — so don't be surprised to find it in the file. A healthy push prints
-  `audit: clean at high/critical.` and `build: HEAD compiles (out-of-tree).` — **if
-  those two lines are missing, the wiring is gone.** The `--skip build` is deliberate
-  safety, not laziness (see Deploy/ops). A reinstall also re-adds a
-  `scripts/check-slices.mjs` line; that script was deleted, so it blocks every push.
+- **The gates live in `scripts/gates.sh`, which IS committed.** `.git/hooks/pre-push`
+  is a one-line shim that execs it; reinstall with `bash scripts/gates.sh --install`.
+  They used to live in the untracked hook itself, which meant a fresh clone had NO
+  gates and an sc-git hook reinstall silently dropped the audit + build guards while
+  re-adding a `check-slices.mjs` line for a script deleted on 2026-08-03. Four guards
+  run, ~70 s per push: sc-git `ci.js --skip build` (Guard 1, falling back to `bun run
+  verify` when that shared runner is not on the machine — a fresh clone must not skip
+  it silently), `check-cycles.mjs` (1b), `scripts/audit.mjs` (1c),
+  `scripts/verify-build.sh` (1d). Guard 2 is a self-hosted-Convex auto-deploy that is
+  a silent no-op here. A healthy push prints `audit: clean at high/critical.` and
+  `build: HEAD compiles (out-of-tree).` — **if those two lines are missing, the wiring
+  is gone.** The `--skip build` is deliberate safety, not laziness (see Deploy/ops).
 - **`bun run audit` ≠ `bun audit`.** The script is `scripts/audit.mjs`, which wraps
   `bun audit --json` because raw `bun audit` fails CLOSED — offline it exits 1, the
   same code as a real advisory, which would turn every network blip into a fake
