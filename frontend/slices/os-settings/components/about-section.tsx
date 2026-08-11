@@ -9,6 +9,7 @@ import { useAppearance, effectiveServerTarget } from "@/lib/appearance";
 import { IS_DEMO } from "@/lib/demo";
 import { SettingsSection, SettingsValueRow, SettingsActionRow } from "@/features/shell-settings";
 import { MsoMark } from "@/components/shared/mso-mark";
+import { WhatsNew } from "./whats-new";
 import pkg from "../../../../package.json";
 import { openOnboarding } from "@/features/auth";
 
@@ -88,6 +89,8 @@ export function AboutSection() {
           <SettingsValueRow key={k} label={k} value={v} />
         ))}
       </SettingsSection>
+
+      <WhatsNew />
 
       <SettingsSection icon={<RotateCcw />} title="Reset">
         <SettingsActionRow

@@ -49,6 +49,10 @@ fi
 # NOTE: check-slices.mjs used to run here. It and all 20 slice.json were deleted on
 # 2026-08-03 (commit 844eef3) — do NOT let a hook reinstall re-add that line.
 node scripts/check-cycles.mjs || fail "check-cycles: new import cycle introduced."
+# docs/CHANGELOG.md is derived from git, so it can only be stale, never wrong —
+# and a stale one is what Settings → About would show. `bun run ship` regenerates
+# it before committing; this catches a plain `git push`.
+node scripts/gen-changelog.mjs --check || fail "changelog stale — run: node scripts/gen-changelog.mjs (or use \`bun run ship\`)."
 node scripts/check-contrast.mjs || true
 
 # ── Guard 1c — dependency audit, high/critical only.

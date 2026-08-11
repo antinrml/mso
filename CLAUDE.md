@@ -37,8 +37,21 @@ agent — it runs AS a host process and controls its own machine.
 
 **The doc set, and the one rule.** `docs/PROGRESS.md` is the SSOT; everything else is
 history, a live plan, or reference. Append to PROGRESS when you ship — do not start a
-second log. (`docs/CHANGELOG.md` was exactly that and was merged back in; the root
-`progress.md` is gitignored local scratch and claims authority it does not have.)
+second HAND-WRITTEN log. (`docs/CHANGELOG.md` was exactly that once and was merged
+back in; the root `progress.md` is gitignored local scratch and claims authority it
+does not have.) `docs/CHANGELOG.md` exists again as of 2026-08-11 but is **generated
+from git subjects** by `scripts/gen-changelog.mjs` and gated stale-by-`gates.sh`, so
+there is nothing to keep in sync and no way for it to disagree with history. PROGRESS
+is the WHY; CHANGELOG is the WHAT, and it is what Settings → About renders as
+"What's new" so a shipped change is visible in the running app.
+
+**Shipping is `bun run ship "<conventional commit>"`, not `git push`.** Prod is
+systemd with NO webhook, so a pushed commit changes nothing the owner can see until
+someone rebuilds. The script does changelog → commit+push (gates run) → build →
+restart → and then verifies the served CSS chunk actually resolves, which is the
+mismatch CLAUDE.md warns about, checked rather than remembered. Order is
+load-bearing: the changelog is derived, so regenerating it AFTER the commit leaves it
+one commit behind forever; and build-then-restart, never the reverse.
 Deleted 2026-07-28 as dead: `SHELL-INTEGRATION-PLAN.md` and `SYNC-PLAN.md` (both target
 sibling repos that do not exist on this machine), `browser-agent-plan.md` (the retired
 Playwright sidecar), `SIXFIX-PLAN.md` (a finished dated fix list). Nothing linked to any

@@ -206,4 +206,5 @@ export type {
 // Bundled default feature set (appshell/features/*) — re-exported LAST so the
 // core bindings the features read (defineFeature etc.) are already live. A
 // consumer drops `features: DEFAULT_FEATURES` into its manifest in one line.
+export { mdToHtml } from "./features/widgets/components/md";
 export * from "./defaults";
