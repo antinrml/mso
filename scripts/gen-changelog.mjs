@@ -60,6 +60,23 @@ for (const line of RAW.split("\n").filter(Boolean)) {
   byDay.get(date).push({ hash, type, scope: m?.[2] ?? "", subject: m?.[3] ?? subject ?? "" });
 }
 
+// Collapse identical (type, scope, subject) within a day. A retried ship, a
+// squash-that-was-not, or a revert-and-reapply all leave the same subject in
+// history twice — and this file having listed one change twice is what surfaced
+// it. History keeps both commits; the reader does not need to see both.
+for (const [date, list] of byDay) {
+  const seen = new Set();
+  byDay.set(
+    date,
+    list.filter((c) => {
+      const key = `${c.type}\u0000${c.scope}\u0000${c.subject}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }),
+  );
+}
+
 const days = [...byDay.keys()].sort().reverse().slice(0, MAX_DAYS);
 const out = [
   "# Changelog",

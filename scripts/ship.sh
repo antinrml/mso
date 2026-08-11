@@ -28,11 +28,21 @@ MSG="${1:-}"
 
 echo "▶ 1/5 commit"
 git add -A
-if git diff --cached --quiet; then
+# A failed push leaves the commit behind — the gates run AFTER it. Re-running with
+# the same message would then stack a duplicate, which is exactly what happened the
+# first time this script ran: two identical subjects, and the changelog listed the
+# change twice. Amend instead, but ONLY when HEAD is unpushed and carries the same
+# subject, so this can never rewrite something already on origin.
+AMEND=""
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main 2>/dev/null || echo none)" ]    && [ "$(git log -1 --format=%s)" = "$(printf '%s' "$MSG" | head -1)" ]; then
+  echo "  HEAD is an unpushed commit with this subject — amending rather than duplicating"
+  AMEND="--amend"
+fi
+if [ -z "$AMEND" ] && git diff --cached --quiet; then
   echo "  nothing staged — skipping commit"
   COMMITTED=0
 else
-  git commit -q -m "$MSG"
+  git commit -q $AMEND -m "$MSG"
   COMMITTED=1
 fi
 

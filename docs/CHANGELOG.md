@@ -9,11 +9,11 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 **Added**
 
 - `ship` one command that changelogs, pushes, rebuilds and verifies
-- `ship` one command that changelogs, pushes, rebuilds and verifies
 - `shells` Windows/iOS/Android to their 2026 specs, plus a backup for local state
 
 **Fixed**
 
+- `ship` amend on retry, and collapse a repeated subject in the changelog
 - `ai` Codex DOES do tool calling — implement it instead of announcing it cannot
 - `pwa,chat` notch clearance, a doubled iOS inset, and an assistant that was lying
 
