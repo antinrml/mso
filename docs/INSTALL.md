@@ -110,8 +110,8 @@ User=youruser
 WorkingDirectory=/home/youruser/mso
 EnvironmentFile=/home/youruser/mso/.env.local
 Environment=PORT=4005
-Environment=HOSTNAME=0.0.0.0
-ExecStart=/usr/bin/npm run start -- --hostname 0.0.0.0 --port 4005
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 4005
 Restart=always
 RestartSec=5
 MemoryMax=3G
@@ -156,8 +156,16 @@ fine for normal use, but interactive PTY sessions get cut mid-keystroke.
 ## 5. Put TLS in front (pick ONE)
 
 **Tailscale (recommended for a personal box):** don't expose anything.
-`tailscale up`, then reach `http://<machine>:4005` over the tailnet, or
-`tailscale serve 4005` for HTTPS. Firewall :4005 from the public net.
+`tailscale up`, then `tailscale serve 4005`, and browse the
+`https://<machine>.<tailnet>.ts.net` URL it prints.
+
+`tailscale serve` is required, not a nicer alternative: reaching
+`http://<machine>:4005` directly over the tailnet **cannot log in**. The session
+cookie is `Secure` (`lib/auth/session-cookie.ts`), and a browser only keeps a
+`Secure` cookie over plain http on `localhost` / `127.0.0.1` / `::1`. A
+`100.64.0.0/10` address or a MagicDNS name is neither, so the login returns 200
+and the cookie is dropped — an endless login loop with the right password. The
+same is true of every `http://<ip>:4005` URL.
 
 **Caddy (public domain):**
 
@@ -171,7 +179,10 @@ os.example.com {
 TLS (certbot). Keep `proxy_set_header Host $host;` and forward
 `X-Forwarded-For` (the login rate limiter keys on client IP).
 
-Either way: firewall :4005 (and :4002) so only the proxy / tailnet reaches them.
+Either way the app should stay on `127.0.0.1:4005` (the installer's default), so
+the proxy is the only thing that can reach it and there is no public port to
+firewall in the first place. If you deliberately bind wider with
+`--bind 0.0.0.0`, firewall :4005 as well.
 
 ## 6. Optional — the Browser app (Camoufox)
 

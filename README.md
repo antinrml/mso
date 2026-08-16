@@ -101,10 +101,19 @@ curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install
 
 Run it as your normal server user, **not root**. The installer prints the first-login password once and explains how to approve your first browser device.
 
+It binds **`127.0.0.1` by default**, so nothing is published to your network. Reach it with an SSH tunnel and open `http://localhost:4005`:
+
+```bash
+ssh -N -L 4005:127.0.0.1:4005 you@your-server
+```
+
+That tunnel is not just hygiene. The session cookie is `Secure`, and browsers only keep a `Secure` cookie over plain http on `localhost` — so an `http://<ip>:4005` URL logs in successfully and then drops the cookie. For a permanent setup use `tailscale serve 4005` or a TLS reverse proxy pointed at `127.0.0.1:4005`; pass `--bind 0.0.0.0` only when a proxy you control is already in front.
+
 Useful options:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install.sh | bash -s -- --port 4005
+curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install.sh | bash -s -- --bind 0.0.0.0
 curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install.sh | bash -s -- --no-service
 curl -fsSL https://raw.githubusercontent.com/rahmanef63/mso/main/scripts/install.sh | bash -s -- --uninstall
 ```
