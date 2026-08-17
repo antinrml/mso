@@ -21,6 +21,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Docs**
 
+- `readme` the update button, and what Preview actually opens
 - plain http to an IP cannot complete a login — say so where it matters
 
 ## 2026-08-11
