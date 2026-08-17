@@ -216,6 +216,24 @@ describe("managed-app proxy guards", () => {
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'self'");
   });
 
+  // Displaying the error was half the job; the frame is a surface a person reads. A
+  // 401 here is most often a session issued before OS_SESSION_COOKIE_DOMAIN was set —
+  // host-only, so never sent to this host — which no status code can convey.
+  it("renders a failure as a page for the frame and as JSON for the upstream's fetch", async () => {
+    const { verifyAuth } = await import("@/lib/agent/server");
+    const { GET } = await import("./[id]/proxy/[[...path]]/route");
+
+    vi.mocked(verifyAuth).mockResolvedValueOnce(false);
+    const framed = await GET(req("chat", { headers: { "sec-fetch-dest": "iframe" } }), ctx(["chat"]));
+    expect(framed.headers.get("content-type")).toContain("text/html");
+    expect(await framed.text()).toContain("sign in again");
+
+    vi.mocked(verifyAuth).mockResolvedValueOnce(false);
+    const xhr = await GET(req("api/status", { headers: { "sec-fetch-dest": "empty" } }), ctx(["api", "status"]));
+    expect(xhr.headers.get("content-type")).toContain("application/json");
+    expect(await xhr.json()).toEqual({ error: "unauthorized" });
+  });
+
   it("refuses a non-loopback upstream target", async () => {
     dashboardUrl.current = "http://evil.example.com";
     const { GET } = await import("./[id]/proxy/[[...path]]/route");
