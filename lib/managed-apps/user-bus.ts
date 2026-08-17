@@ -46,7 +46,7 @@ export function userBusEnv(): Record<string, string> | undefined {
   //   - Set and usable (a terminal, `machinectl shell`, an operator pointing at
   //     a non-default runtime dir on purpose): leave it completely alone.
   //   - Set but with nothing behind it: the unit hard-codes
-  //     `XDG_RUNTIME_DIR=/run/user/%U`, which is a static string evaluated when
+  //     `XDG_RUNTIME_DIR=/run/user/<uid>`, which is a static string evaluated when
   //     the service starts. At boot mso.service can win the race against
   //     systemd-logind creating that directory. Trusting the variable's mere
   //     presence would disable this fallback exactly when it is needed.

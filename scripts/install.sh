@@ -252,11 +252,17 @@ Environment=HOSTNAME=$BIND
 # A system unit with User= inherits no login session, so it gets no user-bus
 # address and every \`systemctl --user\` it runs answers "Failed to connect to bus:
 # No medium found". That silently broke the managed-app installs (which create
-# systemd USER units) and made installed apps read as "not installed". %U is the
-# UID of User= above, so this stays correct if the account is renamed. Paired with
+# systemd USER units) and made installed apps read as "not installed". Paired with
 # the \`loginctl enable-linger\` below, without which /run/user/<uid> is destroyed
 # at logout.
-Environment=XDG_RUNTIME_DIR=/run/user/%U
+#
+# The UID IS WRITTEN OUT, NOT the %U specifier. Do not "tidy" this back to %U — it
+# was tried and it FAILS: with User=antinrml and UID=1000, systemd 255 expanded %U
+# to 0, so the unit got XDG_RUNTIME_DIR=/run/user/0 and every systemctl --user
+# answered "No such file or directory" — the original bug wearing a new message.
+# Specifiers are expanded while the unit is parsed, before the NAME in User= has
+# been resolved to a uid, so %U falls back to the manager's own uid (root).
+Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
 # systemd would otherwise give this unit only
 # /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin. Both managed-app CLIs install
 # themselves into ~/.local/bin, so without this \`which hermes\` fails inside the

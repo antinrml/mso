@@ -445,7 +445,8 @@ Handled in three places, deliberately overlapping so that no single one has to b
 - `lib/managed-apps/runner.ts` → `resolveCommand()` falls back to `~/.local/bin` and
   `~/.bun/bin` when PATH misses — the same lesson `hermes_cmd()` in
   `scripts/managed-app-install` had already learned the hard way.
-- `scripts/install.sh` writes `Environment=XDG_RUNTIME_DIR=/run/user/%U` plus a PATH that
+- `scripts/install.sh` writes `Environment=XDG_RUNTIME_DIR=/run/user/<uid>` (the uid written out —
+  the `%U` specifier expands to 0 for a `User=<name>` system unit) plus a PATH that
   includes those directories, and runs `loginctl enable-linger`. **Linger is not optional**:
   without it `/run/user/<uid>` is destroyed at logout and the variable points at nothing.
 

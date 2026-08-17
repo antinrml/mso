@@ -209,7 +209,7 @@ to `resources/` (rr) and drive any project from one manifest:
   version control). The script refuses to start without a VNC password file. Two further
   host-side facts that `scripts/install.sh` NOW CARRIES ITSELF, and that the feature dies
   quietly without: (1) `loginctl enable-linger <user>`, or the unit stops at
-  logout and never starts at boot; (2) `Environment=XDG_RUNTIME_DIR=/run/user/%U` in
+  logout and never starts at boot; (2) `Environment=XDG_RUNTIME_DIR=/run/user/<uid>` in
   mso.service — a system unit running as `User=` gets NO user-bus address, so without it
   every `systemctl --user` call fails with "Failed to connect to bus: No medium found".
   `lib/camoufox/service.ts` reports that as an error rather than as "not installed", so the

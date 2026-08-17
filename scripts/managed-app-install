@@ -85,7 +85,7 @@ therefore no XDG_RUNTIME_DIR. Fix it once, on the host:
 
   sudo loginctl enable-linger $(id -un)
   sudo mkdir -p /etc/systemd/system/mso.service.d
-  printf '[Service]\nEnvironment=XDG_RUNTIME_DIR=/run/user/%%U\n' \\
+  printf '[Service]\nEnvironment=XDG_RUNTIME_DIR=/run/user/%s\n' "$(id -u)" \\
     | sudo tee /etc/systemd/system/mso.service.d/10-user-bus.conf
   sudo systemctl daemon-reload && sudo systemctl restart mso
 

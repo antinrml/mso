@@ -129,7 +129,7 @@ export async function getManagedApp(id: ManagedAppId): Promise<ManagedAppView> {
     // been seen, and nothing about the bus can make that observation wrong.
     diagnostic:
       installation.type === "not-installed" && userBusUnavailable()
-        ? "MSO cannot reach this user's systemd bus, so it cannot see user services — this app may in fact be installed. Run `loginctl enable-linger` for the user, and set XDG_RUNTIME_DIR=/run/user/%U in mso.service (a drop-in under /etc/systemd/system/mso.service.d/)."
+        ? "MSO cannot reach this user's systemd bus, so it cannot see user services — this app may in fact be installed. Run `loginctl enable-linger` for the user, and set XDG_RUNTIME_DIR=/run/user/<uid> in mso.service (a drop-in under /etc/systemd/system/mso.service.d/)."
         : null,
   };
 }
