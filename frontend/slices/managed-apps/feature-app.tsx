@@ -36,9 +36,24 @@ export function ManagedFeatureApp({ feature }: AppProps & { feature: ManagedAppF
       </header>
       {/* `|| !source` is explicit, not defensive: with no dashboard origin the CLI IS the
           app's surface here, and the alternative was an iframe with a null src. The panel
-          of prose that used to sit in this slot was unreachable anyway — `view` initialises
+          of prose that used to sit in THIS slot was unreachable anyway — `view` initialises
           to "cli" whenever `source` is null and the toggle that could change it only
-          renders when `source` is not. */}
+          renders when `source` is not; the note above sits outside the branch for exactly
+          that reason. */}
+      {/* Only when there is no origin at all, so this can never become the banner that got
+          removed for appearing on every feature view: with a dashboard configured — the
+          normal case — nothing renders here. Without one, the window silently opens a
+          terminal, and a terminal is indistinguishable from a dashboard that broke. It
+          reads as a fault in the app and sends the operator to look at the app. It is not:
+          it is a deployment that serves no dashboards, and only this file knows that. */}
+      {!source ? (
+        <p className="shrink-0 border-b border-border px-3 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          No dashboard on this deployment — the CLI below is the view.{" "}
+          <span className="font-mono">NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE</span> is unset, so{" "}
+          {feature.applicationId} has no host of its own to be framed from. Setting it needs a
+          rebuild, not just a restart. See docs/MANAGED-APPS.md §5.
+        </p>
+      ) : null}
       {view === "cli" || !source ? (
         <div className="min-h-0 flex-1">
           <Suspense fallback={null}>

@@ -315,6 +315,38 @@ Without a host template the dashboards are simply not proxied — the windows fa
 the CLI view and to opening the app in the user's own browser. **Do not reintroduce a
 cockpit-origin path proxy as a convenience.**
 
+### Turning it on is THREE steps, and the third one has no error message
+
+Reported by the same operator as §7's user-bus gap, and it cost an afternoon: the Hermes
+window showed a terminal, so the dashboard looked broken. It was not — this deployment had
+no app host, and nothing anywhere said so.
+
+| Step | Skipping it looks like |
+|---|---|
+| 1. Set **both** `NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE` and `OS_SESSION_COOKIE_DOMAIN`, add the DNS record + a reverse-proxy route per app host | The window opens a terminal, silently |
+| 2. **Rebuild**, not just restart — `NEXT_PUBLIC_*` is baked into the client bundle | Same terminal: the server is in split mode and the browser is still running the old bundle |
+| 3. **Sign out and back in** | The frame 401s while the cockpit keeps working |
+
+Step 3 is the one with no signal, and it cannot be given one server-side. `Domain=` is
+attached to the session cookie only when it is ISSUED (`login/route.ts`, via
+`sessionCookieAttrs`) and there is no sliding refresh, so every pre-existing session stays
+host-only and is never sent to `<id>.<parent>`. A Cookie header carries no Domain, so a
+cookie that was never sent is indistinguishable from one that never existed — the server
+cannot tell "stale session" from "not logged in".
+
+So all three now say it where it will be read, none of them relying on this file:
+
+- **Step 1** — the window itself. `feature-app.tsx` renders one line above the terminal
+  when `featureSource()` is null, naming the variable. Only in that case: with a dashboard
+  configured nothing renders, so it cannot become the always-on banner that was removed.
+- **Steps 2 and 3** — the failure page. The proxy route's errors are what the frame
+  displays (that is what `failAncestors()` is for), and `proxy-error-page.ts` turns them
+  from `{"error":"unauthorized"}` into a page that names the re-login. Navigations only,
+  chosen by `Sec-Fetch-Dest`: an upstream SPA's own `fetch()` hits the same route and keeps
+  getting JSON.
+- **Before any of it** — `mso doctor` prints the template when set, `off` when neither var
+  is set, and FAILS when exactly one is, which is the configuration §5 warns is unsafe.
+
 Live verification (unauthenticated, so 401 is the expected success signal):
 
 ```
