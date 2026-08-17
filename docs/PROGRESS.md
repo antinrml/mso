@@ -8,6 +8,85 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-17 (audit) — a codebase pass: what was duplicated, what had drifted, what was undefended (DONE)
+
+Not a UI pass. Scanned for dead exports, parallel implementations, unguarded
+contracts and untested risk, then fixed what was real. What the scan found and what
+it did NOT find are both worth recording.
+
+**Duplication that was also a bug.**
+
+- **Six copies of "download this URL"**, disagreeing on the two details that decide
+  whether the file arrives. Two clicked a DETACHED anchor — Firefox ignores
+  `download` on one, so it navigates instead of saving, and one of the two was the
+  Settings → Backup export. Three disagreed on when to revoke the blob (0 ms / 2000 ms
+  / never; same-tick revocation lands a 0-byte file in Firefox and Safari). Now one
+  `saveAs()` in appshell, with both rules and a test that asserts the anchor was in
+  the document AT THE MOMENT of the click.
+- **Three copies of POSIX path math.** Files' `joinPath` did not strip a trailing
+  slash, the Code editor's did, Preview's sibling lookup carried a third regex. These
+  strings become the `path=` of an `/api/v1/fs` request, so `/a//b` is a different
+  path to a host that resolves it literally. One `lib/path.ts` now — `lib/`, not
+  appshell, because the framework may not depend on mso's lib and this is the same
+  universal category as `cn`.
+- **Files' icon + colour tables had drifted from Preview's format table**: a `.heic`
+  drew a generic grey icon and a `.m4v` an uncoloured one, because the local sets
+  predated the viewer's. Both read `kindForName` now; the dead sets are gone.
+
+**A test-runner bug that was hiding, not helping.** `vitest.config.mts` listed
+`"@": root` BEFORE `"@/features"`, and Vite tries aliases in insertion order — so
+`@/features/os-shell` resolved to `<root>/features/os-shell`, which does not exist.
+No test had happened to pull a slice barrel into its graph, so it read as green
+until one did. tsconfig had it right the whole time; only the runner disagreed.
+
+**Contracts nothing was checking, now checked.**
+
+- `media-viewer/lib/kinds.ts` ↔ `lib/host/fs.ts`: every extension Preview points an
+  element at must have a real Content-Type, or the element errors and the operator
+  is told their browser cannot decode a file it decodes fine. The same test asserts
+  the map NEVER grows an executable document type — `text/html` there would make any
+  host file an active document on the cockpit's origin.
+- `.env.example` ↔ `process.env`: CLAUDE.md carried this as a chore, and the chore
+  had slipped. `OS_CODEX_BUILTIN_TOOLS` — which turns on provider-run tools that BILL
+  to the owner's account — was readable by the code and documented nowhere. Now a
+  test, with an exemption list that is itself checked for staleness (it caught two
+  entries for vars nothing reads any more).
+
+**A real hole in the credential denylist.** It blocked shell HISTORY but not the
+shell RC and PROFILE files, and `~/.bashrc` on this box holds eight
+`export …_TOKEN=` lines — put there by tooling that says "add this to your shell
+profile". `fs/read` handed them over, and the assistant's read-tools run with no
+approval gate. Blocked now (`.bashrc`, `.zshrc`, `.profile`, fish config, …),
+verified against the running service: `.bashrc` → 400 "credential/sensitive files
+is blocked", `.gitconfig` and `.vimrc` still readable. `OS_FS_ALLOW_SENSITIVE=1` is
+still the escape hatch, and a terminal window is right there.
+
+**The riskiest route had no test.** `/api/v1/sys/update` replaces the code the whole
+cockpit runs. It now has six: signed-out gets nothing on either verb AND the host is
+never touched, `?check=0` really skips the network round trip, `rebuildOnly` is only
+honoured when it is exactly `true` (a hand-rolled client sending `"yes"` must not
+mean "rebuild"), a refusal is its sentence and a 400 rather than a 500, and BOTH the
+start and the refusal reach the audit log while a read reaches nothing.
+
+**Also:** the update status read its log file twice per poll (every 3 s during a
+build); coverage thresholds ratcheted 19/18/14/19 → 20/18.5/15/20.5, a hair under the
+measured 20.47/19.2/15.15/20.86, per the rule written above them.
+
+**Deliberately not done**, so the next pass does not re-derive it:
+
+- `verifyAuth(req)` discards its argument — it is a one-line wrapper over
+  `requireSession()`, and the parameter invites the reading that the request is
+  checked (it is not; `proxy.ts` owns origin). Removing it is ~40 mechanical route
+  edits, and another session was pushing to this repo the same hour. Worth doing
+  solo, not worth a collision.
+- ~180 "unused" exports are mostly types re-exported as the appshell framework's
+  public surface, or consumed structurally. Only ONE module was genuinely dead
+  (`components/ui/segmented.tsx`) — and it was a false positive: four slices import
+  it under a name the scan's regex missed. Left alone.
+- Preview's sample gallery (7 files) parallels the real viewer, but the public demo
+  is its live consumer — mock data has no bytes to render, so those samples are the
+  only thing the demo can show.
+
 ## 2026-08-17 — the deploy became a button, and Preview learned the rest of the disk (DONE)
 
 Two PRs from the fork merged first (#2 user bus, #3 dashboard silence), then two

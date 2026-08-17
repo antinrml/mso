@@ -36,6 +36,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Docs**
 
+- `progress` record the codebase audit — what was duplicated, drifted, undefended
 - record that connectors-gateway now consumes this MCP surface
 - `readme` the update button, and what Preview actually opens
 - plain http to an IP cannot complete a login — say so where it matters
