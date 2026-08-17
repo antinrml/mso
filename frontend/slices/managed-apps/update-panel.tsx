@@ -134,6 +134,16 @@ export function InstallSurface({ app, icon, onChanged }: { app: ManagedAppView; 
   const centre = useUpdateCentre(app.id, onChanged);
   return (
     <Hero icon={icon} title={app.name} description={app.description}>
+      {/* "Absent" is sometimes a guess rather than a fact — see ManagedAppView.diagnostic.
+          Shown ABOVE the Install button because it is the reason that button is about to
+          fail: with no user bus, the install job dies at the step that registers the app's
+          service, every time, after doing all of its other work. */}
+      {app.diagnostic && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          <p className="font-medium">This reading may be wrong</p>
+          <p className="mt-1 text-amber-300/85">{app.diagnostic}</p>
+        </div>
+      )}
       <InstallPanel appId={app.id} command={centre.status?.capabilities?.installCommand} centre={centre} />
       <JobPanel job={centre.job} onDismiss={centre.dismiss} onCancel={centre.cancel} />
     </Hero>

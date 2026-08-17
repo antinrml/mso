@@ -207,13 +207,20 @@ to `resources/` (rr) and drive any project from one manifest:
   in THIS repo** (it used to live untracked under `~/.openclaw/workspace/`, so a fresh
   clone could not start the Browser at all and the `-nopw` → `-rfbauth` hardening had no
   version control). The script refuses to start without a VNC password file. Two further
-  host-side facts the repo cannot carry, and the feature dies quietly without either: (1) `loginctl enable-linger rahman`, or the unit stops at
-  logout and never starts at boot; (2) the drop-in
-  `/etc/systemd/system/mso.service.d/user-bus.conf` setting
-  `Environment=XDG_RUNTIME_DIR=/run/user/1001` — a system unit running as `User=rahman`
-  gets NO user-bus address, so without it every `systemctl --user` call fails with
-  "Failed to connect to bus: No medium found". `lib/camoufox/service.ts` reports that
-  as an error rather than as "not installed", so the panel tells you which one it is.
+  host-side facts that `scripts/install.sh` NOW CARRIES ITSELF, and that the feature dies
+  quietly without: (1) `loginctl enable-linger <user>`, or the unit stops at
+  logout and never starts at boot; (2) `Environment=XDG_RUNTIME_DIR=/run/user/%U` in
+  mso.service — a system unit running as `User=` gets NO user-bus address, so without it
+  every `systemctl --user` call fails with "Failed to connect to bus: No medium found".
+  `lib/camoufox/service.ts` reports that as an error rather than as "not installed", so the
+  panel tells you which one it is.
+  Treating these as un-carryable host lore was itself the bug: a host set up by
+  `scripts/install.sh` alone had neither, so the Browser app looked uninstalled and every
+  managed-app install died at the step that registers its user service. The installer sets
+  both now, and `lib/managed-apps/user-bus.ts` re-derives the bus address at call time so a
+  cockpit installed BEFORE this change is not left broken until someone re-runs the
+  installer. An existing host still needs the linger (`sudo loginctl enable-linger <user>`);
+  re-running `scripts/install.sh` applies the rest.
   (3) The unit is deliberately left **`disabled`** with `Restart=no` + `RuntimeMaxSec=2h`:
   the UI toggle is plain `start`/`stop` and must NEVER go back to `enable --now`, or every
   click re-arms boot autostart — that is how it once ran 26 h with zero viewers. Ship

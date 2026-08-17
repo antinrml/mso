@@ -37,6 +37,15 @@ export interface ManagedAppView {
   version: string | null;
   dashboardAvailable: boolean;
   supportedActions: ManagedAppAction[];
+  /** Why this reading may be wrong, when MSO knows that it might be.
+   *
+   *  "not-installed" is normally a fact. It is a GUESS when MSO cannot reach the
+   *  user's systemd bus, because both apps run as systemd USER units and that is
+   *  the only place their presence is visible. Saying "not installed" flatly then
+   *  sends the operator to an Install button whose job fails at the same step
+   *  every time — which is exactly what happened in production. `null` when the
+   *  reading is trustworthy. */
+  diagnostic: string | null;
 }
 
 export interface ManagedAppLogs {

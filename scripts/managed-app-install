@@ -42,6 +42,61 @@ hermes | openclaw) ;;
   ;;
 esac
 
+# Both apps are installed as systemd USER units, and `systemctl --user` finds the
+# user's systemd instance through XDG_RUNTIME_DIR. MSO may be running as a systemd
+# SYSTEM unit with `User=`, which inherits no login session and therefore no such
+# variable; every `systemctl --user` then answers
+#
+#     Failed to connect to bus: No medium found
+#
+# and, under `set -e`, kills this script outright.
+#
+# That is not hypothetical. It aborted real installs inside
+# install_hermes_dashboard() — AFTER the upstream installer had already fetched
+# uv, a Python, the git checkout and 80 skills — leaving a unit file on disk that
+# nothing had ever enabled, and reporting only "exited with code 1".
+ensure_user_bus() {
+  [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "${XDG_RUNTIME_DIR}/bus" ] && return 0
+  # Linger is what keeps /run/user/<uid> alive without a login session — and
+  # enabling it CREATES that directory here and now. A user may enable their own
+  # linger without root.
+  loginctl enable-linger "$(id -un)" >/dev/null 2>&1 || true
+  local uid
+  uid="$(id -u)"
+  if [ -S "/run/user/${uid}/bus" ]; then
+    export XDG_RUNTIME_DIR="/run/user/${uid}"
+    return 0
+  fi
+  return 1
+}
+
+# Checked HERE, before ~20 minutes of downloading and compiling, because the last
+# step is the most expensive place to discover a missing environment variable.
+if command -v systemctl >/dev/null 2>&1; then
+  if ensure_user_bus; then
+    log "user systemd bus: ${XDG_RUNTIME_DIR}/bus"
+  else
+    cat >&2 <<MSG
+cannot reach the systemd user bus for $(id -un), so $APP's service could not be
+installed even if everything else succeeded. Nothing has been changed.
+
+MSO is probably running as a systemd system unit, which gets no login session and
+therefore no XDG_RUNTIME_DIR. Fix it once, on the host:
+
+  sudo loginctl enable-linger $(id -un)
+  sudo mkdir -p /etc/systemd/system/mso.service.d
+  printf '[Service]\nEnvironment=XDG_RUNTIME_DIR=/run/user/%%U\n' \\
+    | sudo tee /etc/systemd/system/mso.service.d/10-user-bus.conf
+  sudo systemctl daemon-reload && sudo systemctl restart mso
+
+Then start this install again.
+MSG
+    exit 1
+  fi
+else
+  echo "no systemctl on this host — $APP will be installed without a service" >&2
+fi
+
 # ---------------------------------------------------------------- hermes ----
 install_hermes() {
   local tmp
@@ -114,8 +169,15 @@ WantedBy=default.target
 UNIT
 
   # Without linger a user unit dies with the last session, so the dashboard would
-  # vanish on logout and never return after a reboot. Idempotent, needs no sudo.
-  loginctl enable-linger "$USER" >/dev/null 2>&1 || true
+  # vanish on logout and never return after a reboot. ensure_user_bus enables it
+  # and exports XDG_RUNTIME_DIR; both are idempotent and need no sudo. It ran in
+  # preflight already — repeated here so this function is correct on its own, and
+  # because `$USER` (which this used to read) is not guaranteed to be set in a
+  # systemd child, while `id -un` always is.
+  ensure_user_bus || {
+    echo "cannot reach the user systemd bus — see the preflight message above" >&2
+    return 1
+  }
   systemctl --user daemon-reload
   systemctl --user enable --now hermes-dashboard.service
 
@@ -130,7 +192,24 @@ UNIT
     fi
     sleep 2
   done
-  echo "dashboard did not answer within 180s — still building? check: systemctl --user status hermes-dashboard" >&2
+
+  # Falling out of this loop used to return 0 — the exit status of the `echo`
+  # below — so the job was recorded as SUCCEEDED with nothing listening on 9119.
+  # That is precisely the failure this function was written to prevent ("an
+  # install that reports success while the iframe is still refused"), reintroduced
+  # through the back door by a missing return.
+  #
+  # "Timed out" is still two different outcomes, so ask which one before deciding:
+  # a first start compiles the web UI with vite and can genuinely outrun 180 s on a
+  # small VPS, and failing that install would be just as wrong as passing a dead one.
+  if systemctl --user is-active --quiet hermes-dashboard.service; then
+    echo "dashboard has not answered within 180s but its service is running — it is still building." >&2
+    echo "watch it with: journalctl --user -u hermes-dashboard -f" >&2
+    return 0
+  fi
+  echo "dashboard service is not running after install: $(systemctl --user is-active hermes-dashboard.service 2>&1)" >&2
+  echo "diagnose with: systemctl --user status hermes-dashboard --no-pager" >&2
+  return 1
 }
 
 # Sets HERMES_CMD. An ARRAY, because the last candidate is two words.

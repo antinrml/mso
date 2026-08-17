@@ -10,10 +10,17 @@ vi.mock("server-only", () => ({}));
 vi.mock("./runner", () => ({
   runProgram: vi.fn(),
   commandExists: vi.fn().mockResolvedValue(false),
+  resolveCommand: vi.fn().mockResolvedValue(null),
   requireProgram: vi.fn(),
 }));
+// Stubbed so these tests describe MSO's behaviour rather than whether the machine
+// running them happens to have a user bus.
+vi.mock("./user-bus", () => ({
+  userBusEnv: vi.fn(() => ({ XDG_RUNTIME_DIR: "/run/user/1000" })),
+  userBusUnavailable: vi.fn(() => false),
+}));
 
-const { runProgram } = await import("./runner");
+const { runProgram, commandExists, resolveCommand } = await import("./runner");
 const { getManagedApp, performManagedAppAction } = await import("./manager");
 
 const ok = (stdout: string) => ({ code: 0, stdout, stderr: "" });
@@ -65,6 +72,66 @@ describe("systemd detection tells a stopped unit from one that does not exist", 
     vi.mocked(runProgram).mockResolvedValue({ code: 127, stdout: "", stderr: "not found" });
     const view = await getManagedApp("hermes");
     expect(view.state).toBe("not-installed");
+  });
+});
+
+describe("detection survives the environment a systemd system unit actually gets", () => {
+  // Both cases below were live in a shipped build, on a host where Hermes was
+  // installed, enabled and serving. The panel said "not installed" and offered an
+  // Install button whose job died at the same spot every time.
+
+  it("hands the --user probe the bus address the unit never provides", async () => {
+    // mso.service runs system-scope with User=, so it inherits no login session
+    // and no XDG_RUNTIME_DIR. Without one, `systemctl --user` answers "Failed to
+    // connect to bus: No medium found" and the entire user scope is skipped.
+    systemctl({ "hermes-dashboard.service": ACTIVE });
+    await getManagedApp("hermes");
+
+    const userProbe = vi
+      .mocked(runProgram)
+      .mock.calls.find((call) => call[0] === "systemctl" && (call[1] as string[])[0] === "--user");
+    expect(userProbe).toBeDefined();
+    expect(userProbe![3]).toEqual({ XDG_RUNTIME_DIR: "/run/user/1000" });
+  });
+
+  it("finds a CLI that PATH misses instead of declaring the app absent", async () => {
+    // The second half of the same production failure: with the user bus
+    // unreachable, detection falls through to the CLI probe — and a systemd unit's
+    // PATH has no ~/.local/bin, which is exactly where both upstream installers
+    // put their launcher. resolveCommand looks there before giving up.
+    vi.mocked(runProgram).mockImplementation(async (command: string, args: readonly string[]) => {
+      if (command === "systemctl" && args[0] === "--user") {
+        return { code: 1, stdout: "", stderr: "Failed to connect to bus: No medium found" };
+      }
+      if (command === "systemctl") return NOT_FOUND;
+      return ok("");
+    });
+    vi.mocked(commandExists).mockImplementation(async (command: string) => command === "hermes");
+    vi.mocked(resolveCommand).mockResolvedValue("/home/someone/.local/bin/hermes");
+
+    const view = await getManagedApp("hermes");
+    expect(view.installed).toBe(true);
+    expect(view.installationType).toBe("package");
+  });
+
+  it("runs --version by resolved path, never by bare name", async () => {
+    // version() memoises per app id for 60 s, and earlier tests in this file
+    // already primed hermes. Step past the TTL so this asserts a real call rather
+    // than silently passing on a cache hit.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(Date.now() + 120_000));
+      systemctl({});
+      vi.mocked(resolveCommand).mockResolvedValue("/home/someone/.local/bin/hermes");
+      await getManagedApp("hermes");
+
+      const versionCall = vi
+        .mocked(runProgram)
+        .mock.calls.find((call) => (call[1] as string[])[0] === "--version");
+      expect(versionCall?.[0]).toBe("/home/someone/.local/bin/hermes");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

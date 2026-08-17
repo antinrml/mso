@@ -249,6 +249,19 @@ WorkingDirectory=$DIR
 EnvironmentFile=$DIR/.env.local
 Environment=PORT=$PORT
 Environment=HOSTNAME=$BIND
+# A system unit with User= inherits no login session, so it gets no user-bus
+# address and every \`systemctl --user\` it runs answers "Failed to connect to bus:
+# No medium found". That silently broke the managed-app installs (which create
+# systemd USER units) and made installed apps read as "not installed". %U is the
+# UID of User= above, so this stays correct if the account is renamed. Paired with
+# the \`loginctl enable-linger\` below, without which /run/user/<uid> is destroyed
+# at logout.
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+# systemd would otherwise give this unit only
+# /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin. Both managed-app CLIs install
+# themselves into ~/.local/bin, so without this \`which hermes\` fails inside the
+# service on a host where it plainly works in a terminal.
+Environment=PATH=$HOME/.local/bin:$HOME/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=$NPM_BIN run start -- --hostname $BIND --port $PORT
 Restart=always
 RestartSec=5
@@ -271,6 +284,14 @@ EOF
   # changed id is what proves the new process took over.
   prev_build="$(curl -fsS --max-time 3 "http://$HEALTH_HOST:$PORT/api/health" 2>/dev/null \
                 | sed -n 's/.*"buildId":"\([^"]*\)".*/\1/p' || true)"
+
+  # Makes /run/user/<uid> — where the user bus lives — exist without a login
+  # session and survive logout. The XDG_RUNTIME_DIR above names that directory, so
+  # without linger it would point at nothing after the installing shell exits.
+  # Idempotent; failure is not fatal, it only means managed-app installs will say
+  # so plainly when they preflight the bus.
+  sudo_do loginctl enable-linger "$(id -un)" >/dev/null 2>&1 \
+    || warn "could not enable linger for $(id -un) — managed-app installs may not be able to create user services"
 
   sudo_do systemctl daemon-reload
   sudo_do systemctl enable "$SERVICE"
