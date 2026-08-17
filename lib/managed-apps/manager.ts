@@ -3,7 +3,8 @@ import { createBackup } from "./backups";
 import { getManagedAppDefinition, listManagedAppDefinitions } from "./catalog";
 import { acquireOperation, activeOperation, releaseOperation } from "./lock";
 import { redact } from "./redact";
-import { commandExists, requireProgram, runProgram } from "./runner";
+import { commandExists, requireProgram, resolveCommand, runProgram } from "./runner";
+import { userBusEnv, userBusUnavailable } from "./user-bus";
 import type { ManagedAppAction, ManagedAppDefinition, ManagedAppId, ManagedAppLogs, ManagedAppView } from "./types";
 
 interface Installation {
@@ -21,7 +22,13 @@ interface Installation {
 // call returns both facts.
 async function systemdState(service: string): Promise<"active" | "inactive" | "missing"> {
   for (const scope of [["--user"], []]) {
-    const result = await runProgram("systemctl", [...scope, "show", "-p", "LoadState", "-p", "ActiveState", service], 10_000);
+    // The user scope needs a bus address. mso.service is a SYSTEM unit with
+    // `User=`, which inherits no login session and therefore no
+    // XDG_RUNTIME_DIR, so without this every `--user` probe below answered
+    // "Failed to connect to bus: No medium found" and the whole scope was
+    // silently skipped — the app then looked absent no matter what was running.
+    const env = scope.length ? userBusEnv() : undefined;
+    const result = await runProgram("systemctl", [...scope, "show", "-p", "LoadState", "-p", "ActiveState", service], 10_000, env);
     // Non-zero here is no systemctl at all, or no user bus — not an answer about
     // the unit, so try the next scope rather than concluding anything.
     if (result.code !== 0) continue;
@@ -75,8 +82,11 @@ async function version(definition: ManagedAppDefinition): Promise<string | null>
   const hit = versionCache.get(definition.id);
   if (hit && Date.now() - hit.at < VERSION_TTL_MS) return hit.value;
   let value: string | null = null;
-  if (await commandExists(definition.command)) {
-    const result = await runProgram(definition.command, ["--version"], 10_000);
+  // Resolved to a path, not spawned by bare name: under systemd the unit's PATH
+  // does not contain ~/.local/bin, where both upstream CLIs install themselves.
+  const program = await resolveCommand(definition.command);
+  if (program) {
+    const result = await runProgram(program, ["--version"], 10_000);
     value = result.code === 0 ? result.stdout.trim().split(/\r?\n/)[0]?.slice(0, 160) || null : null;
   }
   versionCache.set(definition.id, { value, at: Date.now() });
@@ -115,6 +125,12 @@ export async function getManagedApp(id: ManagedAppId): Promise<ManagedAppView> {
     version: await version(definition),
     dashboardAvailable: isRunning && isHealthy !== false,
     supportedActions: actionsFor(installation),
+    // Only ever attached to a NEGATIVE reading. An app detected as present has
+    // been seen, and nothing about the bus can make that observation wrong.
+    diagnostic:
+      installation.type === "not-installed" && userBusUnavailable()
+        ? "MSO cannot reach this user's systemd bus, so it cannot see user services — this app may in fact be installed. Run `loginctl enable-linger` for the user, and set XDG_RUNTIME_DIR=/run/user/<uid> in mso.service (a drop-in under /etc/systemd/system/mso.service.d/)."
+        : null,
   };
 }
 
@@ -126,10 +142,17 @@ export async function listManagedApps(): Promise<ManagedAppView[]> {
 
 async function runLifecycle(installation: Installation, action: "start" | "stop" | "restart"): Promise<void> {
   if (installation.type === "systemd" && installation.serviceName) {
+    let lastError = "";
     for (const args of [["--user", action, installation.serviceName], [action, installation.serviceName]]) {
-      const result = await runProgram("systemctl", args, 30_000);
+      const result = await runProgram("systemctl", args, 30_000, args[0] === "--user" ? userBusEnv() : undefined);
       if (result.code === 0) return;
+      lastError = result.stderr.trim() || result.stdout.trim() || `systemctl exited ${result.code}`;
     }
+    // Falling through to the generic throw below reported every one of these as
+    // "operation unsupported for detected installation type" — served as a 409,
+    // and flatly untrue: the installation type was detected fine, systemctl just
+    // refused. An unreachable user bus surfaced as a category error about the app.
+    throw new Error(`systemctl ${action} ${installation.serviceName} failed: ${lastError.slice(0, 300)}`);
   }
   if (installation.type === "docker" && installation.containerName) {
     await requireProgram("docker", [action, installation.containerName], 30_000);

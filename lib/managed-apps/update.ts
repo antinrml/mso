@@ -6,7 +6,7 @@ import { getManagedAppDefinition } from "./catalog";
 import { startManagedAppJob } from "./jobs";
 import { activeOperation } from "./lock";
 import { restoreManagedAppBackup } from "./restore";
-import { runProgram } from "./runner";
+import { resolveCommand, runProgram } from "./runner";
 import type { ManagedAppDefinition, ManagedAppId, ManagedAppJob } from "./types";
 import { assertChannel, updateAdapter, UNINSTALL_PREVIEW_FLAG } from "./update-cli";
 import type { ManagedAppBackup, ManagedAppUpdateOptions, ManagedAppUpdateStatus } from "./update-types";
@@ -32,11 +32,13 @@ const cache = new Map<ManagedAppId, ManagedAppUpdateStatus>();
  *  argv the job records is the exact binary that ran, and a missing CLI fails
  *  here with a readable message instead of as a child-process ENOENT. */
 async function resolveProgram(command: string): Promise<string> {
-  const probe = process.platform === "win32" ? "where" : "which";
-  const result = await runProgram(probe, [command], 5_000);
-  const first = result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
-  if (result.code !== 0 || !first || !path.isAbsolute(first)) throw new Error(`${command} is not installed`);
-  return first;
+  // Shared with detection (runner.ts) rather than a second `which` of its own:
+  // under systemd the unit's PATH has no ~/.local/bin, so a bare `which` reported
+  // "hermes is not installed" for an installed Hermes and disabled the whole
+  // update centre — the same fault that made the app read as absent.
+  const resolved = await resolveCommand(command);
+  if (!resolved || !path.isAbsolute(resolved)) throw new Error(`${command} is not installed`);
+  return resolved;
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));

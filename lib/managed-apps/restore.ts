@@ -46,6 +46,14 @@ const message = (error: unknown): string => (error instanceof Error ? error.mess
 
 async function assertStopped(id: ManagedAppId): Promise<void> {
   const view = await getManagedApp(id);
+  // This gate decides whether it is safe to overwrite the app's state directory,
+  // so it must fail CLOSED. "not-installed" is not in the blocking set below —
+  // correctly, because restoring into an absent app is the case this feature
+  // exists for — but that answer is only safe when it is a FACT. When MSO cannot
+  // reach the user bus it cannot see user services at all, and an app that is
+  // running right now reads exactly like one that was never installed. Restoring
+  // then would copy a snapshot over the live state of a running application.
+  if (view.diagnostic) throw new Error(`cannot confirm ${view.name} is stopped — refusing to restore. ${view.diagnostic}`);
   if (RESTORE_BLOCKING_STATES.has(view.state)) throw new Error(`${view.name} is ${view.state}; stop it before restoring a backup`);
 }
 

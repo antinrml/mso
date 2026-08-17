@@ -25,6 +25,7 @@ import type { ManagedAppJob } from "./types";
 let home: string;
 let bin: string;
 const realPath = process.env.PATH ?? "";
+const realHome = process.env.HOME;
 
 beforeEach(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), "mapp-update-"));
@@ -32,6 +33,8 @@ beforeEach(async () => {
   await fs.mkdir(bin);
   vi.spyOn(os, "homedir").mockReturnValue(home);
   process.env.PATH = `${bin}:/usr/bin:/bin`;
+  // HOME too: resolveCommand() falls back to $HOME/.local/bin when PATH misses.
+  process.env.HOME = home;
   for (const id of ["hermes", "openclaw"]) await fs.mkdir(path.join(home, `.${id}`), { recursive: true });
   await fs.writeFile(path.join(home, ".hermes", "config.yaml"), "state: kept\n");
   await fs.writeFile(path.join(home, ".openclaw", "openclaw.json"), "{}");
@@ -39,6 +42,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   process.env.PATH = realPath;
+  if (realHome === undefined) delete process.env.HOME; else process.env.HOME = realHome;
   vi.restoreAllMocks();
   await fs.rm(home, { recursive: true, force: true });
 });
