@@ -57,6 +57,15 @@ const BINDS = new Set(["loopback", "lan", "tailnet", "auto"]);
 export async function startInstall(id: ManagedAppId, options: InstallOptions = {}): Promise<ManagedAppJob> {
   const view = await getManagedApp(id);
   if (view.installed) throw new Error(`${getManagedAppDefinition(id).name} is already installed — use Update instead`);
+  // Fail CLOSED on an unreadable reading. This guard's own reason for existing
+  // (above) is that re-running an installer "restarts services under whoever is
+  // using them" — and Hermes' upstream installer recreates the venv that the
+  // RUNNING gateway is executing from. `installed: false` arriving because MSO
+  // cannot see user services is exactly when that is most destructive, so
+  // "I could not check" must not be treated as "it is not there".
+  if (view.diagnostic) {
+    throw new Error(`cannot determine whether ${getManagedAppDefinition(id).name} is installed — refusing to run the installer. ${view.diagnostic}`);
+  }
 
   const env: Record<string, string> = {};
   const bind = options.bind ?? "loopback";

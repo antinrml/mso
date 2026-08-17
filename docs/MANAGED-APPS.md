@@ -418,6 +418,44 @@ leave a broken install; so files created since the snapshot stay, and the result
 
 ## 7. Operations
 
+### The user bus, and why an installed app can read as "not installed"
+
+Both apps run as systemd **USER** units, so everything in §3 goes through
+`systemctl --user`. That command finds the user's systemd instance through
+`XDG_RUNTIME_DIR` — and **a systemd SYSTEM unit with `User=` does not have one**, because
+it inherits no login session. Inside such a cockpit every `systemctl --user` answers:
+
+```
+Failed to connect to bus: No medium found
+```
+
+Two failures fall out of that single gap, and neither one names it:
+
+| Symptom | Actually happening |
+|---|---|
+| One-click install always fails, `exited with code 1` | `scripts/managed-app-install` reached `systemctl --user daemon-reload` and died under `set -e` — *after* the upstream installer had finished. The unit file is written but never enabled |
+| An installed, running app shows as **not installed**, with an Install button that fails the same way forever | `detect()` discarded the `--user` answer, found nothing system-scope, then fell through to `which <cmd>` — which also missed, because a unit's PATH has no `~/.local/bin`, where both CLIs install their launcher |
+
+Handled in three places, deliberately overlapping so that no single one has to be right:
+
+- `lib/managed-apps/user-bus.ts` re-derives `XDG_RUNTIME_DIR=/run/user/<uid>` **at call
+  time**, whenever the current value has no bus socket behind it. This is what repairs a
+  cockpit that was installed before the fix, without re-running the installer, and it also
+  covers the boot race where mso.service starts before logind creates the directory.
+- `lib/managed-apps/runner.ts` → `resolveCommand()` falls back to `~/.local/bin` and
+  `~/.bun/bin` when PATH misses — the same lesson `hermes_cmd()` in
+  `scripts/managed-app-install` had already learned the hard way.
+- `scripts/install.sh` writes `Environment=XDG_RUNTIME_DIR=/run/user/<uid>` (the uid written out —
+  the `%U` specifier expands to 0 for a `User=<name>` system unit) plus a PATH that
+  includes those directories, and runs `loginctl enable-linger`. **Linger is not optional**:
+  without it `/run/user/<uid>` is destroyed at logout and the variable points at nothing.
+
+`scripts/managed-app-install` preflights the bus *before* doing ~20 minutes of work, and
+when it cannot reach one it prints the exact host commands to fix it rather than failing at
+the last step. When detection is only *guessing* that an app is absent, `ManagedAppView.diagnostic`
+says so and the install screen shows it — the mistake `lib/camoufox/service.ts` already refuses
+to make, and which its test *"does not disguise an unreachable user bus as 'not installed'"* pins.
+
 | Var | Read at | Notes |
 |---|---|---|
 | `NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE` | **build** (client) + runtime (server, middleware) | e.g. `{id}.mso.rahmanef.com`. Presence of `{id}` is what turns split mode on |
