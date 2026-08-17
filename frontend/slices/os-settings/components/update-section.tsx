@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDownToLine, BookOpen, CheckCircle2, RefreshCw } from "lucide-react";
+import { ArrowDownToLine, BookOpen, CheckCircle2, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormDrawer } from "@/features/os-shell";
 import { SettingsSection, SettingsActionRow, SettingsBlock } from "@/features/shell-settings";
@@ -178,6 +178,19 @@ export function UpdateSection() {
           icon={<BookOpen />}
           onClick={() => setNotes(true)}
           trailing={behind > 0 ? <span className="text-[11px] text-muted-foreground">{behind} new</span> : undefined}
+        />
+      )}
+      {info?.supported !== false && !running && (
+        // The check runs once, on open. A release that lands while the panel is
+        // sitting there would otherwise need the whole window closed and reopened.
+        <SettingsActionRow
+          label="Check again"
+          icon={<Search />}
+          busy={checking}
+          onClick={() => {
+            setChecking(true);
+            void refresh(true).finally(() => setChecking(false));
+          }}
         />
       )}
       {info?.supported !== false && behind === 0 && (
