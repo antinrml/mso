@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDownToLine, BookOpen, CheckCircle2, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { FormDrawer } from "@/features/os-shell";
 import { SettingsSection, SettingsActionRow, SettingsBlock } from "@/features/shell-settings";
 import { IS_DEMO } from "@/lib/demo";
@@ -152,9 +153,14 @@ export function UpdateSection() {
           <p className="text-[11px] text-destructive-text">The update stopped before deploying. The running build was left untouched — see the log.</p>
         )}
         {running && (
-          <pre className="max-h-48 overflow-auto rounded-md bg-secondary/60 p-2 text-[10px] leading-relaxed whitespace-pre-wrap break-words">
-            {info?.log?.trim() || "starting…"}
-          </pre>
+          // Same ScrollArea as everything else in Settings, so the updater's
+          // transcript scrolls in the panel's own idiom instead of a raw browser
+          // scrollbar in the middle of a card.
+          <ScrollArea className="max-h-48 rounded-md bg-secondary/60">
+            <pre className="p-2 text-[10px] leading-relaxed whitespace-pre-wrap break-words">
+              {info?.log?.trim() || "starting…"}
+            </pre>
+          </ScrollArea>
         )}
         {finished === "ok" && !running && (
           <Button type="button" size="sm" className="w-full [@media(pointer:coarse)]:min-h-[44px]" onClick={() => window.location.reload()}>

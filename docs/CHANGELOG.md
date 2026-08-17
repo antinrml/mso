@@ -8,6 +8,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Added**
 
+- `settings` render the changelog as records in a scroll area, not injected markdown
 - `update` a Check again row, so a release that lands while the panel is open is visible
 - `files` long-press opens the context menu, so Preview is reachable on a phone
 - `update` tell the running build from the checkout, so a pending rebuild is visible
