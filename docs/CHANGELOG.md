@@ -23,6 +23,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Tests**
 
+- `e2e` a committed browser check for Preview and the update panel
 - `preview` one anchor the e2e can read on both surfaces
 
 **Docs**

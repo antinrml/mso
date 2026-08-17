@@ -237,6 +237,12 @@ to `resources/` (rr) and drive any project from one manifest:
   (3 generations, 0700). Restore after an accidental wipe: stop the unit,
   `cp -p ~/.local/state/camoufox/session-backup/1/* <profile>/`, start. Roll back to `2`
   or `3` if generation `1` already captured the logged-out state.
+- **Two committed browser checks**: `bun run e2e` (shell) and `bun run e2e:preview
+  [width]` (Preview app + Settings → About update panel). Both install the session
+  cookie rather than drive the login form, and both take a viewport — run them at
+  1280 AND 390. `e2e:preview` provisions its own fixtures under
+  `~/.cache/mso-e2e-preview` and asserts bytes ARRIVED (`naturalWidth`, `readyState`,
+  text inside the sandboxed frame), not that elements exist.
 - Verify shell behaviour with **Playwright directly** — `os-browser/node_modules/playwright`
   (CommonJS) is the repo's only install — at 1280 for desktop and 390 for mobile. The
   `os-browser` SERVICE is gone (its source was deleted 2026-08-10; only the vendored

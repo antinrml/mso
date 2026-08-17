@@ -70,6 +70,30 @@ viewer and Files, so the two can no longer disagree about what a `.heic` is:
 - Files gained **Preview** in the context menu and **Space** as its shortcut (the
   macOS Quick Look binding), because a `.md` or `.csv` double-click correctly goes to
   the editor, and reading it is a different verb from editing it.
+- **Long-press opens that menu on a phone.** Touch has no contextmenu event worth
+  relying on (Chrome Android fires one, iOS Safari mostly does not), so on mobile the
+  ENTIRE context menu — Preview, Rename, Download, Move to Trash — had never been
+  reachable. 500 ms, 10 px drift cancels, and the click the finger-lift produces is
+  swallowed so it neither opens the file underneath nor dismisses the menu it just
+  opened. Its rows are 44 px on coarse pointers now, for the same reason.
+
+**Found while verifying, and fixed:** the panel first reported the CHECKOUT's HEAD as
+"running", which is only true until someone pulls without rebuilding. `next.config`
+now bakes the commit into the bundle (`NEXT_PUBLIC_COMMIT_SHA`, which About already
+had a row for and always showed as "not set"), the status carries `buildSha` +
+`pendingBuild`, and "already up to date" is no longer returned when the running build
+is older than the checkout — it offers the rebuild instead.
+
+**Verified live, not asserted.** `scripts/e2e/preview.mjs` (`bun run e2e:preview
+[width]`) drives the real :4005 at 1280 and 390: every format above, paging by button
+and by arrow key, and the update panel. It checks that the bytes ARRIVED —
+`naturalWidth > 0`, `readyState >= 1`, the text inside the sandboxed frame — because
+an element that exists proves nothing. It also asserts the fixture's `<script>` does
+NOT run inside that frame. It provisions its own fixtures under
+`~/.cache/mso-e2e-preview` and skips what it cannot make (no ffmpeg → no video). The
+full self-update path was exercised end to end the same way: the checkout was moved a
+commit back, the button pulled, verified out-of-tree, built, restarted, and the CSS
+chunk check passed — 6 minutes, `UPDATE OK`.
 
 ## 2026-08-11 — shells to their 2026 specs, and a backup for the state that had none (DONE)
 
