@@ -8,6 +8,7 @@ import {
   splitOriginEnabled,
 } from "@/lib/managed-apps/origin";
 import { contentSecurityPolicy } from "@/lib/managed-apps/proxy-csp";
+import { errorPage, wantsErrorPage } from "@/lib/managed-apps/proxy-error-page";
 import {
   buildUpstreamHeaders,
   isSecureRequest,
@@ -37,14 +38,19 @@ function failAncestors(): string {
   return cockpit ? `'self' ${cockpit}` : "'self'";
 }
 
-const fail = (error: string, status: number) =>
-  NextResponse.json(
-    { error },
-    {
-      status,
-      headers: { "content-security-policy": `default-src 'none'; frame-ancestors ${failAncestors()}` },
-    },
-  );
+// Same failure, two audiences, one policy. A navigation (the app window's own frame, or a
+// tab) gets a page that says what to DO about it; the upstream SPA's fetches — which land
+// on this very route — keep getting the JSON they parse. `wantsErrorPage` decides on
+// Sec-Fetch-Dest, never on status, so no failure is readable in one caller and cryptic in
+// the other. See proxy-error-page.ts for the case that made this worth the branch.
+const fail = (req: Request, error: string, status: number) => {
+  const headers: Record<string, string> = {
+    "content-security-policy": `default-src 'none'; frame-ancestors ${failAncestors()}`,
+  };
+  if (!wantsErrorPage(req)) return NextResponse.json({ error }, { status, headers });
+  headers["content-type"] = "text/html; charset=utf-8";
+  return new NextResponse(errorPage(error, status), { status, headers });
+};
 
 // A chunked request has no content-length, so the header check alone would let an
 // arbitrarily large body buffer into memory before the size test could reject it.
@@ -69,9 +75,9 @@ async function readBody(req: Request, limit: number): Promise<ArrayBuffer | null
 }
 
 async function proxy(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
-  if (!(await verifyAuth(req))) return fail("unauthorized", 401);
+  if (!(await verifyAuth(req))) return fail(req, "unauthorized", 401);
   const params = await context.params;
-  if (!isManagedAppId(params.id)) return fail("unknown managed application", 404);
+  if (!isManagedAppId(params.id)) return fail(req, "unknown managed application", 404);
   // The dashboard is served from its OWN host and nowhere else. The middleware
   // rewrite is invisible from in here, so it stamps the app host it matched — and it
   // deletes any inbound copy on every request, so the header can only have come from
@@ -85,10 +91,10 @@ async function proxy(req: Request, context: { params: Promise<{ id: string; path
   // whole cockpit realm from `window.open('/')` in a tab. Only a separate origin
   // closes it, so without one the dashboards are not proxied — the feature windows
   // fall back to the CLI view and to opening the app in a browser of the user's own.
-  if (!splitOriginEnabled()) return fail("managed application dashboards are not served on this origin", 404);
-  if (req.headers.get(MANAGED_APP_HOST_HEADER) !== params.id) return fail("not found", 404);
+  if (!splitOriginEnabled()) return fail(req, "managed application dashboards are not served on this origin", 404);
+  if (req.headers.get(MANAGED_APP_HOST_HEADER) !== params.id) return fail(req, "not found", 404);
   const appOrigin = managedAppOrigin(params.id);
-  if (!appOrigin) return fail("managed application origin is unavailable", 500);
+  if (!appOrigin) return fail(req, "managed application origin is unavailable", 500);
   // On the app's own host the app IS the origin root — cookies at Path=/, Locations
   // unchanged, policy scoped to the origin. Deployment env (the host template), never
   // a request header: this URL is what every fetch directive is scoped to, so a
@@ -96,17 +102,17 @@ async function proxy(req: Request, context: { params: Promise<{ id: string; path
   const prefixUrl = `${appOrigin}/`;
   const segments = params.path ?? [];
   if (segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\") || segment.includes("\0"))) {
-    return fail("invalid upstream path", 400);
+    return fail(req, "invalid upstream path", 400);
   }
   // A service worker registered from proxied bytes installs on the MSO origin
   // and keeps serving after the window closes. Never hand one to the browser.
   if (isServiceWorkerPath(segments)) {
-    return fail("service workers are not proxied", 404);
+    return fail(req, "service workers are not proxied", 404);
   }
   const definition = getManagedAppDefinition(params.id);
   const base = new URL(definition.dashboardUrl);
   if (base.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(base.hostname)) {
-    return fail("upstream target is not loopback", 502);
+    return fail(req, "upstream target is not loopback", 502);
   }
   const target = new URL(`/${segments.map(encodeURIComponent).join("/")}`, base);
   target.search = new URL(req.url).search;
@@ -114,9 +120,9 @@ async function proxy(req: Request, context: { params: Promise<{ id: string; path
   let body: ArrayBuffer | undefined;
   if (!['GET', 'HEAD'].includes(req.method)) {
     const length = Number(req.headers.get("content-length") ?? "0");
-    if (length > BODY_LIMIT) return fail("upstream request body too large", 413);
+    if (length > BODY_LIMIT) return fail(req, "upstream request body too large", 413);
     const read = await readBody(req, BODY_LIMIT);
-    if (read === null) return fail("upstream request body too large", 413);
+    if (read === null) return fail(req, "upstream request body too large", 413);
     body = read;
   }
   try {
@@ -152,7 +158,7 @@ async function proxy(req: Request, context: { params: Promise<{ id: string; path
         if (rewritten === null) {
           // Refusal is a loopable path — release the socket instead of waiting for GC.
           void upstream.body?.cancel();
-          return fail("upstream redirect leaves the managed application", 502);
+          return fail(req, "upstream redirect leaves the managed application", 502);
         }
         responseHeaders.set("location", rewritten);
         return new Response(null, { status: upstream.status, headers: responseHeaders });
@@ -163,7 +169,7 @@ async function proxy(req: Request, context: { params: Promise<{ id: string; path
     // shipped them. Everything streams.
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
   } catch {
-    return fail("managed application upstream unavailable", 502);
+    return fail(req, "managed application upstream unavailable", 502);
   }
 }
 

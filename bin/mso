@@ -308,6 +308,20 @@ case "$cmd" in
     chk "env file"       "[ -f '$ENVF' ]"   "no $ENVF — copy .env.example and fill it"
     chk "login password" "[ -n '$PASS' ]"   "OS_LOGIN_PASSWORD unset in $ENVF"
     chk "session secret" "[ -n \"\${OS_SESSION_SECRET-}\" ]" "OS_SESSION_SECRET unset in $ENVF"
+    # Not a chk with a pass/fail: serving NO managed-app dashboards is a supported
+    # deployment, not a fault — but it is the reason a Hermes/OpenClaw window opens on a
+    # terminal, and nothing else anywhere says so out loud. Half-configured IS a fault,
+    # and a security one: a cookie domain without the host template hands the session to
+    # every host under that name while each still serves a whole cockpit.
+    tpl="${NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE-}"; dom="${OS_SESSION_COOKIE_DOMAIN-}"
+    if [ -n "$tpl" ] && [ -n "$dom" ]; then
+      echo "  ok    app dashboards ($tpl) — after changing this, REBUILD and sign in again"
+    elif [ -z "$tpl$dom" ]; then
+      echo "  --    app dashboards    (off: no app host — managed-app windows open on the CLI view)"
+    else
+      printf '  FAIL  app dashboards — set BOTH NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE and OS_SESSION_COOKIE_DOMAIN, or neither\n'
+      fails=$((fails+1))
+    fi
     chk "service unit"   "systemctl is-active --quiet mso.service" "mso.service not active — mso service start"
     chk "reachable"      "curl -fsS --max-time 5 '$B/api/health'"  "nothing answering at $B"
     d=$(cli_device)

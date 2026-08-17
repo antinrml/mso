@@ -5,6 +5,11 @@ build/
 .env
 .env.local
 .env*.local
+# `.env*.local` stops at the `.local`, so a hand-made `.env.local.bak` — or the dated
+# copy any sane person takes before editing secrets — lands in `git status` as untracked
+# and is one `git add -A` away from being published. The file it copies is ignored; the
+# copy has the same contents and none of the protection.
+.env.local.*
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
