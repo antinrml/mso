@@ -52,8 +52,19 @@ const RAW = execSync(
 
 /** @type {Map<string, {hash:string,type:string,scope:string,subject:string}[]>} */
 const byDay = new Map();
+// A commit that only regenerates THIS file must not appear IN it. It is not a
+// change anyone reads about, and listing it makes the file stale the instant it is
+// committed: the generator reads subjects, so "docs(changelog): regenerate" is a
+// subject the freshly-written file does not contain. `ship.sh` normally folds the
+// regeneration into the commit it describes and never hits that, but when there is
+// nothing to fold into (`ship` with an already-committed tree) it made its own
+// commit — and the staleness gate then blocked every push, forever. Fixed here
+// rather than in ship.sh so no caller can reintroduce the loop.
+const SELF = /^docs\(changelog\)/i;
+
 for (const line of RAW.split("\n").filter(Boolean)) {
   const [hash, date, subject] = line.split("\0");
+  if (SELF.test(subject ?? "")) continue;
   const m = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(subject ?? "");
   const type = m && LABEL.has(m[1]) ? m[1] : "other";
   if (!byDay.has(date)) byDay.set(date, []);
