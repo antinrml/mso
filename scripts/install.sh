@@ -15,6 +15,20 @@ DIR="${MSO_DIR:-$HOME/mso}"
 DIR_EXPLICIT=0
 REF="${MSO_REF:-main}"
 PORT="${MSO_PORT:-4005}"
+# Address the server listens on. Loopback by DEFAULT, for two reasons that point
+# the same way:
+#   1. It cannot log in otherwise. sessionCookieAttrs() sets `secure: true`
+#      (lib/auth/session-cookie.ts), and a browser only accepts a Secure cookie
+#      over plain http on a trustworthy origin — localhost / 127.0.0.1 / ::1. So
+#      http://<lan-or-public-ip>:PORT returns 200 on login and then silently
+#      drops the cookie: an endless login loop. A 0.0.0.0 bind buys no working
+#      access it did not already have.
+#   2. It is a shell. An authenticated session runs commands as this user, and a
+#      fresh VPS has ufw installed but disabled — so the old default published
+#      that shell to the whole internet about two minutes into a curl|bash.
+# Reach it over an SSH tunnel, `tailscale serve`, or a reverse proxy on this host
+# (all three land the browser on a trustworthy origin, so the cookie sticks).
+BIND="${MSO_BIND:-127.0.0.1}"
 SERVICE="mso.service"
 DO_SERVICE=1
 DO_UNINSTALL=0
@@ -38,10 +52,12 @@ mso installer
   --dir PATH     install dir (default: \$HOME/mso, or an existing service's dir)
   --ref REF      git ref/branch/tag to check out (default: main)
   --port N       listen port (default: 4005)
+  --bind ADDR    listen address (default: 127.0.0.1). 0.0.0.0 publishes a shell
+                 to every network this host is on — see the note in this file.
   --no-service   build only; skip the systemd unit
   --uninstall    stop+disable+remove the systemd unit (keeps code + ~/.mso)
   -h, --help     this help
-Env: MSO_DIR  MSO_REF  MSO_PORT  MSO_REPO
+Env: MSO_DIR  MSO_REF  MSO_PORT  MSO_BIND  MSO_REPO
 EOF
 }
 
@@ -50,6 +66,7 @@ while [ $# -gt 0 ]; do
     --dir)        DIR="$2"; DIR_EXPLICIT=1; shift 2 ;;
     --ref)        REF="$2"; shift 2 ;;
     --port)       PORT="$2"; shift 2 ;;
+    --bind)       BIND="$2"; shift 2 ;;
     --no-service) DO_SERVICE=0; shift ;;
     --uninstall)  DO_UNINSTALL=1; shift ;;
     -h|--help)    usage; exit 0 ;;
@@ -71,12 +88,32 @@ fi
 
 # ---- uninstall ----
 if [ "$DO_UNINSTALL" -eq 1 ]; then
-  if command -v systemctl >/dev/null 2>&1; then
+  # Guarded: without this, --uninstall on a box that never had the unit still
+  # asks for a sudo password and then claims to have removed something.
+  if command -v systemctl >/dev/null 2>&1 && [ -f "/etc/systemd/system/$SERVICE" ]; then
     sudo_do systemctl disable --now "$SERVICE" 2>/dev/null || true
     sudo_do rm -f "/etc/systemd/system/$SERVICE"
     sudo_do systemctl daemon-reload
     ok "removed $SERVICE"
+  else
+    info "no $SERVICE installed — nothing to remove"
   fi
+
+  # Take back the symlinks this script created. Both are resolved and compared
+  # against $DIR first, so a hand-made `mso` on PATH or a third-party skill of
+  # the same name is never touched.
+  UNINST_BIN="${MSO_BIN_DIR:-$HOME/.local/bin}/mso"
+  if [ -L "$UNINST_BIN" ] && case "$(readlink "$UNINST_BIN")" in "$DIR/"*) true ;; *) false ;; esac; then
+    rm -f "$UNINST_BIN"; ok "removed cli symlink $UNINST_BIN"
+  fi
+  UNINST_SKILLS="${MSO_SKILL_DIR:-$HOME/.claude/skills}"
+  if [ -d "$UNINST_SKILLS" ]; then
+    for l in "$UNINST_SKILLS"/*; do
+      [ -L "$l" ] || continue
+      case "$(readlink "$l")" in "$DIR/claude-skills/"*) rm -f "$l"; info "removed skill $(basename "$l")" ;; esac
+    done
+  fi
+
   info "code left at $DIR and data at ~/.mso — delete by hand if you want them gone."
   exit 0
 fi
@@ -211,8 +248,8 @@ User=$(id -un)
 WorkingDirectory=$DIR
 EnvironmentFile=$DIR/.env.local
 Environment=PORT=$PORT
-Environment=HOSTNAME=0.0.0.0
-ExecStart=$NPM_BIN run start -- --hostname 0.0.0.0 --port $PORT
+Environment=HOSTNAME=$BIND
+ExecStart=$NPM_BIN run start -- --hostname $BIND --port $PORT
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
@@ -225,17 +262,50 @@ SyslogIdentifier=mso
 [Install]
 WantedBy=multi-user.target
 EOF
-  sudo_do systemctl daemon-reload
-  sudo_do systemctl enable --now "$SERVICE"
-  ok "$SERVICE enabled + started"
+  # A wildcard bind is not an address you can dial; probe loopback instead.
+  HEALTH_HOST="$BIND"
+  case "$BIND" in 0.0.0.0|::|"") HEALTH_HOST=127.0.0.1 ;; esac
 
-  info "waiting for http://127.0.0.1:$PORT/api/health …"
+  # Read the id of the build that is CURRENTLY answering, before we touch the
+  # unit. Every build gets a fresh NEXT_PUBLIC_BUILD_ID (next.config.mjs), so a
+  # changed id is what proves the new process took over.
+  prev_build="$(curl -fsS --max-time 3 "http://$HEALTH_HOST:$PORT/api/health" 2>/dev/null \
+                | sed -n 's/.*"buildId":"\([^"]*\)".*/\1/p' || true)"
+
+  sudo_do systemctl daemon-reload
+  sudo_do systemctl enable "$SERVICE"
+  # restart, NOT `enable --now`. `--now` only *starts*, and a start on a unit
+  # that is already running is a no-op — so re-running this installer used to
+  # fetch, rebuild and then leave the OLD process serving a .next that had been
+  # replaced underneath it. Every chunk 404s and nosniff makes that fatal
+  # (docs/TROUBLESHOOTING.md). `restart` starts an inactive unit just as well,
+  # so this is also correct on a first install.
+  sudo_do systemctl restart "$SERVICE"
+  ok "$SERVICE enabled + restarted"
+
+  info "waiting for http://$HEALTH_HOST:$PORT/api/health …"
   up=0
   for _ in $(seq 1 30); do
-    if curl -fsS --max-time 3 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then up=1; ok "health OK"; break; fi
+    body="$(curl -fsS --max-time 3 "http://$HEALTH_HOST:$PORT/api/health" 2>/dev/null || true)"
+    if [ -n "$body" ]; then
+      now_build="$(printf '%s' "$body" | sed -n 's/.*"buildId":"\([^"]*\)".*/\1/p')"
+      # Gate on the id, not on curl's exit status: the old process answers
+      # /api/health perfectly while serving stale chunks, which is exactly how
+      # a failed update used to report "health OK".
+      if [ -z "$prev_build" ] || [ "$now_build" != "$prev_build" ]; then
+        up=1; ok "health OK (build ${now_build:-unknown})"; break
+      fi
+    fi
     sleep 2
   done
-  [ "$up" -eq 1 ] || warn "no /api/health answer yet — check: journalctl -u mso -e"
+  if [ "$up" -ne 1 ]; then
+    # is-active needs no privileges — do not spend a sudo prompt on the sad path.
+    if systemctl is-active --quiet "$SERVICE"; then
+      warn "service is running but still serving build $prev_build — check: journalctl -u mso -e"
+    else
+      warn "$SERVICE is not running — check: journalctl -u mso -e"
+    fi
+  fi
 else
   [ "$DO_SERVICE" -eq 1 ] && warn "no systemctl here — skipping service. Run manually: PORT=$PORT bun run start"
 fi
@@ -277,10 +347,31 @@ if [ -d "$DIR/claude-skills" ] && [ -d "$(dirname "$SKILL_DIR")" ]; then
 fi
 
 # ---- next steps ----
+# How to reach it depends on the bind AND on the Secure session cookie: a
+# browser only keeps that cookie over plain http on localhost/127.0.0.1/::1, so
+# any address that is not one of those needs TLS or a tunnel to log in at all.
+WHOAMI="$(id -un)"
+case "$BIND" in
+  127.0.0.1|::1|localhost)
+    REACH="tunnel from your own machine:
+              ssh -N -L $PORT:127.0.0.1:$PORT $WHOAMI@<this-host>
+            then open  http://localhost:$PORT
+            (or \`tailscale serve $PORT\`, or a TLS reverse proxy → 127.0.0.1:$PORT)" ;;
+  0.0.0.0|::)
+    REACH="http://<this-host>:$PORT
+            !! bound on EVERY interface. An authenticated session runs commands as
+               $WHOAMI — firewall it, or re-run with --bind 127.0.0.1.
+               Plain http to an IP also cannot log in: the session cookie is Secure." ;;
+  *)
+    REACH="http://$BIND:$PORT
+            (plain http to a non-loopback address cannot complete a login — the
+             session cookie is Secure. Put TLS in front, or tunnel to loopback.)" ;;
+esac
+
 ok "mso installed at $DIR"
 cat <<EOF
 
-  Open:     http://<this-host>:$PORT     (put Tailscale/TLS in front — do NOT expose :$PORT raw)
+  Open:     $REACH
   Env:      $DIR/.env.local
 EOF
 [ -n "$GEN_PW" ] && printf '  Password: %s   (shown once — save it now; edit OS_LOGIN_PASSWORD in .env.local + restart to change)\n' "$GEN_PW"
@@ -295,5 +386,8 @@ cat <<EOF
 
   Logs:     journalctl -u mso -f
   Update:   re-run this installer (pull + rebuild + restart), or --uninstall to remove
-  Security: firewall :$PORT from the public net; review ~/.mso/audit.log
+  Listen:   $BIND:$PORT   (change with --bind / MSO_BIND)
+  Security: verify from OUTSIDE the box — \`curl -m5 http://<public-ip>:$PORT/api/health\`
+            run on your laptop is the only test that proves what is reachable.
+            Review ~/.mso/audit.log.
 EOF

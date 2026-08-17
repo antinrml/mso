@@ -31,9 +31,10 @@ const STEPS = [
   },
   {
     n: 2,
-    title: "Put it behind something",
-    body: "MSO listens on :4005. An authenticated session can read allowed files and run commands as the process user, so treat the port like SSH: do not expose it raw to the internet. Tailscale or a VPN is the easy answer; a TLS reverse proxy with an allowlist also works.",
-    code: "sudo ufw deny 4005",
+    title: "Reach it",
+    body: "The installer binds 127.0.0.1, so :4005 is closed to every other machine and there is nothing to firewall. Tunnel in from whatever you browse on. The tunnel is not only for privacy: the session cookie is Secure, and a browser only keeps a Secure cookie over plain http on localhost — so an http://<ip>:4005 URL returns a successful login and then silently drops the cookie.",
+    code: "ssh -N -L 4005:127.0.0.1:4005 you@your-server",
+    note: "Then open http://localhost:4005. For something permanent use `tailscale serve 4005`, or a TLS reverse proxy on the server pointed at 127.0.0.1:4005 — both give the browser a trustworthy origin. Only pass --bind 0.0.0.0 if a proxy you control is already in front.",
   },
   {
     n: 3,
