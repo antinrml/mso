@@ -1,4 +1,5 @@
 import type Konva from "konva";
+import { saveAs } from "@/features/os-shell";
 
 export type ExportFormat = "png" | "jpeg" | "webp";
 
@@ -72,14 +73,7 @@ export function stageToDataURL(
   );
 }
 
-function downloadDataURL(dataURL: string, filename: string) {
-  const a = document.createElement("a");
-  a.href = dataURL;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
+const downloadDataURL = (dataURL: string, filename: string) => saveAs(dataURL, filename);
 
 export function exportStage(
   stage: Konva.Stage,

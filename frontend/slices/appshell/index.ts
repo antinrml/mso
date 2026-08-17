@@ -82,6 +82,9 @@ export * from "./lib/window-title";
 export * from "./lib/spaces";
 export * from "./lib/window-tabs";
 export * from "./lib/clipboard";
+// Browser-generic, brand-free: every app that writes a file to disk uses this one
+// rather than re-deriving the two rules that make a download actually land.
+export { saveAs } from "./lib/download";
 export * from "./lib/lock";
 export * from "./lib/profiles";
 export * from "./lib/shortcuts";

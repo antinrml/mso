@@ -1,18 +1,10 @@
 import type { Lang } from "./highlight";
 
-// Path helpers (POSIX-ish, all paths absolute and "/"-rooted).
-export function baseName(path: string): string {
-  return path.replace(/\/$/, "").split("/").pop() ?? path;
-}
-
-export function extOf(path: string): string {
-  const b = baseName(path);
-  return b.includes(".") ? (b.split(".").pop() ?? "").toLowerCase() : "";
-}
-
-export function joinPath(dir: string, name: string): string {
-  return dir === "/" ? `/${name}` : `${dir.replace(/\/$/, "")}/${name}`;
-}
+// Path helpers come from the framework (appshell/lib/paths) — this file had its
+// own, subtly different from Files', and both build /api/v1/fs request paths.
+import { extOf } from "@/lib/path";
+export { baseName, joinPath } from "@/lib/path";
+export { extOf };
 
 // Map a file extension to a supported highlight language.
 const EXT_LANG: Record<string, Lang> = {

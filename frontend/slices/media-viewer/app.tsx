@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AppProps } from "@/features/os-shell";
-import { AppFrame, openWindow, usePublishInspector } from "@/features/os-shell";
+import { AppFrame, openWindow, saveAs, usePublishInspector } from "@/features/os-shell";
 import { SAMPLES } from "./lib/samples";
 import { editorFor } from "./lib/media";
 import { ViewerToolbar } from "./components/viewer-toolbar";
@@ -33,10 +33,7 @@ function SampleGallery() {
   // Trigger a browser download from the inline data-URI when one exists.
   const onDownload = useCallback(() => {
     if (!file.src) return;
-    const a = document.createElement("a");
-    a.href = file.src;
-    a.download = file.name;
-    a.click();
+    saveAs(file.src, file.name);
   }, [file]);
 
   const editor = editorFor(file.kind);

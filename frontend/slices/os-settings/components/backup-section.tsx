@@ -3,14 +3,7 @@
 import { useRef, useState } from "react";
 import { AlertTriangle, Download, DatabaseBackup, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  FormDrawer,
-  collectLocalState,
-  localStateFilename,
-  parseLocalState,
-  restoreLocalState,
-  type LocalStateBlob,
-} from "@/features/os-shell";
+import { collectLocalState, FormDrawer, localStateFilename, parseLocalState, restoreLocalState, saveAs, type LocalStateBlob } from "@/features/os-shell";
 import { SettingsSection, SettingsActionRow, SettingsBlock } from "@/features/shell-settings";
 import pkg from "../../../../package.json";
 
@@ -30,14 +23,9 @@ export function BackupSection() {
     setError(null);
     const blob = collectLocalState(pkg.version ?? "0.0.0");
     const url = URL.createObjectURL(new Blob([JSON.stringify(blob, null, 2)], { type: "application/json" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = localStateFilename();
-    a.click();
-    // Deferred, not immediate: revoking in the same tick as .click() has raced
-    // the download in Firefox/Safari (the blob fetch has not started yet) and
-    // yields a 0-byte or failed save. One macrotask is enough.
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    // saveAs owns the anchor rules AND the deferred revoke — this copy clicked a
+    // DETACHED anchor, which Firefox ignores, so the backup silently did nothing there.
+    saveAs(url, localStateFilename());
     setExported(Object.keys(blob.keys).length);
   };
 

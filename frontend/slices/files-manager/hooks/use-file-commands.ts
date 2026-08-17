@@ -1,24 +1,13 @@
 "use client";
 
 import { useCallback, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { openWindow, toast } from "@/features/os-shell";
+import { openWindow, saveAs, toast } from "@/features/os-shell";
 import { rawUrl, zipUrl, type FsEntry } from "../lib/host";
 import { appForFile, mediaKind } from "../lib/icons";
 import { joinPath, parentPath } from "../lib/format";
 import { TRASH_PATH, type UseFiles } from "./use-files";
 import type { UseFileSelection } from "./use-file-selection";
 import type { ContextState } from "../lib/types";
-
-// Fire a same-origin download through a transient hidden anchor.
-function trigger(href: string, name: string) {
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = name;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
 
 // All user commands (open, clipboard, trash, keyboard) bound to the current fs
 // + selection. Keeps app.tsx focused on layout. `del` moves to Trash from a
@@ -122,7 +111,7 @@ export function useFileCommands(fs: UseFiles, sel: UseFileSelection) {
       const single =
         items.length === 1 ? entries.find((e) => e.name === items[0]) ?? null : null;
       if (single?.kind === "file") {
-        trigger(rawUrl(joinPath(fs.path, single.name)), single.name);
+        saveAs(rawUrl(joinPath(fs.path, single.name)), single.name);
         toast(`Downloading ${single.name}…`);
         return;
       }
@@ -130,7 +119,7 @@ export function useFileCommands(fs: UseFiles, sel: UseFileSelection) {
       const filename = items.length === 1 ? `${items[0]}.zip` : `${dir}.zip`;
       const hasDir = items.some((n) => entries.find((e) => e.name === n)?.kind === "dir");
       if (!hasDir) {
-        trigger(zipUrl(fs.path, items, filename), filename);
+        saveAs(zipUrl(fs.path, items, filename), filename);
         toast(`Zipping ${items.length} item${items.length > 1 ? "s" : ""}…`);
         return;
       }
@@ -142,7 +131,7 @@ export function useFileCommands(fs: UseFiles, sel: UseFileSelection) {
   const confirmZip = useCallback(
     (exclude: string[]) => {
       if (!zipPrompt) return;
-      trigger(zipUrl(fs.path, zipPrompt.names, zipPrompt.filename, exclude), zipPrompt.filename);
+      saveAs(zipUrl(fs.path, zipPrompt.names, zipPrompt.filename, exclude), zipPrompt.filename);
       toast(`Zipping ${zipPrompt.names.length} item${zipPrompt.names.length > 1 ? "s" : ""}…`);
       setZipPrompt(null);
     },

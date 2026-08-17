@@ -7,8 +7,13 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      "@": root,
+      // ORDER MATTERS: Vite tries these in insertion order, so the more specific
+      // prefix has to come first. With "@" first, `@/features/os-shell` resolved to
+      // <root>/features/os-shell — a path that does not exist — and any test whose
+      // module graph touched a slice barrel failed with "Cannot find package".
+      // tsconfig had it right; only the test runner disagreed.
       "@/features": path.join(root, "frontend", "slices"),
+      "@": root,
     },
   },
   test: {

@@ -13,15 +13,10 @@ export function fmtSize(bytes: number): string {
   return `${(bytes / GiB).toFixed(1)} GB`;
 }
 
-// Path helpers — single source of truth so segments never drift.
-export const joinPath = (base: string, name: string): string =>
-  base === "/" ? "/" + name : base + "/" + name;
-
-export const parentPath = (p: string): string => {
-  const n = p.replace(/\/+$/, "") || "/";
-  const i = n.lastIndexOf("/");
-  return i <= 0 ? "/" : n.slice(0, i);
-};
+// Path helpers live in the framework now — three slices needed them and their
+// three copies disagreed about a trailing slash, which becomes a doubled slash in
+// an /api/v1/fs `path=`. Re-exported here so this slice's own imports are unchanged.
+export { joinPath, parentPath, baseName } from "@/lib/path";
 
 // Breadcrumb segments for a path, including the synthetic root.
 export function crumbsFor(path: string, root = "mso"): { name: string; path: string }[] {

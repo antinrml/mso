@@ -24,6 +24,10 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 - `managed-apps` one-click install died, and installed apps read as "not installed", under systemd
 - `install` bind loopback by default, and restart the service on re-run
 
+**Changed**
+
+- one download helper, one path helper, and gates for the drifts they hid
+
 **Tests**
 
 - `e2e` a committed browser check for Preview and the update panel

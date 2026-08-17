@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useOsApi } from "./host";
+import { joinPath, parentPath, useOsApi } from "./host";
 import { kindForName, isPreviewable, type ViewKind } from "./kinds";
 
 // ← → through the folder, the way every OS preview works.
@@ -17,11 +17,6 @@ export interface Sibling {
   kind: ViewKind;
 }
 
-const parentOf = (path: string): string => {
-  const cut = path.replace(/\/+$/, "").lastIndexOf("/");
-  return cut > 0 ? path.slice(0, cut) : "/";
-};
-
 export function useSiblings(path: string, name: string): {
   items: Sibling[];
   index: number;
@@ -31,7 +26,7 @@ export function useSiblings(path: string, name: string): {
 } {
   const api = useOsApi();
   const [items, setItems] = useState<Sibling[]>([]);
-  const dir = useMemo(() => parentOf(path), [path]);
+  const dir = useMemo(() => parentPath(path), [path]);
 
   useEffect(() => {
     let alive = true;
@@ -46,7 +41,7 @@ export function useSiblings(path: string, name: string): {
           res.entries
             .filter((e) => e.kind === "file" && isPreviewable(kindForName(e.name)))
             .map((e) => ({
-              path: `${base.replace(/\/+$/, "")}/${e.name}`,
+              path: joinPath(base, e.name),
               name: e.name,
               kind: kindForName(e.name),
             })),

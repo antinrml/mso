@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { saveAs } from "@/features/os-shell";
 import type Konva from "konva";
 import type { Doc } from "./types";
 
@@ -40,14 +41,7 @@ export function restorePaint(
 
 export function downloadProject(project: Project, name = "project") {
   const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${name}.ie.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  saveAs(URL.createObjectURL(blob), `${name}.ie.json`);
 }
 
 export function parseProject(text: string): Project | null {

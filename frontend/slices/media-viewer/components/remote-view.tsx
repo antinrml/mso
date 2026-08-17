@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, Music, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AppFrame, openWindow, usePublishInspector } from "@/features/os-shell";
+import { AppFrame, openWindow, saveAs, usePublishInspector } from "@/features/os-shell";
 import { rawUrl } from "../lib/host";
 import { cn } from "@/lib/utils";
 import { editorFor } from "../lib/media";
@@ -55,15 +55,7 @@ export function RemoteView({ file }: { file: RemoteFile }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [step]);
 
-  const download = useCallback(() => {
-    const a = document.createElement("a");
-    a.href = src;
-    a.download = current.name;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }, [src, current.name]);
+  const download = useCallback(() => saveAs(src, current.name), [src, current.name]);
 
   const openInEditor = useCallback(() => {
     if (!editor) return;

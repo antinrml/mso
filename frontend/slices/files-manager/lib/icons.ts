@@ -5,9 +5,8 @@ import {
 import { kindForName, isPreviewable, type ViewKind } from "@/features/media-viewer";
 import type { FsEntry } from "./host";
 
-const IMAGE = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"]);
-const VIDEO = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
-const AUDIO = new Set(["mp3", "wav", "aiff", "m4a", "flac"]);
+// Media families come from the viewer's table (kindForName); these are the two
+// groupings it has no opinion about, so they stay local.
 const CODE = new Set(["ts", "tsx", "js", "jsx", "py", "go", "rs", "css"]);
 const ARCHIVE = new Set(["zip", "gz", "tar", "rar", "7z"]);
 
@@ -33,12 +32,17 @@ export function iconFor(entry: FsEntry): LucideIcon {
 
 // Tailwind text-color class keyed by ext family — color-coded icons. Uses
 // palette utilities (not hex) so it tracks the active theme.
+//
+// The media families come from the viewer's table, exactly like iconFor: with a
+// local set, a `.heic` drew a picture icon in muted grey and a `.m4v` a film icon
+// in no colour at all, because the local list had never heard of them.
 export function colorFor(entry: FsEntry): string {
   if (entry.kind === "dir") return "text-primary";
   const ext = entry.ext?.toLowerCase() ?? "";
-  if (IMAGE.has(ext)) return "text-amber-500";
-  if (VIDEO.has(ext)) return "text-pink-500";
-  if (AUDIO.has(ext)) return "text-emerald-500";
+  const kind = kindForName(entry.name);
+  if (kind === "image") return "text-amber-500";
+  if (kind === "video") return "text-pink-500";
+  if (kind === "audio") return "text-emerald-500";
   if (ext === "json") return "text-slate-400";
   if (ext === "csv") return "text-green-500";
   if (ext === "pdf") return "text-red-500";
