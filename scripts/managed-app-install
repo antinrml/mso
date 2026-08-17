@@ -110,11 +110,33 @@ install_hermes() {
   curl -fsSL --max-time 300 https://hermes-agent.nousresearch.com/install.sh -o "$tmp/install.sh"
   printf 'installer: %s bytes, sha256 %s\n' "$(wc -c <"$tmp/install.sh")" "$(sha256sum <"$tmp/install.sh" | cut -c1-16)"
 
-  log "running the installer (non-interactive)"
-  # --non-interactive makes it skip every stage that would ask (install.sh:3211).
-  # It pulls uv, Python, Node and ffmpeg itself; sudo is used only to apt-get git
-  # and degrades to a no-op without it.
-  bash "$tmp/install.sh" --non-interactive
+  # The upstream installer is NOT safely re-runnable against a live install: on a
+  # second pass it prints "Virtual environment already exists, recreating…" and
+  # unlinks the interpreter that the RUNNING hermes-gateway.service is executing
+  # from (its ExecStart is …/venv/bin/python). The process survives on deleted
+  # inodes — observed holding 18 `(deleted)` .so mappings, including
+  # cryptography/_rust and nacl/_sodium — until something makes it import a module
+  # it has not already loaded, and then it dies in a way nothing here reported.
+  #
+  # This mattered because a FAILED install invites a retry, and the retry is what
+  # does the damage. So: if a working Hermes is already present, do not re-run the
+  # installer. Everything after it (`setup`, `gateway install`, the dashboard unit)
+  # is idempotent by upstream's own design — "Service already installed … Use
+  # --force", "config.yaml already exists, keeping it" — so the button still works
+  # as a REPAIR for the steps that actually failed.
+  #
+  # Tested by running the launcher, not by stat-ing the venv: a half-built venv
+  # has an executable python and imports nothing.
+  if hermes_cmd 2>/dev/null && "${HERMES_CMD[@]}" --version >/dev/null 2>&1; then
+    log "hermes is already installed and runnable — skipping the upstream installer"
+    printf 'found: %s\n' "$("${HERMES_CMD[@]}" --version 2>/dev/null | head -1)"
+  else
+    log "running the installer (non-interactive)"
+    # --non-interactive makes it skip every stage that would ask (install.sh:3211).
+    # It pulls uv, Python, Node and ffmpeg itself; sudo is used only to apt-get git
+    # and degrades to a no-op without it.
+    bash "$tmp/install.sh" --non-interactive
+  fi
 
   hermes_cmd
   log "configuring from the environment"

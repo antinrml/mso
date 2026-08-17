@@ -6,6 +6,18 @@ import { isAbsolute, join } from "node:path";
 
 const MAX_OUTPUT = 128 * 1024;
 
+/**
+ * Directories that hold per-user CLIs but are absent from a systemd unit's PATH.
+ *
+ * Both upstream installers put their launcher in `~/.local/bin` — Hermes' own
+ * installer even prints "`/home/<user>/.local/bin` is not on your PATH" while
+ * doing it. systemd gives a unit
+ * `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin` and nothing else, so `which
+ * hermes` inside mso.service fails on a host where `hermes` plainly works in a
+ * terminal.
+ */
+const FALLBACK_BIN_DIRS = [".local/bin", ".bun/bin"] as const;
+
 export interface ProgramResult {
   code: number;
   stdout: string;
@@ -33,6 +45,10 @@ export function runProgram(
         windowsHide: true,
         shell: false,
         // Merge, never replace: the child still needs PATH, HOME and the locale.
+        // NOT widened globally: `runProgram` also spawns systemctl/docker, and
+        // silently adding a user-writable dir to every child's PATH would both
+        // create a shadowing hazard and defeat the PATH-narrowing that
+        // update.test.ts relies on to keep tests off the real CLIs.
         ...(env ? { env: { ...process.env, ...env } } : {}),
       },
       (error, stdout, stderr) => {
@@ -43,17 +59,8 @@ export function runProgram(
   });
 }
 
-/**
- * Directories that hold per-user CLIs but are absent from a systemd unit's PATH.
- *
- * Both upstream installers put their launcher in `~/.local/bin` — Hermes' own
- * installer even prints "`/home/<user>/.local/bin` is not on your PATH" while
- * doing it. systemd gives a unit
- * `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin` and nothing else, so `which
- * hermes` inside mso.service fails on a host where `hermes` plainly works in a
- * terminal. Detection then reported an installed app as absent.
- */
-const FALLBACK_BIN_DIRS = [".local/bin", ".bun/bin"] as const;
+/** `$HOME` first so a caller (and a test) can redirect it; homedir() is the fallback. */
+const userHome = (): string => process.env.HOME || homedir();
 
 const isExecutable = (candidate: string): boolean => {
   try {
@@ -83,7 +90,7 @@ export async function resolveCommand(command: string): Promise<string | null> {
   // PATH missed it — look where these CLIs actually install themselves before
   // concluding the app is absent.
   for (const dir of FALLBACK_BIN_DIRS) {
-    const candidate = join(homedir(), dir, command);
+    const candidate = join(userHome(), dir, command);
     if (isExecutable(candidate)) return candidate;
   }
   return null;

@@ -11,11 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 let home: string;
-
-vi.mock("node:os", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:os")>();
-  return { ...actual, default: { ...actual, homedir: () => home }, homedir: () => home };
-});
+const realHome = process.env.HOME;
 
 const { resolveCommand, commandExists } = await import("./runner");
 
@@ -24,9 +20,15 @@ const CLI = "mso-fixture-cli";
 
 beforeEach(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), "mso-runner-"));
+  // $HOME, not a mock of node:os — resolveCommand reads the env var first, so
+  // redirecting it is both what the code actually honours and what a caller can
+  // do. A mocked module binding would not be seen through the ESM import.
+  process.env.HOME = home;
 });
 
 afterEach(async () => {
+  if (realHome === undefined) delete process.env.HOME;
+  else process.env.HOME = realHome;
   await fs.rm(home, { recursive: true, force: true });
   vi.restoreAllMocks();
 });

@@ -2,6 +2,7 @@ import "server-only";
 import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
 import { childEnv } from "@/lib/host/child-env";
 import type { ManagedAppJobStatus, StartManagedAppJobOptions } from "./types";
+import { userBusEnv } from "./user-bus";
 
 // The child half of the job layer: spawning it, bounding it, and — the part
 // that cost a permanently wedged lock to learn — REAPING it. job-runner.ts owns
@@ -82,7 +83,14 @@ export function spawnJobChild(argv: readonly string[], options: StartManagedAppJ
       cwd: options.cwd,
       // NO_COLOR/TERM: the transcript is stored and rendered as plain text, so
       // ANSI would only eat the cap.
-      env: { ...(childEnv() as NodeJS.ProcessEnv), NO_COLOR: "1", TERM: "dumb", ...options.env },
+      //
+      // userBusEnv() is ADDED rather than inherited: childEnv() copies this
+      // process's environment minus secret-shaped names, and it can only copy what
+      // is there — under systemd XDG_RUNTIME_DIR is not. Every managed-app install
+      // ends by registering a systemd USER unit, so without this the job's last
+      // step dies with "Failed to connect to bus: No medium found" after doing all
+      // of its work. options.env still wins, so a caller can override it.
+      env: { ...(childEnv() as NodeJS.ProcessEnv), ...userBusEnv(), NO_COLOR: "1", TERM: "dumb", ...options.env },
       stdio: JOB_STDIO,
       detached: true,
       shell: false,
