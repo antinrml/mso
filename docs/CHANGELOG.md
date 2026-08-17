@@ -21,6 +21,10 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 - `managed-apps` one-click install died, and installed apps read as "not installed", under systemd
 - `install` bind loopback by default, and restart the service on re-run
 
+**Tests**
+
+- `preview` one anchor the e2e can read on both surfaces
+
 **Docs**
 
 - `readme` the update button, and what Preview actually opens

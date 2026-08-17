@@ -96,7 +96,10 @@ export function RemoteView({ file }: { file: RemoteFile }) {
     <AppFrame
       className="bg-background"
       header={
-        <header className="flex items-center gap-2 bg-background/60 px-3 py-2">
+        // data-preview-file: which file is on screen, in one place on BOTH surfaces.
+        // The desktop wraps this in window chrome and the mobile shell does not, so
+        // an e2e that reads "the header" reads two different things; this reads one.
+        <header data-preview-file={current.name} className="flex items-center gap-2 bg-background/60 px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-sm font-semibold">{current.name}</span>
           {paging && (
             <span className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:inline">
