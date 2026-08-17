@@ -20,6 +20,7 @@ import { useDnd } from "./hooks/use-dnd";
 import { useWindowDrop } from "./hooks/use-window-drop";
 import { useTypeahead } from "./hooks/use-typeahead";
 import { sortEntries, type SortKey, type ViewMode } from "./lib/types";
+import { canPreview } from "./lib/icons";
 
 // Optional `{ path }` payload (e.g. from Spotlight) opens the manager there.
 function initialPath(payload: unknown): string | undefined {
@@ -186,6 +187,8 @@ export default function FilesManager({ payload }: AppProps) {
           inTrash={cmd.inTrash}
           onClose={() => cmd.setCtx(null)}
           onOpen={() => cmd.ctx?.entry && cmd.open(cmd.ctx.entry)}
+          canPreview={!!cmd.ctx?.entry && canPreview(cmd.ctx.entry)}
+          onPreview={() => cmd.ctx?.entry && cmd.preview(cmd.ctx.entry)}
           onOpenClaudeCode={() => cmd.ctx?.entry && cmd.openInClaudeCode(cmd.ctx.entry)}
           onRename={() => cmd.ctx?.entry && cmd.setRenaming(cmd.ctx.entry.name)}
           onNewFolder={cmd.newFolder}

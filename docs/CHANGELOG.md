@@ -6,6 +6,10 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 ## 2026-08-17
 
+**Added**
+
+- `settings,preview` update MSO from the app, and preview the formats a real disk has
+
 **Fixed**
 
 - `deps` pin nanoid >=3.3.18 — the audit gate has been failing on main

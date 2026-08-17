@@ -8,6 +8,69 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-17 — the deploy became a button, and Preview learned the rest of the disk (DONE)
+
+Two PRs from the fork merged first (#2 user bus, #3 dashboard silence), then two
+features on top. The audit gate had been failing on `main` before any of it —
+`GHSA-2v37-7h3g-55p8`, nanoid `<3.3.18` through postcss — so `main` was unpushable
+without `--no-verify`; pinned via `overrides`, which is what the gate's own message
+asks for.
+
+**Software update, in Settings → About.** Prod is systemd with no webhook, so a
+commit on main changed nothing anyone could see until someone with ssh rebuilt. Now
+the panel reports what is on `origin/main`, lists the incoming commits, and runs the
+deploy.
+
+Three things about it are load-bearing:
+
+- **The work does not run in `mso.service`.** Its last step is `systemctl restart
+  mso.service`, and systemd's default KillMode kills the whole cgroup — a detached
+  child included. It would die mid-`next build`, with `.next` already deleted (the
+  build's first act) and nothing to restart into. So `startUpdate()` hands the job to
+  a TRANSIENT unit via `sudo systemd-run --collect --unit=mso-self-update`, which
+  lives in its own cgroup and survives the restart it performs.
+- **It verifies out-of-tree BEFORE building in place.** `scripts/ship.sh` is run by a
+  person who is watching; this is run by an operator who pressed a button and walked
+  away. `scripts/verify-build.sh` proves the pulled HEAD compiles without touching
+  the live `.next`, so a commit that does not build becomes a refusal instead of an
+  outage. An in-place build cannot be undone — there is no old `.next` to put back.
+- **Nothing from the request reaches a shell.** The only knob is a boolean; the ref
+  is hard-coded to `origin/main`. Refusals (dirty checkout, already up to date, one
+  already running) are computed in a pure `blockingReason()` so they happen before
+  anything is touched, and `sys.update` is a new audit action — this replaces the
+  code the whole cockpit runs.
+
+The panel's "Release notes and docs" drawer lists the incoming commits (from
+`git log HEAD..origin/main`, because the CHANGELOG in this checkout is by definition
+the old one — it arrives WITH the update it describes), then the shipped changelog,
+then links to README/CHANGELOG/PROGRESS/CLI. `mso update status|run|log` is the same
+surface from a shell.
+
+**Preview now covers the disk, not four formats.** One table
+(`media-viewer/lib/kinds.ts`) exported through the slice barrel and used by BOTH the
+viewer and Files, so the two can no longer disagree about what a `.heic` is:
+
+- image/video/audio grew the Windows + macOS defaults (heic/heif, tiff, jfif, m4v,
+  wmv, mpg, 3gp, opus, aac, wma…). The server MIME map grew to match — **passive
+  types only**; `text/html` there would make any host file an active document on the
+  cockpit's origin, which is the same hazard the SVG `sandbox` header already exists
+  for.
+- **text, Markdown, CSV/TSV and HTML** render, and their bytes are FETCHED (Range-
+  capped at 512 KB) rather than framed. HTML goes into a `sandbox=""` `srcdoc` frame:
+  no scripts, opaque origin, and therefore no relative assets — the price of not
+  handing a host file the session's origin.
+- **Documents and archives are `none` on purpose** (docx/xlsx/pptx/pages/zip/dmg/exe…).
+  A browser cannot render them, and a viewer that pretends otherwise shows a blank
+  frame that reads as MSO being broken. They get a card that names the format and
+  offers the download.
+- **← → through the folder**, plus the arrow keys, on every previewable file. The
+  sibling list comes from one `fs.list` of the parent, not from the payload, so a
+  window opened by deep link or by the assistant pages exactly like one opened from
+  the grid.
+- Files gained **Preview** in the context menu and **Space** as its shortcut (the
+  macOS Quick Look binding), because a `.md` or `.csv` double-click correctly goes to
+  the editor, and reading it is a different verb from editing it.
+
 ## 2026-08-11 — shells to their 2026 specs, and a backup for the state that had none (DONE)
 
 Five parallel packages on strictly disjoint file sets, each reviewed against its own

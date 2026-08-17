@@ -108,6 +108,7 @@ Commands:
   service *            status | start | stop | restart | logs
   build                Compile HEAD out-of-tree (safe against the live checkout)
   deploy               next build, then restart the service
+  update [run]         What is on origin/main; `run` pulls, verifies, builds, restarts
 
  Escape hatches
   crud *               Generic resource CRUD, incl. editor documents

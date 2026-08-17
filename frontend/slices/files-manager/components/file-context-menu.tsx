@@ -37,8 +37,10 @@ export function FileContextMenu({
   hasClipboard,
   inTrash,
   downloadCount,
+  canPreview,
   onClose,
   onOpen,
+  onPreview,
   onOpenClaudeCode,
   onRename,
   onNewFolder,
@@ -54,8 +56,12 @@ export function FileContextMenu({
   hasClipboard: boolean;
   inTrash: boolean;
   downloadCount: number;
+  /** Preview can render this entry — hidden for folders and for formats it would
+   *  only offer a download for, where "Open" already lands in the same place. */
+  canPreview: boolean;
   onClose: () => void;
   onOpen: () => void;
+  onPreview: () => void;
   onOpenClaudeCode: () => void;
   onRename: () => void;
   onNewFolder: () => void;
@@ -105,6 +111,7 @@ export function FileContextMenu({
     ? [
         [
           { label: "Open", run: onOpen },
+          ...(canPreview ? [{ label: "Preview", shortcut: "Space", run: onPreview }] : []),
           ...(ctx.entry.kind === "dir" ? [{ label: "Open with Claude Code", run: onOpenClaudeCode }] : []),
           { label: "Rename", shortcut: "↵", run: onRename },
         ],

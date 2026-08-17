@@ -10,6 +10,7 @@ import { IS_DEMO } from "@/lib/demo";
 import { SettingsSection, SettingsValueRow, SettingsActionRow } from "@/features/shell-settings";
 import { MsoMark } from "@/components/shared/mso-mark";
 import { WhatsNew } from "./whats-new";
+import { UpdateSection } from "./update-section";
 import pkg from "../../../../package.json";
 import { openOnboarding } from "@/features/auth";
 
@@ -89,6 +90,10 @@ export function AboutSection() {
           <SettingsValueRow key={k} label={k} value={v} />
         ))}
       </SettingsSection>
+
+      {/* Above "What's new": the update is the thing to ACT on, the changelog is the
+          thing to read. Renders nothing in demo, or where the host cannot self-update. */}
+      <UpdateSection />
 
       <WhatsNew />
 

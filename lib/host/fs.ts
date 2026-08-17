@@ -151,13 +151,25 @@ export async function usage(requested: string): Promise<FsUsage> {
 
 // --- raw byte serving (images / video / audio / pdf preview) ---
 
+// PASSIVE MEDIA TYPES ONLY. Everything absent from this table is served as
+// application/octet-stream, which browsers download instead of executing — and that
+// is doing real work: `text/html` here would turn any host file into an ACTIVE
+// document on the cockpit's own origin, with the session cookie attached (the exact
+// hazard the SVG sandbox header below exists for). The Preview app reads text and
+// HTML with fetch() and renders it in a sandboxed frame precisely so this table
+// never has to grow an executable type. Do not add html/xhtml/xml here.
 const MIME: Record<string, string> = {
-  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
-  webp: "image/webp", svg: "image/svg+xml", avif: "image/avif", bmp: "image/bmp",
-  ico: "image/x-icon", mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", jfif: "image/jpeg",
+  gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", avif: "image/avif",
+  bmp: "image/bmp", ico: "image/x-icon", tif: "image/tiff", tiff: "image/tiff",
+  heic: "image/heic", heif: "image/heif",
+  mp4: "video/mp4", m4v: "video/x-m4v", webm: "video/webm", mov: "video/quicktime",
   mkv: "video/x-matroska", avi: "video/x-msvideo", ogv: "video/ogg",
+  mpg: "video/mpeg", mpeg: "video/mpeg", "3gp": "video/3gpp", wmv: "video/x-ms-wmv",
   mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", flac: "audio/flac",
-  aiff: "audio/aiff", ogg: "audio/ogg", oga: "audio/ogg", pdf: "application/pdf",
+  aiff: "audio/aiff", aif: "audio/aiff", ogg: "audio/ogg", oga: "audio/ogg",
+  opus: "audio/opus", aac: "audio/aac", wma: "audio/x-ms-wma",
+  pdf: "application/pdf",
 };
 
 export function mimeFor(p: string): string {

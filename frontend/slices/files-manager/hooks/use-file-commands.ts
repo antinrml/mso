@@ -50,6 +50,18 @@ export function useFileCommands(fs: UseFiles, sel: UseFileSelection) {
     [fs.path, go],
   );
 
+  // "Preview" — the second route for a file whose double-click goes to the editor
+  // (Markdown, CSV, HTML): render it instead of showing its source, and get ← →
+  // through the folder for free.
+  const preview = useCallback(
+    (entry: FsEntry) => {
+      if (entry.kind !== "file") return;
+      const path = joinPath(fs.path, entry.name);
+      openWindow("media-viewer", entry.name, undefined, { path, name: entry.name, kind: mediaKind(entry) });
+    },
+    [fs.path],
+  );
+
   // "Open with Claude Code" on a folder → a fresh Claude Code PTY (multi:true so
   // each folder gets its own session) cd'd into that folder. Dir-only; the
   // terminal only actually runs the CLI in live mode (host-gated).
@@ -190,6 +202,13 @@ export function useFileCommands(fs: UseFiles, sel: UseFileSelection) {
       else if (mod && e.key === "x" && names.length) cut(names);
       else if (mod && e.key === "v") fs.paste();
       else if (e.key === "Enter" && names.length === 1) setRenaming(names[0]);
+      else if (e.key === " " && names.length === 1) {
+        // Quick Look, the macOS binding — and the one the context menu advertises.
+        // preventDefault or the space scrolls the list under the window.
+        e.preventDefault();
+        const entry = fs.entries?.find((x) => x.name === names[0]);
+        if (entry) preview(entry);
+      }
       else if ((e.key === "Backspace" || e.key === "Delete") && names.length) {
         e.preventDefault();
         del(names);
@@ -198,11 +217,11 @@ export function useFileCommands(fs: UseFiles, sel: UseFileSelection) {
         fs.setClip(null);
       }
     },
-    [copy, cut, del, fs, renaming, sel],
+    [copy, cut, del, fs, preview, renaming, sel],
   );
 
   return {
     renaming, setRenaming, ctx, setCtx, inTrash, zipPrompt, setZipPrompt,
-    go, open, openInClaudeCode, openPath, onContext, targets, cut, copy, del, download, confirmZip, emptyTrash, doRename, newFolder, onKey,
+    go, open, preview, openInClaudeCode, openPath, onContext, targets, cut, copy, del, download, confirmZip, emptyTrash, doRename, newFolder, onKey,
   };
 }

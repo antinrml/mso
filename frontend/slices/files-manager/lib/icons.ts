@@ -2,6 +2,7 @@ import {
   Folder, FileText, Image, Code2, FileVideo, Music, FileArchive,
   FileJson, FileSpreadsheet, Terminal, Globe, type LucideIcon,
 } from "lucide-react";
+import { kindForName, isPreviewable, type ViewKind } from "@/features/media-viewer";
 import type { FsEntry } from "./host";
 
 const IMAGE = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"]);
@@ -10,13 +11,17 @@ const AUDIO = new Set(["mp3", "wav", "aiff", "m4a", "flac"]);
 const CODE = new Set(["ts", "tsx", "js", "jsx", "py", "go", "rs", "css"]);
 const ARCHIVE = new Set(["zip", "gz", "tar", "rar", "7z"]);
 
-// Map an entry to its display icon. Dirs always Folder; files by ext.
+// Map an entry to its display icon. Dirs always Folder; files by kind, then by the
+// few exts that deserve their own glyph. The media families come from the viewer's
+// table so a .heic gets a picture icon and a .m4v a film one — the local sets below
+// only survive for the non-media groupings the viewer has no opinion about.
 export function iconFor(entry: FsEntry): LucideIcon {
   if (entry.kind === "dir") return Folder;
   const ext = entry.ext?.toLowerCase() ?? "";
-  if (IMAGE.has(ext)) return Image;
-  if (VIDEO.has(ext)) return FileVideo;
-  if (AUDIO.has(ext)) return Music;
+  const kind = kindForName(entry.name);
+  if (kind === "image") return Image;
+  if (kind === "video") return FileVideo;
+  if (kind === "audio") return Music;
   if (ext === "json") return FileJson;
   if (ext === "csv") return FileSpreadsheet;
   if (ext === "sh") return Terminal;
@@ -42,27 +47,35 @@ export function colorFor(entry: FsEntry): string {
   return "text-muted-foreground";
 }
 
-// Which OS app opens this file (by ext) — used to route openWindow.
+// Which OS app opens this file on a double-click.
+//
+// Text and code go to the EDITOR, not to Preview: for a file you can change, "open"
+// means edit. Everything Preview can render but nothing can edit (media, PDF,
+// documents) goes to Preview — including the formats it can only offer a download
+// for, because a window that names the format beats a double-click that does
+// nothing, which is what an unknown extension used to do.
 export function appForFile(entry: FsEntry): "media-viewer" | "code-editor" | null {
   if (entry.kind === "dir") return null;
-  const ext = entry.ext?.toLowerCase() ?? "";
-  if (IMAGE.has(ext) || VIDEO.has(ext) || AUDIO.has(ext) || ext === "pdf") return "media-viewer";
-  if (CODE.has(ext) || ["json", "md", "txt", "html", "sh"].includes(ext)) return "code-editor";
-  return null;
+  const kind = kindForName(entry.name);
+  if (kind === "text" || kind === "markdown" || kind === "csv" || kind === "html") return "code-editor";
+  return "media-viewer";
 }
+
+/** "Preview" — the OTHER route, offered in the context menu. Rendering is what
+ *  Preview is for, so a .md, .csv or .html can be READ without opening an editor,
+ *  and the ← → paging works for every previewable file in the folder. */
+export const canPreview = (entry: FsEntry): boolean =>
+  entry.kind === "file" && isPreviewable(kindForName(entry.name));
 
 // True for raster/vector image files — used to show a real thumbnail in grid
-// view (rendered via /api/v1/fs/raw) instead of a generic icon.
+// view (rendered via /api/v1/fs/raw) instead of a generic icon. Same table as the
+// viewer: a format it calls an image is one the grid should try to thumbnail, and
+// a browser that cannot decode it falls back to the icon on its own.
 export function isImage(entry: FsEntry): boolean {
-  return entry.kind === "file" && IMAGE.has(entry.ext?.toLowerCase() ?? "");
+  return entry.kind === "file" && kindForName(entry.name) === "image";
 }
 
-// Media kind for the media-viewer payload (by ext family).
-export type MediaKind = "image" | "video" | "audio" | "pdf";
-export function mediaKind(entry: FsEntry): MediaKind {
-  const ext = entry.ext?.toLowerCase() ?? "";
-  if (VIDEO.has(ext)) return "video";
-  if (AUDIO.has(ext)) return "audio";
-  if (ext === "pdf") return "pdf";
-  return "image";
-}
+// Media kind for the media-viewer payload — the viewer's OWN table, so Files and
+// Preview can never disagree about what a `.heic` or a `.csv` is. (The viewer
+// re-derives it from the name anyway; this keeps the payload informative.)
+export const mediaKind = (entry: FsEntry): ViewKind => kindForName(entry.name);

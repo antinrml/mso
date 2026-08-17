@@ -22,6 +22,8 @@ export type AuditAction =
   | "fs.upload"
   | "fs.zip"
   | "sys.cleanup"
+  /** The cockpit replacing its own code (Settings → About, or `mso update run`). */
+  | "sys.update"
   | "managed-app.action"
   | "camoufox.power"
   /** An MCP token asked for a tool above its scope. Not an error — it is the

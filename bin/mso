@@ -74,6 +74,7 @@
 #   service *            status | start | stop | restart | logs
 #   build                Compile HEAD out-of-tree (safe against the live checkout)
 #   deploy               next build, then restart the service
+#   update [run]         What is on origin/main; `run` pulls, verifies, builds, restarts
 #
 #  Escape hatches
 #   crud *               Generic resource CRUD, incl. editor documents
@@ -239,6 +240,7 @@ U_mapp="mapp list|show|logs|backups|jobs|job <id> <jobId>|pending <id>|install|u
 U_term="term open [cwd] [cols] [rows]|input <id> <text>|resize <id> <cols> <rows>|stream <id>|close <id>"
 U_device="device list|pending|approve <id> [label]|revoke <id>|revoke all --yes"
 U_service="service status|start|stop|restart|logs [n]"
+U_update="update status|run [true]|log"
 U_threads="threads list|show <id>|save <json>|rm <id>"
 U_memory="memory list|add <text>|rm <id>"
 U_config="config show|set <json>|rm <provider>"
@@ -490,6 +492,16 @@ case "$cmd" in
   # one, and it restarts immediately after.
   build)  (cd "$ROOT" && bash scripts/verify-build.sh) ;;
   deploy) (cd "$ROOT" && npm run build) && sudo systemctl restart mso.service && echo "deployed → $B" ;;
+  # The same self-update Settings → About drives, so both surfaces get the same
+  # preflight and the same transient-unit handoff (a build spawned from the service
+  # would be killed by the restart it performs).
+  update)
+    case "${1:-status}" in
+      status) jget "/api/v1/sys/update" ;;
+      run)    jpost "/api/v1/sys/update" "$(jq -n --argjson r "${2:-false}" '{rebuildOnly:$r}')" ;;
+      log)    jget "/api/v1/sys/update?check=0" | jq -r .log ;;
+      *) die "usage: mso $U_update" ;;
+    esac ;;
 
   # ── editor-document CRUD (one pattern, all editor features) ──────────────
   crud)
