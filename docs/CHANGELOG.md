@@ -4,6 +4,21 @@
 Newest first. `docs/PROGRESS.md` is the source of truth for *why* a change was made;
 this is the *what*, and it is what Settings → About shows as “What's new”.
 
+## 2026-08-17
+
+**Fixed**
+
+- `deps` pin nanoid >=3.3.18 — the audit gate has been failing on main
+- `managed-apps` say why a dashboard is missing instead of silently opening a terminal
+- `install` write the uid out — %U resolves to 0 for a User=<name> system unit
+- `managed-apps` fail closed on an unreadable bus, and stop a retry eating the live venv
+- `managed-apps` one-click install died, and installed apps read as "not installed", under systemd
+- `install` bind loopback by default, and restart the service on re-run
+
+**Docs**
+
+- plain http to an IP cannot complete a login — say so where it matters
+
 ## 2026-08-11
 
 **Added**
