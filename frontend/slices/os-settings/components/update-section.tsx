@@ -98,6 +98,7 @@ export function UpdateSection() {
   if (IS_DEMO || (!info && !checking)) return null;
   const behind = info?.behind ?? 0;
   const running = info?.running ?? false;
+  const pending = (info?.pendingBuild ?? false) && behind === 0;
   // Derived, never stored: an update we watched, that is no longer running, either
   // left its marker in the log or stopped before deploying.
   const finished = sawRunning && !running && info ? (info.log.includes(OK_MARKER) ? "ok" : "failed") : null;
@@ -115,10 +116,26 @@ export function UpdateSection() {
       <SettingsBlock className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
           <span className="font-medium text-foreground">
-            {checking ? "Checking for updates…" : behind > 0 ? `${behind} update${behind > 1 ? "s" : ""} available` : "Up to date"}
+            {checking
+              ? "Checking for updates…"
+              : behind > 0
+                ? `${behind} update${behind > 1 ? "s" : ""} available`
+                : pending
+                  ? "A build is pending"
+                  : "Up to date"}
           </span>
-          <span className="font-mono text-[11px] text-muted-foreground">running {info?.current ?? "—"}</span>
+          {/* The RUNNING commit, not the checkout's — they differ whenever someone
+              pulled without rebuilding, and that gap is the whole point of the row. */}
+          <span className="font-mono text-[11px] text-muted-foreground">
+            running {info?.buildSha || info?.current || "—"}
+          </span>
         </div>
+        {pending && (
+          <p className="text-[11px] text-muted-foreground">
+            The checkout is at <span className="font-mono">{info?.current}</span>, which this build was not compiled
+            from. Rebuild to run it.
+          </p>
+        )}
         {info?.currentSubject && <p className="line-clamp-2 text-[11px] text-muted-foreground">{info.currentSubject}</p>}
         {info && !info.remoteChecked && !running && (
           <p className="text-[11px] text-amber-500">
@@ -165,7 +182,7 @@ export function UpdateSection() {
       )}
       {info?.supported !== false && behind === 0 && (
         <SettingsActionRow
-          label="Rebuild and restart"
+          label={pending ? `Build ${info?.current} and restart` : "Rebuild and restart"}
           icon={<RefreshCw />}
           busy={busy || running}
           disabled={running}

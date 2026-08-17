@@ -1,8 +1,26 @@
+import { execSync } from "node:child_process";
+
 // Build id baked into the client bundle so a redeploy can be detected.
 const BUILD_ID =
   process.env.NEXT_PUBLIC_BUILD_ID ||
   process.env.NEXT_DEPLOYMENT_ID ||
   String(Date.now());
+
+// WHICH COMMIT THIS BUILD IS, baked in at build time — the only way the running app
+// can know it, since `git rev-parse HEAD` at runtime answers for the CHECKOUT, which
+// moves whenever someone pulls. Settings → About compares the two: equal means the
+// running build is current, different means a build is pending and the update panel
+// offers the rebuild. Empty is fine and expected — scripts/verify-build.sh compiles
+// a `git archive` export with no .git in it.
+const COMMIT_SHA =
+  process.env.NEXT_PUBLIC_COMMIT_SHA ||
+  (() => {
+    try {
+      return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    } catch {
+      return "";
+    }
+  })();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -40,7 +58,7 @@ const nextConfig = {
   ...(process.env.NEXT_DEPLOYMENT_ID
     ? { deploymentId: process.env.NEXT_DEPLOYMENT_ID }
     : {}),
-  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID, NEXT_PUBLIC_COMMIT_SHA: COMMIT_SHA },
   experimental: {
     // proxy.ts clones request bodies; the default clone cap is 10MB, which
     // silently truncated large /api/v1/fs/upload payloads. Raise it so big

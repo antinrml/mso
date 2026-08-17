@@ -38,8 +38,14 @@ export interface UpdateStatus {
   supported: boolean;
   /** Why not, when `supported` is false — shown to the operator verbatim. */
   reason: string | null;
+  /** HEAD of the CHECKOUT — what a rebuild would compile. */
   current: string;
   currentSubject: string;
+  /** The commit the RUNNING build was compiled from (baked in by next.config), or
+   *  "" when the build carried no .git. Differs from `current` whenever someone
+   *  pulled without rebuilding — the state the panel calls "a build is pending". */
+  buildSha: string;
+  pendingBuild: boolean;
   behind: number;
   commits: UpdateCommit[];
   /** Uncommitted work in the checkout: a `--ff-only` merge would fail, so refuse early. */
@@ -106,7 +112,10 @@ export function blockingReason(status: UpdateStatus, rebuildOnly: boolean): stri
   if (status.dirty) {
     return "the checkout has uncommitted changes — commit or stash them on the host first, a fast-forward would refuse anyway";
   }
-  if (!rebuildOnly && status.behind === 0) return "already up to date";
+  // `pendingBuild` is a reason to run even with nothing to pull: the checkout
+  // already holds code the running process was not built from, and refusing with
+  // "already up to date" would be describing the wrong thing as up to date.
+  if (!rebuildOnly && status.behind === 0 && !status.pendingBuild) return "already up to date";
   return null;
 }
 
@@ -128,11 +137,14 @@ async function readLog(): Promise<string> {
  *   round trip, so the panel asks for one and the poller during an update does not.
  */
 export async function getUpdateStatus(fetchRemote = true): Promise<UpdateStatus> {
+  const buildSha = (process.env.NEXT_PUBLIC_COMMIT_SHA ?? "").trim();
   const base: UpdateStatus = {
     supported: false,
     reason: null,
     current: "unknown",
     currentSubject: "",
+    buildSha,
+    pendingBuild: false,
     behind: 0,
     commits: [],
     dirty: false,
@@ -166,11 +178,15 @@ export async function getUpdateStatus(fetchRemote = true): Promise<UpdateStatus>
     git(["log", "--format=%h%x1f%s%x1f%cs", `-${MAX_COMMITS}`, "HEAD..origin/main"]),
   ]);
 
+  const current = head.stdout.trim() || "unknown";
   return {
     ...base,
     supported: true,
-    current: head.stdout.trim() || "unknown",
+    current,
     currentSubject: subject.stdout.trim(),
+    // Only when we know both: a build with no sha baked in (an archive export, a
+    // dev server) must not be reported as permanently stale.
+    pendingBuild: Boolean(buildSha) && current !== "unknown" && buildSha !== current,
     behind: count.code === 0 ? Number(count.stdout.trim()) || 0 : 0,
     commits: log.code === 0 ? parseCommits(log.stdout) : [],
     dirty: status.stdout.trim().length > 0,

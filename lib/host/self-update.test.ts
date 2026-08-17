@@ -14,6 +14,8 @@ const status = (over: Partial<Parameters<typeof blockingReason>[0]> = {}) => ({
   reason: null,
   current: "abc1234",
   currentSubject: "feat: something",
+  buildSha: "abc1234",
+  pendingBuild: false,
   behind: 3,
   commits: [],
   dirty: false,
@@ -53,6 +55,15 @@ describe("blockingReason", () => {
   it("refuses when there is nothing to pull, unless a rebuild was asked for", () => {
     expect(blockingReason(status({ behind: 0 }), false)).toBe("already up to date");
     expect(blockingReason(status({ behind: 0 }), true)).toBeNull();
+  });
+
+  it("is NOT 'up to date' when the running build is older than the checkout", () => {
+    // Someone pulled without rebuilding: `git` says there is nothing to fetch while
+    // the process is still serving the previous commit. Saying "already up to date"
+    // there describes the checkout and leaves the operator with no way to act.
+    const pending = status({ behind: 0, buildSha: "0000000", pendingBuild: true });
+    expect(blockingReason(pending, false)).toBeNull();
+    expect(blockingReason(pending, true)).toBeNull();
   });
 
   it("refuses a dirty checkout — the fast-forward would fail anyway", () => {
