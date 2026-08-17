@@ -20,7 +20,9 @@ function Row({ a, onClose }: { a: Action; onClose: () => void }) {
         onClose();
       }}
       className={cn(
-        "flex w-full items-center justify-between gap-6 rounded-md px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+        // A long-press opens this on a phone now, so the rows have to be thumb-sized
+        // there — 28px rows are a mis-tap generator.
+        "flex w-full items-center justify-between gap-6 rounded-md px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground [@media(pointer:coarse)]:min-h-[44px]",
         a.danger && "text-destructive hover:bg-destructive hover:text-white focus:bg-destructive focus:text-white",
       )}
     >

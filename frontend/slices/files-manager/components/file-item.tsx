@@ -9,6 +9,7 @@ import { rawUrl, type FsEntry } from "../lib/host";
 import { iconFor, colorFor, isImage } from "../lib/icons";
 import { fmtSize, joinPath } from "../lib/format";
 import type { ViewMode } from "../lib/types";
+import { useLongPress } from "../hooks/use-long-press";
 
 function RenameInput({
   initial,
@@ -80,10 +81,13 @@ export function FileItem({
   const [thumbFail, setThumbFail] = useState(false);
   // Touch has no double-click — on phones a single tap selects AND opens
   // (navigate for dirs, preview for files). Desktop keeps select / dbl-open.
+  const { handlers: touchProps, swallowTap } = useLongPress(isMobile, onContext);
   const onTap = (e: MouseEvent) => {
+    if (swallowTap(e)) return;
     onClick(e);
     if (isMobile) onOpen();
   };
+
   const showThumb = view === "grid" && !!dirPath && isImage(entry) && !thumbFail;
   const commit = (v: string) => {
     const t = v.trim();
@@ -105,6 +109,7 @@ export function FileItem({
         onClick={onTap}
         onDoubleClick={onOpen}
         onContextMenu={onContext}
+        {...touchProps}
         className={cn(
           "flex h-auto w-full flex-col items-center gap-1.5 rounded-lg p-3 text-center transition-colors",
           selected ? "bg-primary text-primary-foreground" : "hover:bg-accent",
@@ -169,6 +174,7 @@ export function FileItem({
       onClick={onTap}
       onDoubleClick={onOpen}
       onContextMenu={onContext}
+      {...touchProps}
       className={cn(
         "grid cursor-default grid-cols-[1fr_92px_96px] items-center gap-2 px-3 py-1.5 text-xs transition-colors @max-[430px]:grid-cols-[1fr_72px] [@media(pointer:coarse)]:min-h-[44px]",
         selected ? "bg-primary text-primary-foreground" : "hover:bg-accent",
