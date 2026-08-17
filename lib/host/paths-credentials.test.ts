@@ -42,6 +42,22 @@ describe("recursive credential guard", () => {
     expect(isSensitivePath(path.join(fakeHome, ".codex", "auth.json"))).toBe(true);
   });
 
+  it("blocks the shell rc + profile files, because that is where CLI tokens live", () => {
+    // Found by audit, not by theory: the box this was written on had eight
+    // `export …_TOKEN=` lines in ~/.bashrc, put there by tooling that says "add
+    // this to your shell profile". Shell HISTORY was already denied; the file that
+    // defines the environment is the richer target.
+    vi.stubEnv("HOME", fakeHome);
+    for (const name of [".bashrc", ".zshrc", ".profile", ".bash_profile", ".zshenv"]) {
+      expect(isSensitivePath(path.join(fakeHome, name)), name).toBe(true);
+    }
+    expect(isSensitivePath(path.join(fakeHome, ".config", "fish", "config.fish"))).toBe(true);
+    // Still a denylist, not a ban on dotfiles: an rc file for something that holds
+    // no credentials stays readable.
+    expect(isSensitivePath(path.join(fakeHome, ".vimrc"))).toBe(false);
+    expect(isSensitivePath(path.join(fakeHome, ".gitconfig"))).toBe(false);
+  });
+
   it("excludes a credential dir nested under the zip base", () => {
     vi.stubEnv("HOME", fakeHome);
     expect(isSensitivePath(parent)).toBe(false); // the exact gap this guard closes

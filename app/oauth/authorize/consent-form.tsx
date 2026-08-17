@@ -14,11 +14,19 @@ const TIERS: { value: Scope; label: string; blurb: string }[] = [
 export function ConsentForm({
   clientName,
   redirectUri,
+  denyUrl,
   ceiling,
   hidden,
 }: {
   clientName: string;
   redirectUri: string;
+  /**
+   * Pre-built on the server from the validated redirect target. `null` only if
+   * that target would also be refused on the success path — unreachable from
+   * this page today, since it renders no form in that case, but the type keeps
+   * it that way rather than trusting the ordering of two files.
+   */
+  denyUrl: string | null;
   ceiling: Scope;
   hidden: Record<string, string>;
 }) {
@@ -105,14 +113,24 @@ export function ConsentForm({
         <Button type="submit" disabled={busy} className="flex-1 [@media(pointer:coarse)]:min-h-[44px]">
           {busy ? "Connecting…" : "Allow"}
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="flex-1 [@media(pointer:coarse)]:min-h-[44px]"
-          onClick={() => history.back()}
-        >
-          Cancel
-        </Button>
+        {/* An anchor, not history.back(): declining has to REACH the client, or
+            it waits on a callback that never comes and the user is left looking
+            at a spinner. `denyUrl` is usually a different origin (chatgpt.com),
+            which the Next router does not handle — a plain link does. */}
+        {denyUrl ? (
+          <Button asChild variant="secondary" className="flex-1 [@media(pointer:coarse)]:min-h-[44px]">
+            <a href={denyUrl}>Cancel</a>
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            className="flex-1 [@media(pointer:coarse)]:min-h-[44px]"
+            onClick={() => history.back()}
+          >
+            Cancel
+          </Button>
+        )}
       </div>
     </form>
   );

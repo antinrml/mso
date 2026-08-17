@@ -16,6 +16,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Fixed**
 
+- `security` shell rc files hold API tokens — the credential denylist now says so
 - `changelog` a regeneration commit must not appear in the file it regenerates
 - `deps` pin nanoid >=3.3.18 — the audit gate has been failing on main
 - `managed-apps` say why a dashboard is missing instead of silently opening a terminal

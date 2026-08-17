@@ -85,6 +85,16 @@ const SENSITIVE_HOME = [
   ".local/share/camoufox", ".local/state/camoufox", ".vnc",
   // database creds + password-manager CLIs
   ".pgpass", ".config/op", ".config/lpass",
+  // SHELL RC + PROFILE FILES. Not config-shaped paranoia: `export FOO_TOKEN=…` in
+  // ~/.bashrc is how most people (and this box — 8 of them the day this was added)
+  // keep API keys for CLIs, and every installer that says "add this to your shell
+  // profile" puts one there. The list already blocks shell HISTORY for the same
+  // reason; the file that DEFINES the environment is the richer target of the two.
+  // Editing them from the cockpit is a real loss — that is what OS_FS_ALLOW_SENSITIVE
+  // is for, and a terminal window is right there.
+  ".bashrc", ".bash_profile", ".bash_login", ".bash_aliases", ".profile",
+  ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".kshrc",
+  ".config/fish/config.fish", ".config/fish/conf.d",
   // loose private keys saved outside ~/.ssh (heredoc dumps, exports, etc.)
   "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa",
 ];

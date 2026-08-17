@@ -138,6 +138,9 @@ async function readLog(): Promise<string> {
  */
 export async function getUpdateStatus(fetchRemote = true): Promise<UpdateStatus> {
   const buildSha = (process.env.NEXT_PUBLIC_COMMIT_SHA ?? "").trim();
+  // Read ONCE: the panel polls this every 3s while a build runs, and the log is
+  // the biggest thing in the response.
+  const log = await readLog();
   const base: UpdateStatus = {
     supported: false,
     reason: null,
@@ -150,7 +153,7 @@ export async function getUpdateStatus(fetchRemote = true): Promise<UpdateStatus>
     dirty: false,
     running: false,
     remoteChecked: false,
-    log: await readLog(),
+    log,
   };
 
   const inside = await git(["rev-parse", "--is-inside-work-tree"]);
@@ -173,7 +176,7 @@ export async function getUpdateStatus(fetchRemote = true): Promise<UpdateStatus>
     remoteChecked = fetched.code === 0;
   }
 
-  const [count, log] = await Promise.all([
+  const [count, commitLog] = await Promise.all([
     git(["rev-list", "--count", "HEAD..origin/main"]),
     git(["log", "--format=%h%x1f%s%x1f%cs", `-${MAX_COMMITS}`, "HEAD..origin/main"]),
   ]);
@@ -188,11 +191,11 @@ export async function getUpdateStatus(fetchRemote = true): Promise<UpdateStatus>
     // dev server) must not be reported as permanently stale.
     pendingBuild: Boolean(buildSha) && current !== "unknown" && buildSha !== current,
     behind: count.code === 0 ? Number(count.stdout.trim()) || 0 : 0,
-    commits: log.code === 0 ? parseCommits(log.stdout) : [],
+    commits: commitLog.code === 0 ? parseCommits(commitLog.stdout) : [],
     dirty: status.stdout.trim().length > 0,
     running,
     remoteChecked,
-    log: await readLog(),
+    log,
   };
 }
 

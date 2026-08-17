@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth/require-session";
 import { getClient } from "@/lib/mcp/store";
 import { isAllowedRedirect } from "@/lib/mcp/pkce";
+import { denyUrl, selfUrl } from "@/lib/mcp/redirect";
 import { mcpEnabled, maxScope } from "@/lib/mcp/scope";
 import { ConsentForm } from "./consent-form";
 
@@ -33,16 +34,34 @@ export default async function AuthorizePage({
   const method = one("code_challenge_method");
 
   if (!(await requireSession())) {
+    // The request is KEPT. This used to link to `/` and tell the visitor to
+    // "start the connection again from the client", which threw the whole
+    // authorization request away: ChatGPT had already generated its PKCE
+    // verifier and state, so going back meant restarting the flow from the
+    // connector dialog — and most people read that screen as "it is broken".
+    //
+    // mso's unlock is a client-side gate over a JSON login route, so there is no
+    // server-side `?next=` to hand off to. What works without inventing one: put
+    // the unlock in a SECOND tab and leave this one where it is. The session is
+    // a cookie, so once it exists this exact URL renders the consent screen —
+    // Continue is a plain re-request of the same query string, nothing stored.
+    const here = selfUrl(q);
     return (
       <Shell>
-        <h1 className="text-lg font-semibold">Sign in first</h1>
+        <h1 className="text-lg font-semibold">Unlock mso to continue</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Open mso, unlock it on this device, then start the connection again from the client. This page
-          cannot authorize anything on its own.
+          This page cannot authorize anything on its own — it needs your signed-in session. Unlock mso in
+          a new tab, then come back here and press Continue. <strong>Do not close this tab:</strong> it is
+          holding the request the client just made.
         </p>
-        <Link className="mt-4 inline-block text-sm underline" href="/" prefetch={false}>
-          Open mso
-        </Link>
+        <div className="mt-4 flex flex-wrap gap-3 text-sm">
+          <a className="underline" href="/" target="_blank" rel="noopener noreferrer">
+            Unlock mso in a new tab
+          </a>
+          <Link className="underline" href={here} prefetch={false}>
+            Continue
+          </Link>
+        </div>
       </Shell>
     );
   }
@@ -65,11 +84,25 @@ export default async function AuthorizePage({
   }
 
   const client = await getClient(clientId);
+
+  // Where Cancel goes. Built HERE, from the redirect target this page already
+  // validated, rather than in the browser — the deny path must not be the one
+  // place a URL gets assembled from unchecked input.
+  //
+  // A refusal is REPORTED, not just navigated away from. Cancel used to call
+  // `history.back()`, which tells the client nothing at all: ChatGPT sits on its
+  // connector dialog waiting for a callback that will never arrive, and the user
+  // sees a spinner rather than "you declined". RFC 6749 §4.1.2.1 — and `state`
+  // rides along, because a client that cannot match the response to its own
+  // request is required to discard it.
+  const deny = denyUrl(redirectUri, one("state"));
+
   return (
     <Shell>
       <ConsentForm
         clientName={client?.name ?? clientId}
         redirectUri={redirectUri}
+        denyUrl={deny}
         ceiling={maxScope()}
         hidden={{
           client_id: clientId,
