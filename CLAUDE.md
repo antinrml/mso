@@ -302,8 +302,15 @@ that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
   (including `~/.mso` itself) and `exec.ts`'s destructive filter for free. A tool that
   reimplements an operation reimplements its guard too — don't.
 - Scope ladder `read < write < exec`, picked per token on the consent page, capped by
-  `OS_MCP_MAX_SCOPE` (default `write`). `tools/list` filters by it AND `tools/call`
+  `OS_MCP_MAX_SCOPE` (default `write`; **the running box is set to `exec`** — open
+  decision, see the integration doc below). `tools/list` filters by it AND `tools/call`
   re-checks it — a client can call a name it was never shown.
+- **Tool names are a cross-repo contract.** `rahmanef63/connectors-gateway` registered
+  mso as a connector on 2026-08-17 and pins 15 of the 17 names as literal strings
+  (`x-upstream`), omitting `exec_run` and `browser_power` entirely. Renaming or removing
+  a tool here breaks it with **no error in either repo** — `parity.test.ts` guards the
+  Alfa axis, not this one. Read `docs/CONNECTORS-GATEWAY-INTEGRATION.md` before touching
+  a tool name.
 - Store is `~/.mso/mcp.json`, **sha256 only**, same atomic-write + fail-loud-on-corrupt
   rule as `lib/auth/device-store.ts`. Codes are single-use, 60 s, deleted BEFORE the
   token is minted. `browser_status` must never return the VNC password — that profile

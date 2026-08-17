@@ -69,6 +69,12 @@ written reason. The two catalogs stay separate on purpose (different transport,
 different guard) but may not drift by accident, which they did: MCP shipped the
 managed-app and browser tools before Alfa had them.
 
+**These tool names are also a cross-repo contract.** `rahmanef63/connectors-gateway`
+registered mso as a connector on 2026-08-17 and pins 15 of these names as strings; a
+rename here breaks it with no error in either repo, and `parity.test.ts` does not cover
+that axis. See [`CONNECTORS-GATEWAY-INTEGRATION.md`](./CONNECTORS-GATEWAY-INTEGRATION.md)
+before renaming or removing a tool.
+
 The tiering is about blast radius, not about which layer the call lands in.
 `apps_logs` reads a daemon's journal, so "why is hermes down?" is answerable from
 a `read` token — the same question through `exec_run` would need a full shell.
