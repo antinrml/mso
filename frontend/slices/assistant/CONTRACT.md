@@ -78,14 +78,12 @@ shape, different storage, different lifecycle, and the names do not overlap.
 
 | | |
 |---|---|
-| Shape | `{ name, path, description }` — `app/api/skills/route.ts` |
-| Source of truth | `GET /api/skills` — repo `skills/` first, then host roots |
-| Lifecycle | Files on disk |
-| Written by | Whoever installs skills on the box |
+| Shape | `{ name, path, description, source, trust, provenance? }` — `lib/skills/catalog.ts` |
+| Source of truth | `GET /api/skills` — explicit operator root → official repo skills → hash-verified bundles → generic discovery roots |
+| Lifecycle | Files on disk; trust is derived from root/provenance, never self-declared by the skill |
+| Written by | MSO, the operator, or discovered agent registries |
 
-The model reaches these through the `skills.list` and `skills.read` **tools**. That
-is also what `/skill` in the composer does: it inserts a directive naming the skill,
-and Alfa reads it with the tool she already has. There is no separate execution path.
+The model reaches trusted skills through the `skills.list` and `skills.read` **tools**. `official`, hash-`verified`, and explicit operator `local` skills are executable by default; generic discovered skills are cataloged as `untrusted` but their instructions are not fed directly to the model. `/skill` follows the same trust filter. There is no separate execution path.
 
 ## Agent
 

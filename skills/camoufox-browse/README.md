@@ -56,8 +56,8 @@ openclaw agent --message "browse https://example.com and tell me the title"
 
 ## Publishing
 
-This skill is published to ClawHub under the owner of whoever runs `clawhub login`. See `PUBLISH.md` for the full flow.
+This skill is published to ClawHub under the owner of whoever runs `clawhub login`. Publishing metadata is recorded in `.clawhub/origin.json`; this vendored copy does not ship a separate publishing guide.
 
 ## License
 
-MIT-0 (MIT No Attribution) — see [`LICENSE`](./LICENSE). This covers the skill's own docs and examples only. Camoufox itself is a separate MPL-2.0 project installed from PyPI and is not redistributed here.
+The upstream skill declares its own instructions/examples as MIT-0 in `SKILL.md`; this vendored snapshot does not include a standalone license file. Camoufox itself is a separate MPL-2.0 project installed from PyPI/npm and is not redistributed here. Verify upstream licensing before redistributing this vendored snapshot.

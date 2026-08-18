@@ -9,6 +9,22 @@ import { NextResponse } from "next/server";
 // never JS chunks/HTML, so a redeploy can't strand a stale chunk.
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
 
+// Small illustrated app icons are pre-cached with the shell so the dock/taskbar
+// never flashes from an empty tile on a fresh PWA launch. 19 × 192px WebP is
+// currently under 80 KB total; controls still use vector glyphs and are not here.
+const APP_ICON_ASSETS = [
+  "assistant", "camoufox", "claude", "code", "create", "docs", "files",
+  "hermes", "launchpad", "links", "mission-control", "monitor", "openclaw",
+  "reel", "settings", "store", "studio", "terminal", "viewer",
+].map((name) => `/app-icons/${name}.webp`);
+
+const PLATFORM_APP_ICON_ASSETS = [
+  "files", "terminal", "code", "monitor", "settings", "assistant", "camoufox", "store", "docs", "studio", "claude", "reel", "viewer", "create", "links", "hermes", "openclaw",
+].flatMap((name) => [
+  `/app-icons/macos/${name}.webp`,
+  `/app-icons/windows/${name}.webp`,
+]);
+
 const SW = `// mso service worker — build ${BUILD_ID}
 const CACHE = "mso-${BUILD_ID}";
 // The two names here until 2026-07-30 were "/icon-192.png" and "/icon-512.png", which
@@ -16,7 +32,7 @@ const CACHE = "mso-${BUILD_ID}";
 // catch-all answers an unknown path with the app HTML and a 200, so addAll() did not
 // throw; it quietly cached the HTML shell under two icon URLs, which is exactly what
 // the comment above promises this never does.
-const ASSETS = ["/icon.svg", "/icon-maskable.svg", "/manifest.webmanifest"];
+const ASSETS = ${JSON.stringify(["/icon.svg", "/icon-maskable.svg", "/manifest.webmanifest", ...APP_ICON_ASSETS, ...PLATFORM_APP_ICON_ASSETS])};
 self.addEventListener("install", (e) => {
   // Do NOT skipWaiting here. Auto-activating skipped the "waiting" state, so the
   // client's "new version" toast (which needs reg.waiting) never showed and the

@@ -303,6 +303,25 @@ body {
   border-radius: var(--shell-icon-radius);
 }
 
+/* Platform-specific generated app artwork. Only the active desktop shell's
+   image is painted; other shells keep the generic fallback. This keeps one app
+   identity while letting macOS and Windows use genuinely different icon art. */
+.shell-artwork {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.shell-platform-mark {
+  border-radius: inherit;
+}
+.shell-artwork-macos, .shell-artwork-windows { display: none; }
+[data-shell="macos"] .shell-artwork-default,
+[data-shell="windows"] .shell-artwork-default { display: none; }
+[data-shell="macos"] .shell-artwork-macos { display: block; }
+[data-shell="windows"] .shell-artwork-windows { display: block; }
+
 /* ── iOS component parity (scoped to the iOS surface ONLY) ─────────────────
    Shared primitives (Switch, Segmented) carry accent-tinted states that suit
    Material/Fluent; iOS wants system-green switches + a raised WHITE segmented

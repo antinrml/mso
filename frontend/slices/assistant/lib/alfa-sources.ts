@@ -20,7 +20,7 @@ import { activeAgent, agentList, setActiveAgentId } from "./store";
 // page load. There are ~88 and the menu filters on every keystroke; refetching per
 // keystroke would be absurd.
 
-type SkillRow = { name: string; description?: string };
+type SkillRow = { name: string; description?: string; trust?: string; source?: string };
 
 let skillCache: MentionItem[] | null = null;
 let inflight: Promise<void> | null = null;
@@ -30,14 +30,16 @@ function loadSkills(): void {
   inflight = fetch("/api/skills", { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : { skills: [] }))
     .then((d: { skills?: SkillRow[] }) => {
-      skillCache = (d.skills ?? []).map((s) => ({
-        id: `skill:${s.name}`,
-        label: s.name,
-        hint: s.description?.slice(0, 70),
-        // A directive, not a magic token: Alfa reads it and uses skills.read.
-        insert: `Use the "${s.name}" skill.`,
-        kind: "command" as const,
-      }));
+      skillCache = (d.skills ?? [])
+        .filter((s) => s.trust !== "untrusted")
+        .map((s) => ({
+          id: `skill:${s.name}`,
+          label: s.name,
+          hint: `${s.trust ?? "legacy"} · ${s.description ?? ""}`.slice(0, 70),
+          // A directive, not a magic token: Alfa reads it and uses skills.read.
+          insert: `Use the "${s.name}" skill.`,
+          kind: "command" as const,
+        }));
     })
     .catch(() => {
       skillCache = [];

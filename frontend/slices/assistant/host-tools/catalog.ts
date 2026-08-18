@@ -24,7 +24,7 @@ const READ_TOOLS: HostTool[] = [
     label: "List",
     effect: "read",
     description: "List a directory's entries (name, file/dir kind). Inspect before writing or moving. Sizes are NOT reported — do not infer that a file is empty.",
-    parameters: obj({ "path!": str("Absolute directory path, e.g. /home/rahman/projects") }),
+    parameters: obj({ "path!": str("Absolute path or ~/… path, e.g. ~/projects") }),
     run: async (api, a) => {
       const r = await api.fs.list(String(a.path));
       const body = r.entries.map((e) => `${e.kind === "dir" ? "d" : "-"} ${e.name}`).join("\n");
@@ -185,9 +185,13 @@ const READ_TOOLS: HostTool[] = [
     run: async () => {
       const data = (await fetch("/api/skills", { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : { skills: [] }))
-        .catch(() => ({ skills: [] }))) as { skills?: { name: string; description?: string }[] };
+        .catch(() => ({ skills: [] }))) as { skills?: { name: string; description?: string; trust?: string; source?: string }[] };
       const skills = data.skills ?? [];
-      return skills.length ? skills.map((s) => `${s.name}${s.description ? ` — ${s.description}` : ""}`).join("\n") : "no local skills found";
+      const safe = skills.filter((s) => s.trust !== "untrusted");
+      const blocked = skills.length - safe.length;
+      const rows = safe.map((s) => `${s.name} [${s.trust ?? "legacy"}/${s.source ?? "unknown"}]${s.description ? ` — ${s.description}` : ""}`);
+      if (blocked) rows.push(`(${blocked} discovered skill${blocked === 1 ? "" : "s"} hidden because trust=untrusted)`);
+      return rows.length ? rows.join("\n") : "no trusted local skills found";
     },
   },
   {
@@ -202,7 +206,10 @@ const READ_TOOLS: HostTool[] = [
       if (!name) return "missing skill name";
       const r = await fetch(`/api/skills?name=${encodeURIComponent(name)}`, { cache: "no-store" });
       if (!r.ok) return `couldn't read skill ${name}`;
-      const d = (await r.json()) as { content?: string; truncated?: boolean };
+      const d = (await r.json()) as { content?: string; truncated?: boolean; skill?: { trust?: string; source?: string } };
+      if (d.skill?.trust === "untrusted") {
+        return `refused to load untrusted skill instructions (source=${d.skill.source ?? "unknown"}). Inspect the SKILL.md as a file and explicitly move/copy it into ~/.mso/skills after review if you want MSO to trust it.`;
+      }
       return clip(`${d.content ?? ""}${d.truncated ? "\n… (truncated)" : ""}`);
     },
   },

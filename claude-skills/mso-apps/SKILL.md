@@ -1,58 +1,46 @@
 ---
 name: mso-apps
-description: Drive ANY mso app from the CLI — one app→function→command matrix for Files, Code Editor, Terminal, System Monitor, Browser, Media Viewer, Media Studio, Reel Editor, Settings, Assistant, App Store. Trigger on /mso-apps, "drive an os app", "os files / terminal / code editor / system monitor / settings from cli", "what os app does X", "operate mso feature".
+description: Map every MSO app to the safest operation that drives it. Prefer bounded capabilities, use document CRUD for editor data, and reserve full shell for uncovered host actions.
+metadata:
+  mso:
+    risk: medium
+    policy: bounded-first
 ---
 
-# /mso-apps — every mso app from the CLI
+# /mso-apps — app → capability map
 
-One reference for operating each app. Everything routes through three transports
-([/mso] owns them): `mso` (host fs/exec/sys + generic `crud`), `/mso-camoufox`
-(a real logged-in browser), `image-editor.sh` (editor-document CRUD). Deep dives:
-[/mso] (control + crud), [/mso-image-editor] (editor docs), [/mso-list] (LIVE audit
-of every function).
+Resolve MSO dynamically; never assume `/home/<name>/...`:
 
 ```bash
-OS=mso
-IE=/home/rahman/.claude/skills/mso-image-editor/image-editor.sh
+MSO_ROOT="${MSO_DIR:-$(systemctl show -p WorkingDirectory --value mso.service 2>/dev/null || true)}"
+[ -n "$MSO_ROOT" ] || MSO_ROOT="$HOME/mso"
+MSO_CLI="$MSO_ROOT/bin/mso"
+IE="$MSO_ROOT/claude-skills/mso-image-editor/image-editor.sh"
 ```
 
-## App → function → CLI
+## Safety precedence
 
-| App | Functions | Drive it with |
+When the current environment exposes bounded MSO tools, use those first. The CLI is for parity/debugging. `exec` is the final fallback, not the default transport.
+
+| App | Main functions | Preferred control |
 |---|---|---|
-| **Files** | list/open/new/rename/move/copy/delete, usage | `$OS ls\|cat\|write\|mkdir\|mv\|cp\|rm\|usage` · `$OS crud {list,get,set,del}` |
-| **Code Editor** | tree, open, edit, save, new file | `$OS cat <f>` / `$OS write <f> <content>` (or edit directly — this box IS the VPS) |
-| **Terminal** | fs builtins + host shell passthrough | `$OS exec "<cmd>"` · `$OS ps` |
-| **System Monitor** | CPU/mem/disk gauges, process table | `$OS stats` · `$OS ps` (read-only) |
-| **Browser** | navigate, click/type, read — by HAND, over VNC | `$OS camoufox start && $OS camoufox session` → open the noVNC URL. There is no scriptable verb; see [/mso-camoufox] |
-| **Media Viewer** | view image/video/audio, download | `$OS cat`/copy → **Read** the image here; `$OS exec "ffprobe <f>"` for AV |
-| **Media Studio** | layers/text/shapes/adjust/style canvas | `$IE …` (it's the image editor) — see [/mso-image-editor] |
-| **Image Editor** | full editor-document CRUD + render | `$IE open\|new\|run\|inspect\|save\|view` · `$OS crud set <doc.json> <cmd>` |
-| **Reel Editor** | timeline/clips/keyframes, render→.webm | asset prep `$OS exec "ffmpeg …"`; timeline + render are browser-only |
-| **Settings** | devices, AI key (BYOK), server mock/live, theme | `node ~/projects/mso/scripts/approve-device.js <id>`; key → `~/.mso/config.json`; theme/server = UI |
-| **Assistant (Alfa)** | streaming chat + editor tool-calling | `POST /api/assistant` (needs BYOK key); for editing prefer deterministic `$IE`/`crud` |
-| **App Store / Create-App** | install/uninstall, runtime apps | built-ins = `shell.manifest.ts` (+redeploy); runtime cmd app == `$OS exec`; install = UI |
+| Files | list/read/search/new/rename/move/copy/delete/usage | bounded `fs.*`; CLI `ls/cat/write/mkdir/mv/cp/rm/usage` |
+| Code Editor | tree/open/edit/save/new file | bounded `fs.list/read/write` |
+| Terminal | host commands | bounded operation if one exists; otherwise scoped `exec` |
+| System Monitor | CPU/mem/disk/processes | bounded `sys.stats/processes` |
+| Browser | real Camoufox Firefox | bounded status/power; human drives VNC UI |
+| Media Viewer | inspect media | bounded file read/raw; `ffprobe` only if needed |
+| Image/Media Studio | layers/text/shapes/adjustments | editor document CRUD via `$IE`; render in real editor |
+| Reel Editor | timeline/render | browser/client; shell only for explicit media preprocessing |
+| Settings | devices/provider/theme/server mode | dedicated settings/UI; never expose secrets |
+| Assistant | chat + tools + skills | `/api/assistant`; trusted skills only |
+| Managed apps | status/logs/start/stop/restart/backup | bounded managed-app capability |
+| Runtime apps | app-defined actions | use declared app capability; command runtimes are full shell risk |
 
-## Notes
+## Important boundaries
 
-- **Generic CRUD** is the spine: `mso crud {list|get|set|del}` works on any host
-  resource; `set <x.doc.json> <editor-cmd>` edits an editor document atomically
-  (one server op). Files/code/terminal/monitor are fully CLI-driven; Studio/Reel
-  **render** in the real app (open in the browser) — there is no headless renderer.
-- **What CRUD reaches (honest scope):** host files + editor docs + `~/.mso/*.json`
-  (config/devices). It does NOT reach browser-local state — theme, server mock/live
-  toggle, window layout, the installed-app registry all live in localStorage
-  (per-browser); set those in the UI. System stats are read-only.
-- **Raster ops are browser-only by design:** brush/paint pixels, layer masks, and
-  background removal need the live editor (no headless canvas). The CLI works at
-  the document level (layers/text/shape/adjust/style/transform); paint there, save,
-  and it round-trips back to the file.
-- **Stateless edits:** each `crud set` is independent — no persistent undo/redo or
-  tool/brush state across calls; selection defaults to the last layer (target any
-  other with `layerName=`/`layerId=`). Keep file backups for "undo".
-- **"Working" = the live probe passes.** Run `node ~/.claude/skills/mso-list/audit.js`
-  for the authoritative per-function pass/fail (this matrix is the map; the audit
-  is the truth). AI features (Alfa, Inspector) need a BYOK Anthropic key.
-- Direct action is often best: this box IS the VPS, so Bash + the native file
-  tools beat round-tripping through `mso` for heavy/local work. Use `mso` to
-  reproduce exactly what an app does or to honour its bounded fs semantics.
+- Browser VNC password/session credentials are never agent output.
+- Raster painting, masks, background removal and final editor rendering are browser-owned; do not invent a second headless renderer.
+- LocalStorage state is browser-owned and is not generic host CRUD.
+- System telemetry is read-only.
+- A task is "working" only when its backing call was actually probed. Use `node "$MSO_ROOT/claude-skills/mso-list/audit.js"` for the live audit.

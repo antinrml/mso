@@ -21,7 +21,9 @@
 set -euo pipefail
 
 B="${OS_BASE:-http://127.0.0.1:4005}"
-ENVF="${OS_ENV:-/home/rahman/projects/mso/.env.local}"
+SCRIPT_REAL="$(readlink -f "$0")"
+MSO_ROOT="${MSO_DIR:-$(cd "$(dirname "$SCRIPT_REAL")/../.." && pwd)}"
+ENVF="${OS_ENV:-$MSO_ROOT/.env.local}"
 # shellcheck disable=SC1090
 set -a; . "$ENVF" 2>/dev/null || true; set +a
 PASS="${OS_PASSWORD:-${OS_LOGIN_PASSWORD:-}}"
@@ -30,7 +32,7 @@ PASS="${OS_PASSWORD:-${OS_LOGIN_PASSWORD:-}}"
 # No fallback constant: an id committed to a public repo, approved on request, is
 # the second factor removed. `mso` writes the real one on first run.
 DEV="${OS_DEVICE:-$(cat "$HOME/.mso/cli.device.id" 2>/dev/null)}"
-[ -n "$DEV" ] || { echo "no CLI device id — run 'mso whoami' once to create ~/.mso/cli.device.id" >&2; exit 1; }
+[ -n "$DEV" ] || { echo "no CLI device id — run '$MSO_ROOT/bin/mso whoami' once to create ~/.mso/cli.device.id" >&2; exit 1; }
 # proxy.ts blocks mutating /api without same-origin proof; Origin==Host is the
 # documented non-browser path.
 ORIGIN=(-H "origin: $B")
@@ -51,7 +53,7 @@ login() {
   code=$(jq -n --arg p "$PASS" --arg d "$DEV" '{password:$p,deviceId:$d,deviceLabel:"os-image-editor cli"}' \
     | curl -sS -o /dev/null -w '%{http_code}' -c "$JAR" "${ORIGIN[@]}" -X POST "$B/api/auth/login" \
     -H 'content-type: application/json' -d @- || true)
-  [ "$code" = "200" ] || { echo "login failed ($code). approve device? → node ~/projects/mso/scripts/approve-device.js $DEV" >&2; exit 1; }
+  [ "$code" = "200" ] || { echo "login failed ($code). approve device? → node "$MSO_ROOT/scripts/approve-device.js" "$DEV"" >&2; exit 1; }
 }
 [ -f "$JAR" ] || login
 

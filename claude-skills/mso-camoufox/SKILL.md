@@ -1,113 +1,53 @@
 ---
 name: mso-camoufox
-description: Drive the Camoufox anti-detection browser that MSO hosts — power the VNC session on/off, get the noVNC URL and one-time password, restore/snapshot the logged-in profile, and reach sites that block headless automation. Trigger on /mso-camoufox, "camoufox", "anti-detection browser", "real firefox on the vps", "the browser that beats cloudflare", "vnc browser", "novnc session".
+description: Operate MSO's Camoufox browser safely: inspect status and power the session, while keeping VNC credentials, cookies, and logged-in profile data human-only.
+metadata:
+  mso:
+    risk: high
+    policy: credential-isolation
 ---
 
-# /mso-camoufox — the real-Firefox browser MSO hosts
+# /mso-camoufox — real Firefox without leaking the session
 
-Camoufox is a hardened Firefox build with anti-fingerprinting patches. MSO runs it
-on a headless X display and exposes the live screen over noVNC, so it is a browser
-you *watch and click*, not a headless scraper. Use it when a site blocks the plain
-headless browser (Cloudflare, DataDome, LinkedIn, anything that fingerprints).
+Camoufox is MSO's anti-fingerprinting Firefox on a headless X display. It is useful for **authorized** access when ordinary automation is blocked by fingerprinting.
 
-**Camoufox IS the Browser app.** It replaced both the Playwright sidecar
-(`os-browser`, `:4002` — deleted 2026-08-10) and the
-sandboxed-iframe browser that briefly followed it, because X-Frame-Options makes an
-iframe unable to render most of the real web.
+## What an agent may do
 
-## Power it from the CLI
+- Check installed/running state.
+- Start or stop the Camoufox service through the bounded browser capability.
+- Tell the user to open the Browser app / Settings to drive the live screen.
+- Diagnose non-secret service failures and resource pressure.
 
-```bash
-mso camoufox status    # {installed, running, enabled}
-mso camoufox start     # systemctl --user start camoufox-vnc.service
-mso camoufox stop
-mso camoufox session   # {password: "…"} — the one-time noVNC password
-```
+## What an agent must never retrieve or expose
 
-`start`/`stop` go through `/api/v1/camoufox/service`, which shells
-`systemctl --user` — no sudo, no polkit rule. `installed:false` means the unit
-file is missing, not that the browser is off.
+- the one-time noVNC/VNC password or a URL containing it;
+- cookies, `cookies.sqlite*`, `key4.db`, `cert9.db`, storage state, auth headers;
+- Google/LinkedIn session tokens or any browser profile secret;
+- raw profile or backup contents.
 
-## Watch / drive the screen
+The CLI has a human/operator command that can reveal the one-time VNC credential. **Do not invoke that command from an agent.** The omission of session credentials from bounded MSO tools is intentional least privilege, not a missing feature.
 
-Once running, the live screen is proxied by MSO itself:
+## Power only
 
-```
-https://mso.rahmanef.com/camoufox-vnc/#password=<from `mso camoufox session`>
-```
-
-`proxy.ts` rewrites `/camoufox-vnc/*` to the local websockify on `127.0.0.1:6080`
-(loopback-checked) behind the SAME verified-session check that guards
-`/api/v1/exec`. Nothing about camoufox is exposed on a public port.
-
-**The password goes in the URL fragment, never the query string** — a fragment is
-not sent to the server and does not land in access logs or `Referer`.
-
-Inside MSO the same thing is the **Browser** app's Camoufox tab.
-
-## What the unit actually starts
-
-`scripts/camoufox-vnc-service` (a *user* unit, `~/.config/systemd/user/camoufox-vnc.service`):
-
-| piece | default | env override |
-|---|---|---|
-| X display | `:92` @ `1440x920x24` | `CAMOUFOX_DISPLAY_NUM`, `CAMOUFOX_GEOMETRY` |
-| VNC / noVNC ports | `5902` / `6080` | `CAMOUFOX_VNC_PORT`, `CAMOUFOX_NOVNC_PORT` |
-| profile | `~/.local/share/camoufox/profiles/linkedin` (chmod 700) | `CAMOUFOX_PROFILE` |
-| browser binary | `~/.cache/camoufox/browsers/official/…/camoufox` | `CAMOUFOX_BROWSER` |
-| start URL | none (restores last session) | `CAMOUFOX_START_URL` |
-| VNC password file | `~/.vnc/passwd` | `CAMOUFOX_VNC_PASSWD` |
-
-Also runs `matchbox-window-manager` so windows have no titlebar and fill the display.
-
-## The profile is the valuable part — and the crown jewels
-
-The profile holds a **live Google session** (`SID`, `__Secure-1PSID`, `SAPISID`) and
-LinkedIn's `li_at`. Stealing those cookies is account takeover with no password and no
-2FA prompt. So the unit re-`chmod 700`s the profile on every start (Firefox writes
-`cookies.sqlite` 0644) and snapshots `cookies.sqlite*`, `key4.db`, `cert9.db` into
-`~/.local/state/camoufox/session-backup/` — 3 generations, 0700.
-
-Never `mso cat` or paste the profile contents anywhere.
-
-To restore a broken session:
+If no bounded browser tool exists in the current runtime, resolve the local CLI and limit automation to status/start/stop:
 
 ```bash
-mso camoufox stop
-mso exec 'cp -p ~/.local/state/camoufox/session-backup/1/* ~/.local/share/camoufox/profiles/linkedin/'
-mso camoufox start
+MSO_ROOT="${MSO_DIR:-$(systemctl show -p WorkingDirectory --value mso.service 2>/dev/null || true)}"
+[ -n "$MSO_ROOT" ] || MSO_ROOT="$HOME/mso"
+MSO_CLI="$MSO_ROOT/bin/mso"
+
+"$MSO_CLI" camoufox status
+"$MSO_CLI" camoufox start
+# user opens the Browser app / Settings to obtain and use the private viewer session
+"$MSO_CLI" camoufox stop
 ```
 
-Use a separate profile per identity (`CAMOUFOX_PROFILE=…`) rather than logging one
-profile in and out — the anti-detection value comes from a profile that looks aged.
+Do not enable the user service at boot. The browser intentionally has a finite lease and should stop when unused because it is resource-heavy and contains live sessions.
 
-## Gotchas
+## Profile recovery
 
-- **`enabled:false` is REQUIRED, not an accident.** The unit ships `disabled` with
-  `Restart=no` + `RuntimeMaxSec=2h`. Power is plain `start`/`stop` — never
-  `enable --now`, or every click re-arms boot autostart (that is how it once ran 26h
-  with zero viewers). And a 2h lease under `Restart=always` is a 2-hourly reboot loop:
-  ship `Restart=no` and the lease together or neither.
-- **`CAMOUFOX_PROFILE` must point at `~/.local/share/…`, not `~/.cache/…`.** A wrong
-  path makes `mkdir -p` create an empty profile with no error — you get a
-  logged-out browser and no clue why.
-- **The unit exists only on the host.** There is no copy or installer for it in the
-  repo beyond `scripts/camoufox-vnc-service`; `loginctl enable-linger rahman` and the
-  `user-bus.conf` drop-in have to be set up by hand.
-- **Needs a user bus.** MSO reaches `systemctl --user` only because
-  `mso.service.d/user-bus.conf` sets `XDG_RUNTIME_DIR=/run/user/1001` and rahman has
-  `loginctl enable-linger`. If start fails with "Failed to connect to bus", that
-  drop-in or the linger is gone — not a camoufox problem.
-- **It is heavy.** Xvfb + Firefox + websockify. Check `mso stats` before starting it
-  on a loaded box, and stop it when you are done.
-- **Authorized use only.** Anti-detection browsing is for sites you have a right to
-  access — your own accounts, your own tenants. Do not use it to evade a block that
-  is telling you no.
+The profile is sensitive account state. Recovery is an explicit operator action: stop the browser, restore only from the configured private backup, preserve file permissions, then start it again. Require user approval before any restore and never inspect or print the restored files.
 
-## Related
+## Authorized-use rule
 
-- `/mso` — the CLI and everything else on the host
-  (`scripts/gen-readme-media.mjs` is the only screenshot driver; `scripts/e2e`
-  is a vitest smoke test, not a screenshot tool)
-- `skills/camoufox-browse` (bundled in MSO's own catalog) — the scripting-level
-  Camoufox skill for the in-app assistant, from ClawHub
+Use anti-detection only for accounts/tenants the user is authorized to access. It is not a mechanism for evading bans, bypassing access controls, or impersonating others.

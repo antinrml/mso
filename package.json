@@ -20,7 +20,8 @@
     "e2e:preview": "node scripts/e2e/preview.mjs",
     "changelog": "node scripts/gen-changelog.mjs",
     "ship": "bash scripts/ship.sh",
-    "smoke": "E2E_BASE_URL=http://localhost:4005 vitest run scripts/e2e/smoke.test.ts"
+    "smoke": "E2E_BASE_URL=http://localhost:4005 vitest run scripts/e2e/smoke.test.ts",
+    "icons:app": "node scripts/gen-app-icons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

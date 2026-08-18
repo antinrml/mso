@@ -20,7 +20,7 @@ import { osSettingsApp } from "@/features/os-settings";
 import { quicklinksApp } from "@/features/quicklinks";
 import { docsApp } from "@/features/docs";
 import { themeQuickPickerFeature } from "./theme-quick-picker";
-import { CamoufoxMark, HermesMark, OpenClawMark } from "./brand-marks";
+import { APP_MARKS } from "./brand-marks";
 
 export const TOPSIDE_BRAND: Brand = {
   name: "MSO",
@@ -37,34 +37,35 @@ export const TOPSIDE_PERSIST_KEY = "mso:layout";
 const withSlug = (app: AppDescriptor, slug: string): AppDescriptor => ({ ...app, slug });
 // Pinned = the mobile dock / quick-shortcut set (appshell stays id-agnostic).
 const pin = (app: AppDescriptor): AppDescriptor => ({ ...app, pinned: true });
-// Apps that wrap a third-party product wear that product's OWN mark. Assigned here,
-// not in the slice: the slice stays free of brand assets, this file already owns
-// every other bit of mso-specific identity, and `iconFill` drops the gradient
-// tile so a real logo is not stickered onto a synthetic one.
-const withMark = (app: AppDescriptor, icon: AppDescriptor["icon"]): AppDescriptor =>
-  ({ ...app, icon, iconFill: true });
+// App artwork is a consumer concern. Built-ins get tiny generated WebP artwork
+// here while each feature slice keeps a lightweight Lucide fallback for reuse
+// outside MSO. `iconFill` tells AppIcon the WebP already owns its tile treatment.
+const withArtwork = (app: AppDescriptor): AppDescriptor => {
+  const icon = APP_MARKS[app.id];
+  return icon ? { ...app, icon, iconFill: true } : app;
+};
 
 // Built-in apps (dock order; media-viewer is noDock). Runtime apps append.
 export const BUILTIN_APPS: AppDescriptor[] = [
-  pin(withSlug(filesManagerApp, "files")),
-  pin(withSlug(withMark(camoufoxBrowserApp, CamoufoxMark), "browser")),
-  withSlug(codeEditorApp, "code"),
-  pin(withSlug(osTerminalApp, "terminal")),
-  pin(withSlug(claudeCodeApp, "claude")),
-  withSlug(mediaStudioApp, "studio"),
-  withSlug(reelEditorApp, "reel"),
-  withSlug(mediaViewerApp, "viewer"),
-  withSlug(appStoreApp, "store"),
-  withSlug(createAppApp, "create"),
-  pin(withSlug(systemMonitorApp, "monitor")),
-  withSlug(assistantApp, "assistant"),
-  withSlug(withMark(hermesApp, HermesMark), "hermes"),
-  withSlug(withMark(openclawApp, OpenClawMark), "openclaw"),
-  withSlug(quicklinksApp, "links"),
+  pin(withSlug(withArtwork(filesManagerApp), "files")),
+  pin(withSlug(withArtwork(camoufoxBrowserApp), "browser")),
+  withSlug(withArtwork(codeEditorApp), "code"),
+  pin(withSlug(withArtwork(osTerminalApp), "terminal")),
+  pin(withSlug(withArtwork(claudeCodeApp), "claude")),
+  withSlug(withArtwork(mediaStudioApp), "studio"),
+  withSlug(withArtwork(reelEditorApp), "reel"),
+  withSlug(withArtwork(mediaViewerApp), "viewer"),
+  withSlug(withArtwork(appStoreApp), "store"),
+  withSlug(withArtwork(createAppApp), "create"),
+  pin(withSlug(withArtwork(systemMonitorApp), "monitor")),
+  withSlug(withArtwork(assistantApp), "assistant"),
+  withSlug(withArtwork(hermesApp), "hermes"),
+  withSlug(withArtwork(openclawApp), "openclaw"),
+  withSlug(withArtwork(quicklinksApp), "links"),
   // Docs is deliberately dockable, not noDock: for a signed-out visitor it is the
   // only app that explains what they are looking at and how to get their own.
-  withSlug(docsApp, "docs"),
-  pin(withSlug(osSettingsApp, "settings")),
+  withSlug(withArtwork(docsApp), "docs"),
+  pin(withSlug(withArtwork(osSettingsApp), "settings")),
 ];
 
 // Shell features — the generic brand-free set now lives INSIDE the appshell

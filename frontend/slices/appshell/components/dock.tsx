@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { LayoutGrid, Grid3x3 } from "lucide-react";
 import { useApps } from "../lib/registry";
 import { useWindowOrder, useFocused, useWindowsMap } from "../hooks/use-shell";
 import { setLauncherOpen } from "../lib/store";
@@ -80,18 +79,16 @@ export function Dock({ onMissionControl }: { onMissionControl?: () => void }) {
     {
       kind: "plain", id: "launchpad", label: "Launchpad", onClick: () => setLauncherOpen(true),
       node: (
-        <span className="grid size-full place-items-center rounded-[var(--radius-icon)] bg-gradient-to-b from-zinc-500 to-zinc-700 text-white">
-          <LayoutGrid className="size-[54%]" />
-        </span>
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src="/app-icons/launchpad.webp" alt="" aria-hidden className="size-full" draggable={false} decoding="async" />
       ),
     },
     ...(onMissionControl
       ? [{
           kind: "plain", id: "mission-control", label: "Mission Control", onClick: onMissionControl,
           node: (
-            <span className="grid size-full place-items-center rounded-[var(--radius-icon)] bg-gradient-to-b from-slate-600 to-slate-800 text-white">
-              <Grid3x3 className="size-[54%]" />
-            </span>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/app-icons/mission-control.webp" alt="" aria-hidden className="size-full" draggable={false} decoding="async" />
           ),
         } as Slot]
       : []),

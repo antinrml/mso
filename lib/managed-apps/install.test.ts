@@ -2,6 +2,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// This suite tests both single-origin and split-origin installs. Production may
+// legitimately export NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE, so pin the default
+// test graph to single-origin BEFORE static imports evaluate origin.ts. Individual
+// split-origin tests reset modules and stub their own template explicitly.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_MANAGED_APP_HOST_TEMPLATE = "";
+});
+
 vi.mock("server-only", () => ({}));
 vi.mock("./manager", () => ({ getManagedApp: vi.fn() }));
 vi.mock("./jobs", () => ({ startManagedAppJob: vi.fn() }));

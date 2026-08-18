@@ -122,7 +122,7 @@ export function DockIcon({
           // a blank link. The HoverPanel that carries app.title is `invisible`,
           // i.e. out of the a11y tree. PlainIcon (below) already did this.
           aria-label={running ? `${app.title} (running)` : app.title}
-          className="relative block size-full drop-shadow-[0_6px_10px_rgba(0,0,0,0.3)]"
+          className={cn("relative block size-full", !app.iconFill && "drop-shadow-[0_6px_10px_rgba(0,0,0,0.3)]")}
         >
           <AppIcon app={app} />
           {running && (

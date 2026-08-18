@@ -10,7 +10,7 @@ describe("docs app", () => {
   it("is registered in the shell so it can reach the dock", () => {
     const manifest = read("../os-shell/shell.manifest.ts");
     expect(manifest).toContain('import { docsApp } from "@/features/docs"');
-    expect(manifest).toContain('withSlug(docsApp, "docs")');
+    expect(manifest).toContain('withSlug(withArtwork(docsApp), "docs")');
     // noDock would hide it from the one surface a signed-out visitor looks at.
     expect(read("./index.ts")).not.toContain("noDock");
   });

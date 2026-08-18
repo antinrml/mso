@@ -1,28 +1,109 @@
-// Real product marks for the apps that wrap a THIRD-PARTY product, so the dock
-// shows Hermes/OpenClaw/Camoufox as themselves rather than as an approximate
-// lucide glyph. Each file is the upstream's own shipped icon, copied verbatim:
+// MSO app artwork.
 //
-//   public/brand/hermes.png    ← hermes_cli/web_dist/favicon.ico (48px frame)
-//   public/brand/openclaw.svg  ← openclaw/dist/control-ui/favicon.svg
-//   public/brand/camoufox.png  ← camoufox browser/chrome/icons/default/default128.png
-//
-// Plain <img>, not next/image: these are tiny fixed-size local assets, so the
-// optimizer would add a round trip and buy nothing. They live in os-shell (the
-// mso CONSUMER), never in appshell — the framework stays brand-free.
-//
-// `alt=""` on purpose: every surface that renders an app icon already labels it
-// with the app title, so alt text here would just repeat it to a screen reader.
+// Raster app artwork is intentionally WebP. Toolbar/menu/control glyphs stay
+// vector (Lucide), while app icons are allowed to carry richer platform-specific
+// illustration. macOS and Windows do NOT share the same art direction: the shell
+// chooses the correct image through data-shell CSS. Other shells keep the generic
+// fallback artwork until they receive their own generated set.
 import type { AppIconComponent } from "@/features/appshell";
 
-function mark(src: string, className: string): AppIconComponent {
+function mark(src: string): AppIconComponent {
   const Mark: AppIconComponent = ({ className: cls }) => (
+    // Tiny fixed local artwork; next/image would add optimizer overhead with no
+    // visual or transfer-size win at these dimensions.
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="" aria-hidden className={cls ?? className} draggable={false} />
+    <img
+      src={src}
+      alt=""
+      aria-hidden
+      className={cls ?? "size-full object-contain"}
+      draggable={false}
+      decoding="async"
+    />
   );
-  Mark.displayName = `BrandMark(${src})`;
+  Mark.displayName = `AppArtwork(${src})`;
   return Mark;
 }
 
-export const HermesMark = mark("/brand/hermes.png", "size-full");
-export const OpenClawMark = mark("/brand/openclaw.svg", "size-full");
-export const CamoufoxMark = mark("/brand/camoufox.png", "size-full");
+/** One app identity with distinct native-looking artwork per desktop shell. */
+function platformMark(fallback: string, macos: string, windows: string): AppIconComponent {
+  const Mark: AppIconComponent = ({ className: cls }) => {
+    const size = cls ?? "size-full";
+    return (
+      <span className={`shell-platform-mark relative block ${size}`} aria-hidden>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={fallback} alt="" className="shell-artwork shell-artwork-default" draggable={false} decoding="async" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={macos} alt="" className="shell-artwork shell-artwork-macos" draggable={false} decoding="async" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={windows} alt="" className="shell-artwork shell-artwork-windows" draggable={false} decoding="async" />
+      </span>
+    );
+  };
+  Mark.displayName = `PlatformArtwork(${macos},${windows})`;
+  return Mark;
+}
+
+export const APP_MARKS: Record<string, AppIconComponent> = {
+  "files-manager": platformMark(
+    "/app-icons/files.webp",
+    "/app-icons/macos/files.webp",
+    "/app-icons/windows/files.webp",
+  ),
+  "camoufox-browser": platformMark(
+    "/app-icons/camoufox.webp",
+    "/app-icons/macos/camoufox.webp",
+    "/app-icons/windows/camoufox.webp",
+  ),
+  "code-editor": platformMark(
+    "/app-icons/code.webp",
+    "/app-icons/macos/code.webp",
+    "/app-icons/windows/code.webp",
+  ),
+  "os-terminal": platformMark(
+    "/app-icons/terminal.webp",
+    "/app-icons/macos/terminal.webp",
+    "/app-icons/windows/terminal.webp",
+  ),
+  "claude-code": platformMark("/app-icons/claude.webp", "/app-icons/macos/claude.webp", "/app-icons/windows/claude.webp"),
+  "media-studio": platformMark(
+    "/app-icons/studio.webp",
+    "/app-icons/macos/studio.webp",
+    "/app-icons/windows/studio.webp",
+  ),
+  "reel-editor": platformMark("/app-icons/reel.webp", "/app-icons/macos/reel.webp", "/app-icons/windows/reel.webp"),
+  "media-viewer": platformMark("/app-icons/viewer.webp", "/app-icons/macos/viewer.webp", "/app-icons/windows/viewer.webp"),
+  "app-store": platformMark(
+    "/app-icons/store.webp",
+    "/app-icons/macos/store.webp",
+    "/app-icons/windows/store.webp",
+  ),
+  "create-app": platformMark("/app-icons/create.webp", "/app-icons/macos/create.webp", "/app-icons/windows/create.webp"),
+  "system-monitor": platformMark(
+    "/app-icons/monitor.webp",
+    "/app-icons/macos/monitor.webp",
+    "/app-icons/windows/monitor.webp",
+  ),
+  assistant: platformMark(
+    "/app-icons/assistant.webp",
+    "/app-icons/macos/assistant.webp",
+    "/app-icons/windows/assistant.webp",
+  ),
+  "os-settings": platformMark(
+    "/app-icons/settings.webp",
+    "/app-icons/macos/settings.webp",
+    "/app-icons/windows/settings.webp",
+  ),
+  quicklinks: platformMark("/app-icons/links.webp", "/app-icons/macos/links.webp", "/app-icons/windows/links.webp"),
+  docs: platformMark(
+    "/app-icons/docs.webp",
+    "/app-icons/macos/docs.webp",
+    "/app-icons/windows/docs.webp",
+  ),
+  hermes: platformMark("/app-icons/hermes.webp", "/app-icons/macos/hermes.webp", "/app-icons/windows/hermes.webp"),
+  openclaw: platformMark("/app-icons/openclaw.webp", "/app-icons/macos/openclaw.webp", "/app-icons/windows/openclaw.webp"),
+};
+
+export const HermesMark = APP_MARKS.hermes;
+export const OpenClawMark = APP_MARKS.openclaw;
+export const CamoufoxMark = APP_MARKS["camoufox-browser"];

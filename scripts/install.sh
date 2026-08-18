@@ -348,8 +348,9 @@ case ":$PATH:" in
   *) warn "$BIN_DIR is not on PATH — add: export PATH=\"\$PATH:$BIN_DIR\"" ;;
 esac
 
-# ---- agent skills (symlinked, so a git pull updates them too) ----
-# Skipped silently when Claude Code isn't installed — mso does not depend on it.
+# ---- optional Claude Code integration ----
+# MSO catalogs $DIR/claude-skills directly, so these symlinks are NOT required by MSO.
+# They only expose the same official playbooks to Claude Code when its home exists.
 SKILL_DIR="${MSO_SKILL_DIR:-$HOME/.claude/skills}"
 if [ -d "$DIR/claude-skills" ] && [ -d "$(dirname "$SKILL_DIR")" ]; then
   mkdir -p "$SKILL_DIR"

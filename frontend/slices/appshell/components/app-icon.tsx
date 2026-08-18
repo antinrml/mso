@@ -23,12 +23,12 @@ export function AppIcon({
     return (
       <span
         className={cn(
-          "shell-icon-tile relative grid size-full place-items-center overflow-hidden",
+          "relative grid size-full place-items-center",
           className,
         )}
-        style={{ background: app.gradient, boxShadow: "var(--shell-icon-shadow)" }}
+        style={{ background: "transparent", boxShadow: "none" }}
       >
-        <Icon className="size-full object-cover" />
+        <Icon className="size-full object-contain" />
         <AppBadge appId={app.id} />
       </span>
     );
@@ -57,7 +57,7 @@ export function AppIcon({
       <Icon
         className="relative z-[1]"
         style={{ width: "var(--shell-icon-glyph)", height: "var(--shell-icon-glyph)" }}
-        strokeWidth={2.25}
+        strokeWidth={1.8}
       />
       <AppBadge appId={app.id} />
     </span>

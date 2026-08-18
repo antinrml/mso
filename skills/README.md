@@ -1,31 +1,24 @@
-# Bundled skills
+# MSO skill catalog
 
-Skills that ship WITH MSO, so a fresh install has a catalog before anything else is
-installed on the host. `/api/skills` reads this directory first, then the host-owned
-roots (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`,
-`~/.openclaw/workspace/skills`, `~/.local/lib/node_modules/openclaw/skills`) — a host
-copy of the same name wins, so an operator can override a bundled skill without
-editing the repo.
+MSO exposes markdown playbooks from several roots, but discovery is **not** the same as trust.
 
-`~/.claude/skills` is where `scripts/install.sh` symlinks mso's own agent skills
-(`/mso`, `/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`). It was
-missing from the root list until 2026-08-10, which meant the documents describing how
-to drive mso were the one catalog mso itself could not see.
+## Trust and precedence
 
-**These roots are read OUTSIDE the fs jail** — not filtered by `OS_FS_READ_ROOTS`, not
-checked against the credential denylist in `lib/host/paths.ts`. Narrowing your read
-roots does not narrow this route. The route therefore opens exactly two things: a
-directory listing, and a file named exactly `SKILL.md` that still resolves under one
-of these roots after `realpath` (so a symlinked `SKILL.md` cannot serve `~/.ssh/config`).
+Highest precedence wins when two roots contain the same skill name:
 
-Each skill is a directory containing `SKILL.md` with YAML frontmatter (`name`,
-`description`). That is the whole contract; the route reads nothing else.
+1. `~/.mso/skills` — **local** operator override. This is the only host root that may intentionally replace an MSO skill.
+2. `<MSO_ROOT>/claude-skills` — **official** MSO skills. These are always cataloged directly from the repo; Claude does not need to be installed and no symlink is required.
+3. `<MSO_ROOT>/skills` — bundled third-party skills. A ClawHub skill is **verified** only while its current `SKILL.md` SHA-256 matches `.clawhub/origin.json`; otherwise it is **untrusted**.
+4. Generic discovery roots (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, OpenClaw roots) — **untrusted** by default and cannot shadow the three roots above.
 
-## Provenance
+The assistant lists/loads only `official`, `verified`, and `local` instructions by default. Untrusted skills remain visible in the catalog for inspection, but their instructions are not fed directly to the model. Review one as a normal file, then copy/move the approved skill into `~/.mso/skills` if you intentionally want to trust it.
 
-`camoufox-browse` is NOT ours. It comes from the ClawHub registry
-(https://clawhub.ai), slug `camoufox-browse`, owner handle `zenaufa`, version 1.0.7 —
-see `camoufox-browse/.clawhub/origin.json` for the artifact hashes it was installed
-with. It is vendored here so MSO lists it without OpenClaw installed. It carries no
-license file of its own; if that matters for your deployment, delete the directory —
-the route degrades to whatever the host roots provide.
+## Contract
+
+Each skill is a directory containing `SKILL.md` with YAML frontmatter (`name`, `description`). MSO returns catalog metadata including `source`, `trust`, and verified provenance when available.
+
+Skill roots are intentionally read outside the normal filesystem jail, because agent skill registries may live outside `OS_FS_READ_ROOTS`. The reader therefore opens only a file named exactly `SKILL.md` after `realpath`; a symlink such as `SKILL.md -> ~/.ssh/config` is refused. Root trust/precedence handles the remaining instruction-supply-chain risk.
+
+## Bundled third-party skill
+
+`camoufox-browse` comes from ClawHub (`zenaufa`, installed version 1.0.7). Its `.clawhub/origin.json` records the artifact and skill hashes. Do not edit its `SKILL.md` in place: a modification intentionally invalidates verification. Put MSO-specific policy in an official wrapper skill instead.
