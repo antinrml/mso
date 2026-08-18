@@ -11,6 +11,10 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 - finish native platform icon set
 - harden skills and refresh platform icons
 
+**Fixed**
+
+- use transparent feature icon artwork
+
 ## 2026-08-17
 
 **Added**
