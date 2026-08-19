@@ -28,7 +28,7 @@ function trustedDownloadUrl(raw: string): URL {
   if (url.protocol !== "https:") throw new HostError("file.download_url must use HTTPS");
   const host = url.hostname.toLowerCase();
   if (host !== "files.oaiusercontent.com" && !host.endsWith(".oaiusercontent.com")) {
-    throw new HostError("file.download_url is not an OpenAI file host");
+    throw new HostError(`file.download_url host is not allowed: ${host}`);
   }
   return url;
 }
