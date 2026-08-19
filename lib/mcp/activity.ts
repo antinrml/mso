@@ -12,6 +12,7 @@ export interface McpActivityEntry {
   tool: string;
   state: McpActivityState;
   scope?: string;
+  workflowId?: string;
   target?: string;
   durationMs?: number;
   detail?: string;
@@ -28,6 +29,14 @@ function trunc(v: string | undefined, max = 180): string | undefined {
   return v.length > max ? v.slice(0, max) + "…" : v;
 }
 
+function safeActivityText(value: string): string {
+  return value
+    .replace(/([?&](?:token|key|secret|password|code)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/\b(password|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+    .replace(/\b(?:bearer\s+)?(?:sk|pk|ghp|mso_mcp)_[a-z0-9_-]{8,}\b/gi, "[redacted]")
+    .replace(/\b[a-f0-9]{48,}\b/gi, "[opaque-id]");
+}
+
 let chain: Promise<void> = Promise.resolve();
 
 export function newActivityId(): string {
@@ -37,9 +46,9 @@ export function newActivityId(): string {
 export function activityTarget(args: Record<string, unknown>): string | undefined {
   // Never serialize fs_write.content or arbitrary payloads. Prefer the one field
   // that explains what the tool is acting on without leaking the body.
-  for (const key of ["path", "id", "query", "from", "command", "on"] as const) {
+  for (const key of ["path", "id", "query", "intent", "project", "workflow_id", "from", "command", "on"] as const) {
     const v = args[key];
-    if (typeof v === "string" && v) return trunc(v);
+    if (typeof v === "string" && v) return trunc(safeActivityText(v));
     if (typeof v === "boolean") return String(v);
   }
   return undefined;

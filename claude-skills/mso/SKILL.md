@@ -37,6 +37,17 @@ MSO_CLI="$MSO_ROOT/bin/mso"
 
 Use the absolute CLI path above in automation. `$HOME/.local/bin/mso` is a convenience symlink and may not be on PATH in non-login shells, CI, MCP executors, or systemd.
 
+## Learning loop — search first, keep the fastest verified path
+
+For any task likely to need two or more tool calls:
+
+1. Call `skills_search` with the user's complete intent. It searches trusted skills, the live MCP tool catalog, and learned recipes using the local semantic index.
+2. Call `workflow_start` before the first operational tool. Reuse a relevant successful recipe when it is still safe and applicable.
+3. Execute with bounded tools first and verify the result.
+4. Call `workflow_finish` with `success=true` only after verification. MSO stores the redacted tool sequence and durations, merges equivalent intents, and keeps the fastest successful path.
+
+The memory never stores `fs_write.content`, raw file bodies, bearer tokens, browser credentials, or full secret-looking command arguments. Failed runs are useful evidence but never replace a successful best path.
+
 ## Core operations
 
 ```bash

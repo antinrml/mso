@@ -14,6 +14,7 @@ describe("MCP activity stream", () => {
   it("never serializes fs_write content into the activity target", () => {
     expect(activityTarget({ path: "/tmp/note.txt", content: "super secret body" })).toBe("/tmp/note.txt");
     expect(activityTarget({ content: "super secret body" })).toBeUndefined();
+    expect(activityTarget({ query: "deploy token=abc123" })).toBe("deploy token=[redacted]");
   });
 
   it("collates started/completed rows newest-first with one correlation id", async () => {

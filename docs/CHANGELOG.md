@@ -8,6 +8,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Added**
 
+- add semantic skill memory and workflow recipes
 - add secure temporary screenshot links
 - add MCP screenshots and live activity
 

@@ -22,3 +22,19 @@ Skill roots are intentionally read outside the normal filesystem jail, because a
 ## Bundled third-party skill
 
 `camoufox-browse` comes from ClawHub (`zenaufa`, installed version 1.0.7). Its `.clawhub/origin.json` records the artifact and skill hashes. Do not edit its `SKILL.md` in place: a modification intentionally invalidates verification. Put MSO-specific policy in an official wrapper skill instead.
+
+## Semantic search and learned recipes
+
+The catalog is indexed together with the live MCP tool schemas and successful
+workflow recipes. `skills_search` / `skills.search` and `GET /api/skills?q=...` use
+the local `mso-local-hybrid-v1` encoder, so searches work across English, Indonesian
+and minor typos without a cloud embedding API. Untrusted skill instructions remain
+excluded by default.
+
+A multi-step MCP client can bracket work with `workflow_start` and
+`workflow_finish`. MSO records only redacted terminal tool steps, explicitly allowlisted scalar
+arguments, timings and the verified outcome in `~/.mso/skill-memory.json`, merges semantically equivalent
+intents, and retains the fastest successful sequence as a future recipe. Failed
+attempts remain evidence but never replace a successful path. Recipes are ranked
+with trust, semantic relevance, observed success rate, speed and current tool
+availability; they are suggestions, not permission to skip scope or approval gates.

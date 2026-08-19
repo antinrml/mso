@@ -89,7 +89,7 @@ Commands:
   config *             BYOK provider + model: show | set | rm
   prefs *              UI preferences: show | set
   models *             Model catalog: list | test
-  skills [name]        Skill catalog the assistant sees; with a name, its SKILL.md
+  skills *             Skill memory: list | read <name> | search <query>
   changelog            What shipped, newest first (same text Settings → About shows)
   mcp *                MCP tokens + live activity: list | activity [n] | revoke <id> | revoke all
   oauth <prov> *       Provider sign-in (device code): start | poll

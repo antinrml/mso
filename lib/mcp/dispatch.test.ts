@@ -25,6 +25,12 @@ describe("protocol", () => {
     expect((r.result as Record<string, unknown>).protocolVersion).toBe("2025-06-18");
   });
 
+  it("advertises the learning loop to connected MCP clients", async () => {
+    const r = await dispatch({ id: 1, method: "initialize" }, "read");
+    expect((r.result as { instructions?: string }).instructions).toContain("skills_search");
+    expect((r.result as { instructions?: string }).instructions).toContain("workflow_finish");
+  });
+
   it("answers ping and initialized", async () => {
     expect(await dispatch({ id: 2, method: "ping" }, "read")).toMatchObject({ result: {} });
     expect(await dispatch({ id: 3, method: "notifications/initialized" }, "read")).toMatchObject({ result: {} });
@@ -52,6 +58,8 @@ describe("tools/list is scope-filtered", () => {
     const n = await names("read");
     expect(n).toContain("fs_list");
     expect(n).toContain("sys_stats");
+    expect(n).toContain("skills_search");
+    expect(n).not.toContain("workflow_start");
     expect(n).not.toContain("fs_write");
     expect(n).not.toContain("exec_run");
   });
@@ -60,6 +68,8 @@ describe("tools/list is scope-filtered", () => {
     const n = await names("write");
     expect(n).toContain("fs_write");
     expect(n).toContain("fs_delete");
+    expect(n).toContain("workflow_start");
+    expect(n).toContain("workflow_finish");
     expect(n).not.toContain("exec_run");
     expect(n).not.toContain("browser_power");
   });

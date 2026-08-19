@@ -59,15 +59,18 @@ Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`.
 
 | Scope | Tools |
 |---|---|
-| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `browser_status` |
-| `write` | + `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
+| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `skills_search` `screen_capture` `browser_status` |
+| `write` | + `workflow_start` `workflow_finish` `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
 | `exec` | + `exec_run` `browser_power` |
 
-Alfa — the in-app assistant — has the same capabilities under dot.case names, and
-`lib/mcp/parity.test.ts` fails if one surface gains a tool the other lacks without a
-written reason. The two catalogs stay separate on purpose (different transport,
-different guard) but may not drift by accident, which they did: MCP shipped the
-managed-app and browser tools before Alfa had them.
+Alfa — the in-app assistant — has the same host capabilities under dot.case names,
+and `lib/mcp/parity.test.ts` fails if one surface gains a tool the other lacks
+without a written reason. `skills_search` maps to Alfa's `skills.search`.
+`screen_capture`, `workflow_start` and `workflow_finish` are explicitly MCP-only:
+the external connector needs visual proof and an actor-scoped task boundary, while
+Alfa already runs inside the rendered shell and owns an in-app run boundary. The
+two catalogs stay separate on purpose (different transport and guard) but may not
+drift by accident.
 
 **These tool names are also a cross-repo contract.** `rahmanef63/connectors-gateway`
 registered mso as a connector on 2026-08-17 and pins 15 of these names as strings; a
@@ -83,6 +86,58 @@ restarting a daemon does not require handing one over either.
 
 `tools/list` is filtered by the token's scope, and `tools/call` re-checks it — a
 client that calls a tool it was never shown still gets refused.
+
+## Semantic skill search and learned workflows
+
+MSO does not need to rediscover the same safe procedure on every conversation. Its
+learning loop has three layers:
+
+1. `skills_search` searches trusted `SKILL.md` instructions, the live MCP tool
+   catalog and previously learned workflows.
+2. `workflow_start` creates an actor-scoped task boundary before multi-step work and
+   returns the closest prior recipe, including its best tool sequence, success rate
+   and fastest verified duration.
+3. `workflow_finish` records the verified outcome and merges semantically equivalent
+   intents. A faster successful run replaces the best path; a failed run remains
+   evidence but never replaces a successful recipe.
+
+The index uses `mso-local-hybrid-v1`: a deterministic, local 384-dimensional
+feature-hashed vector over words, bilingual aliases, bigrams and character n-grams,
+combined with lexical overlap. It requires no API key, network call, model download
+or token budget. This is a small local semantic router for MSO's skill/tool catalog,
+not a general-purpose cloud embedding model. A future encoder can re-index recipes
+because every saved vector carries its version.
+
+Connected clients receive this sequence in the MCP `initialize.instructions` field:
+
+```text
+skills_search → workflow_start → bounded operational tools → verify → workflow_finish
+```
+
+A recipe is guidance, not permission. The connector still checks current tool
+availability, token scope, project context and safety constraints before reusing it.
+Recipes that reference a missing or renamed tool are marked and ranked down.
+
+From the browser or CLI:
+
+```bash
+mso skills list
+mso skills read mso
+mso skills search "deploy MSO and verify production"
+```
+
+The same search is available to Alfa as `skills.search` and through the
+session-gated endpoint `GET /api/skills?q=...`.
+
+## Visual progress and secure temporary links
+
+`screen_capture` renders only MSO itself — never an arbitrary URL — and can choose
+`macos`, `windows` or `dashboard`. It returns the PNG directly to the MCP client plus
+a temporary MSO preview/download URL. The artifact lives outside `public/`, requires
+a valid approved-device session, uses an unguessable id, expires after 15 minutes,
+is limited to five downloads, sends `Cache-Control: no-store`, and is deleted after
+expiry/exhaustion. This provides visual progress without turning a read token into a
+general browser or public-file-hosting primitive.
 
 ## What this does and does not protect
 
@@ -116,32 +171,45 @@ Grant `read` unless you actually need more, and mint a second token when you do.
 
 ## Seeing what a token did
 
-Revoking is a weak control if you cannot see what already went through, so every
-mutating MCP call lands in the same audit trail (`~/.mso/audit.log`, JSONL) that
-the web UI's writes and commands do — with `actor` set to `mcp:<id>`, the same id
-the Settings table and `mso mcp list` show.
+MSO keeps two deliberately different records.
+
+### Live MCP activity — operational visibility
+
+Every MCP tool call, including reads, produces correlated `started` and terminal
+(`completed`, `failed`, `denied`, `rate_limited`) rows in
+`~/.mso/mcp-activity.log`. When a workflow is active, the rows carry its
+`workflowId`, so the Assistant can show one task as a continuous sequence rather
+than unrelated calls. Targets are truncated and secret-looking values are redacted;
+`fs_write.content`, file bodies, bearer values and raw tool results are never stored.
+
+View it in **Assistant → MCP** (live polling with pause/resume) or from the CLI:
+
+```bash
+mso mcp activity
+mso mcp activity 100
+```
+
+### Security audit — forensic visibility
+
+State-changing calls also land in the append-only security trail
+`~/.mso/audit.log`, with `actor=mcp:<id>` matching Settings → MCP and
+`mso mcp list`. The audit records `fs.write`, `fs.mkdir`, `fs.move`, `fs.copy`,
+`fs.delete`, `exec.run`, `managed-app.action`, `camoufox.power`,
+`workflow.start`, `workflow.finish`, and `mcp.denied`. It is intentionally quieter
+than the activity stream so security-relevant lines are not buried by reads.
 
 ```bash
 mso audit              # newest 50, everything
 mso audit 100 exec.    # just command execution
-mso audit 50 mcp.      # just scope refusals
-jq -c 'select(.actor|startswith("mcp:"))' ~/.mso/audit.log   # everything MCP did
+mso audit 50 workflow. # learned workflow boundaries
+mso audit 50 mcp.      # scope refusals
+jq -c 'select(.actor|startswith("mcp:"))' ~/.mso/audit.log
 ```
 
-Settings → MCP shows the last 20 MCP lines inline.
-
-What is recorded: `fs.write` `fs.mkdir` `fs.move` `fs.copy` `fs.delete`
-`exec.run` `managed-app.action` `camoufox.power`, each with its target and whether it succeeded, plus
-`mcp.denied` when a token asks for a tool above its scope. **That last one is the
-signal worth watching** — a `read` connector repeatedly reaching for `exec_run` is
-what a prompt-injected model looks like from the outside.
-
-Reads are NOT recorded. Same rule the `/api/v1` routes follow: they are bounded
-and high-volume, and logging them would bury the lines that matter.
-
-There is deliberately no MCP tool for reading the trail. It records what every
-token did; letting a token read it would let a compromised one check whether it
-had been noticed. `GET /api/v1/sys/audit` is session-gated, browser and CLI only.
+A `read` connector repeatedly reaching for `exec_run` appears as `mcp.denied` and
+is the prompt-injection signal worth watching. There is deliberately no MCP tool
+for reading the security trail: a compromised token must not be able to check
+whether the owner noticed it. The session-gated browser/CLI surfaces can read it.
 
 ## Revoking
 
@@ -158,13 +226,18 @@ in-flight connector stops on its next request.
 
 ## Storage
 
-`~/.mso/mcp.json`, mode 0600, written atomically. It holds **sha256 only** — of
-every authorization code and every bearer. The raw value exists in flight and is
-handed to the client exactly once. A stolen copy of that file tells an attacker
-what was issued, not how to use it.
+`~/.mso/mcp.json`, mode 0600, is written atomically and holds **sha256 only** for
+every authorization code and bearer. The raw value exists in flight and is handed
+to the client exactly once. Authorization codes are single-use with a 60-second
+TTL and are deleted before token minting.
 
-Authorization codes are single-use with a 60-second TTL and are deleted before the
-token is minted, so a replayed code finds nothing and gets `invalid_grant`.
+Learned workflows live separately in `~/.mso/skill-memory.json` (override with
+`OS_SKILL_MEMORY_STORE`), also mode 0600 under a 0700 directory and written by
+atomic rename. It stores intent/summary, local semantic vectors, tool names, redacted targets and only
+explicitly allowlisted scalar arguments, timings and outcomes. It does **not** store `fs_write.content`, raw file
+contents, browser credentials, bearer tokens, API keys, or full secret-looking shell
+arguments. One active workflow is retained per MCP actor; completed memory is bounded
+to 200 recipes and each workflow to 300 terminal steps.
 
 ## Rate limits
 
@@ -174,25 +247,32 @@ resets on restart) — enough to blunt a runaway agent, which is the realistic
 failure mode for an endpoint whose top scope is a shell.
 
 Those are per TOKEN and say nothing about which tool ran, so each mutating tool
-also carries the **per-operation** limit its `/api/v1` route already applies, on
-the SAME bucket key — MCP and the browser share one allowance rather than getting
-one each. `exec_run` 60/min, fs writes 120/min, fs copy/delete 60/min,
-`apps_power` and `browser_power` 12/min per app. Without this a write-scope token
-could restart a daemon 120×/min while the UI was capped at 12.
+also carries the **per-operation** limit its route already applies, on the SAME
+bucket key — MCP and the browser share one allowance rather than getting one each.
+`exec_run` 60/min, fs writes 120/min, fs copy/delete 60/min, `apps_power` and
+`browser_power` 12/min per app. MCP-native expensive/stateful operations are
+stricter: `screen_capture` 10/min and workflow-memory writes 30/min.
 
 ## Layout
 
 ```
-lib/mcp/pkce.ts       S256 verify, base64url, hashing, redirect_uri rules
-lib/mcp/scope.ts      the read/write/exec ladder + the env kill switch
-lib/mcp/store.ts      ~/.mso/mcp.json — clients, codes, tokens (hashed)
-lib/mcp/tool-kit.ts   the McpTool shape + arg helpers shared by both tiers
-lib/mcp/tools-read.ts the read tier — observability, no way to change anything
-lib/mcp/tools.ts      the write + exec tiers, and the assembled catalog
-lib/mcp/dispatch.ts   JSON-RPC: initialize / ping / tools.list / tools.call
-app/mcp/route.ts      the endpoint — bearer, rate limits, dispatch
-app/oauth/*           authorize (consent) · token · register (DCR)
-app/.well-known/*     RFC 9728 + RFC 8414 discovery
+lib/mcp/pkce.ts           S256 verify, base64url, hashing, redirect_uri rules
+lib/mcp/scope.ts          the read/write/exec ladder + the env kill switch
+lib/mcp/store.ts          ~/.mso/mcp.json — clients, codes, tokens (hashed)
+lib/mcp/tool-kit.ts       McpTool, direct image content and run context
+lib/mcp/tools-read.ts     bounded reads + skills_search + screen_capture
+lib/mcp/tools-learning.ts actor-scoped workflow_start / workflow_finish
+lib/mcp/tools.ts          write/exec tools and the assembled catalog
+lib/mcp/activity.ts       live correlated tool activity
+lib/mcp/dispatch.ts       JSON-RPC, scope checks, activity + recipe capture
+lib/skills/catalog.ts     trusted SKILL.md roots and provenance
+lib/skills/semantic.ts    local hybrid embedding/search primitives
+lib/skills/search.ts      unified skill/tool/recipe ranking
+lib/skills/memory.ts      atomic redacted workflow recipe store
+app/api/skills/route.ts   browser/Alfa list, read and semantic search
+app/mcp/route.ts          bearer, rate limits and dispatch
+app/oauth/*               authorize (consent) · token · register (DCR)
+app/.well-known/*         RFC 9728 + RFC 8414 discovery
 ```
 
 `/mcp` lives outside `/api` on purpose: `proxy.ts` blocks mutating `/api` that

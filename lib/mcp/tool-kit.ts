@@ -27,13 +27,19 @@ export function isMcpDirectResult(value: unknown): value is McpDirectResult {
   return Boolean(value && typeof value === "object" && (value as McpDirectResult).__mcpDirect === true);
 }
 
+export interface McpRunContext {
+  actor?: string;
+  scope: Scope;
+  workflowId?: string;
+}
+
 export interface McpTool {
   name: string;
   description: string;
   scope: Scope;
   inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
   annotations?: Record<string, boolean>;
-  run: (a: Record<string, unknown>) => Promise<unknown>;
+  run: (a: Record<string, unknown>, context: McpRunContext) => Promise<unknown>;
   /** Which audit action this writes, and which argument names the target. Reads
    *  are deliberately unaudited (bounded + high-volume, same rule the /api/v1
    *  routes follow); a tool without this field writes nothing.

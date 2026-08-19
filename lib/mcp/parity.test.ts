@@ -36,6 +36,8 @@ const ALFA_ONLY: Record<string, string> = {
 
 const MCP_ONLY: Record<string, string> = {
   "screen.capture": "external MCP clients need visual proof of the rendered OS; in-shell Alfa already runs inside that browser UI",
+  "workflow.start": "the external connector needs an actor-scoped task boundary; Alfa already owns an in-app conversation/run boundary",
+  "workflow.finish": "same actor-scoped learning loop; Alfa recipes can use the session route later without weakening MCP scope semantics",
 };
 
 describe("Alfa ↔ MCP capability parity", () => {
@@ -95,6 +97,7 @@ describe("MCP rate limits mirror the routes", () => {
       // screen_capture has no HTTP route by design; it exists only for connected
       // MCP clients and is expensive enough to deserve a much smaller bucket.
       "screen.capture": 10,
+      "workflow.memory": 30,
     };
     for (const t of TOOLS) {
       if (!t.limit) continue;

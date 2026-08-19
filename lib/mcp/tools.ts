@@ -5,6 +5,7 @@ import { isManagedAppId } from "@/lib/managed-apps/catalog";
 import { MANAGED_APP_ACTIONS, type ManagedAppAction } from "@/lib/managed-apps/types";
 import { type McpTool, str, opt, S, PATH_P } from "./tool-kit";
 import { READ_TOOLS } from "./tools-read";
+import { LEARNING_TOOLS } from "./tools-learning";
 
 // The write and exec tiers. Each carries an `audit` descriptor — the dispatcher,
 // not the tool, writes the trail, because these call lib/host directly and so
@@ -142,6 +143,6 @@ const MUTATE_TOOLS: McpTool[] = [
   },
 ];
 
-export const TOOLS: McpTool[] = [...READ_TOOLS, ...MUTATE_TOOLS];
+export const TOOLS: McpTool[] = [...READ_TOOLS, ...LEARNING_TOOLS, ...MUTATE_TOOLS];
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 export type { McpTool } from "./tool-kit";

@@ -1,5 +1,6 @@
 import { clip, obj, str } from "./schema";
 import { MUTATE_TOOLS } from "./catalog-mutate";
+import { SKILL_TOOLS } from "./catalog-skills";
 import type { HostTool } from "./types";
 
 
@@ -175,44 +176,7 @@ const READ_TOOLS: HostTool[] = [
       return `opened ${target.title}${path ? ` at ${path}` : ""}`;
     },
   },
-  {
-    name: "skills.list",
-    group: "agent",
-    label: "List skills",
-    effect: "read",
-    description: "List local MSO/OpenClaw/Codex skills available on this VPS. Use before asking to run a specialized skill such as camoufox.",
-    parameters: obj({}),
-    run: async () => {
-      const data = (await fetch("/api/skills", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : { skills: [] }))
-        .catch(() => ({ skills: [] }))) as { skills?: { name: string; description?: string; trust?: string; source?: string }[] };
-      const skills = data.skills ?? [];
-      const safe = skills.filter((s) => s.trust !== "untrusted");
-      const blocked = skills.length - safe.length;
-      const rows = safe.map((s) => `${s.name} [${s.trust ?? "legacy"}/${s.source ?? "unknown"}]${s.description ? ` — ${s.description}` : ""}`);
-      if (blocked) rows.push(`(${blocked} discovered skill${blocked === 1 ? "" : "s"} hidden because trust=untrusted)`);
-      return rows.length ? rows.join("\n") : "no trusted local skills found";
-    },
-  },
-  {
-    name: "skills.read",
-    group: "agent",
-    label: "Read skill",
-    effect: "read",
-    description: "Read one local skill's SKILL.md instructions by exact skill name.",
-    parameters: obj({ "name!": str("Exact skill name from skills.list") }),
-    run: async (_api, a) => {
-      const name = String(a.name ?? "").trim();
-      if (!name) return "missing skill name";
-      const r = await fetch(`/api/skills?name=${encodeURIComponent(name)}`, { cache: "no-store" });
-      if (!r.ok) return `couldn't read skill ${name}`;
-      const d = (await r.json()) as { content?: string; truncated?: boolean; skill?: { trust?: string; source?: string } };
-      if (d.skill?.trust === "untrusted") {
-        return `refused to load untrusted skill instructions (source=${d.skill.source ?? "unknown"}). Inspect the SKILL.md as a file and explicitly move/copy it into ~/.mso/skills after review if you want MSO to trust it.`;
-      }
-      return clip(`${d.content ?? ""}${d.truncated ? "\n… (truncated)" : ""}`);
-    },
-  },
+  ...SKILL_TOOLS,
   {
     name: "memory.remember",
     group: "agent",

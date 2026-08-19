@@ -1,6 +1,7 @@
 import { listDir, readFile, searchFs, usage, stats, processes, captureMsoScreen, createTempShare, tempShareUrl } from "@/lib/host";
 import { camoufoxStatus } from "@/lib/camoufox/service";
 import { listManagedApps, getManagedAppLogs } from "@/lib/managed-apps/manager";
+import { searchSkillMemory } from "@/lib/skills/search";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
 import { type McpTool, str, opt, S, PATH_P, READ_ONLY, mcpDirect } from "./tool-kit";
 
@@ -97,6 +98,28 @@ export const READ_TOOLS: McpTool[] = [
       const id = str(a, "id");
       if (!isManagedAppId(id)) throw new Error(`unknown managed application "${id}" — call apps_list for valid ids`);
       return getManagedAppLogs(id);
+    },
+  },
+  {
+    name: "skills_search",
+    description:
+      "Semantic search across trusted SKILL.md files, the live MCP tool catalog and learned successful workflows. " +
+      "USE THIS FIRST for an unfamiliar or multi-step task so the fastest verified prior path is considered before rediscovering it. " +
+      "The embedding runs locally with no API cost; untrusted skill instructions are excluded unless explicitly requested.",
+    scope: "read",
+    annotations: READ_ONLY,
+    inputSchema: S({
+      query: { type: "string", description: "The user's task or capability question in one complete sentence." },
+      top_k: { type: "number", minimum: 1, maximum: 20, description: "Maximum matches. Default 8." },
+      include_untrusted: { type: "boolean", description: "Include metadata-only matches from untrusted skill roots. Default false." },
+    }, ["query"]),
+    run: async (a) => {
+      const { TOOLS } = await import("./tools");
+      return searchSkillMemory(str(a, "query"), {
+        topK: typeof a.top_k === "number" ? a.top_k : undefined,
+        includeUntrusted: a.include_untrusted === true,
+        toolDocs: TOOLS.map((t) => ({ name: t.name, description: t.description, scope: t.scope, inputSchema: t.inputSchema })),
+      });
     },
   },
   {

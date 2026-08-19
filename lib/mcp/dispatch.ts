@@ -2,6 +2,7 @@ import { audit, rateLimited } from "@/lib/host";
 import { TOOLS, TOOLS_BY_NAME } from "./tools";
 import { isMcpDirectResult } from "./tool-kit";
 import { activityTarget, newActivityId, recordMcpActivity } from "./activity";
+import { activeWorkflowForActor, recordWorkflowStep } from "@/lib/skills/memory";
 import { allows, type Scope } from "./scope";
 
 // JSON-RPC 2.0 dispatch for the MCP server. No SDK: the surface is initialize,
@@ -56,7 +57,10 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       return ok(id, {
         protocolVersion: req.params?.protocolVersion ?? PROTOCOL,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "mso", version: "1.0.0" },
+        serverInfo: { name: "mso", version: "1.1.0" },
+        instructions:
+          "For a task likely to need two or more tool calls: call skills_search, then workflow_start before operational work, " +
+          "reuse a relevant safe recipe, verify the result, and call workflow_finish so MSO retains the fastest successful path.",
       });
     case "notifications/initialized":
     case "ping":
@@ -68,6 +72,8 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       const args = req.params?.arguments ?? {};
       const tool = TOOLS_BY_NAME.get(name);
       if (!tool) return fail(id, -32602, `unknown tool: ${name}`);
+      const activeWorkflow = await activeWorkflowForActor(actor);
+      const workflowId = activeWorkflow?.id;
       // Scope is re-checked HERE, not just at tools/list — a client can call any
       // name it likes, and the list is only a hint.
       if (!allows(scope, tool.scope)) {
@@ -75,7 +81,10 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
         // reaching for exec_run is what a prompt-injected model looks like from
         // the outside, and it is the only place that signal is visible.
         void audit({ action: "mcp.denied", actor, target: name, ok: false, detail: `scope ${scope} < ${tool.scope}` });
-        void recordMcpActivity({ id: newActivityId(), actor, tool: name, state: "denied", scope, target: activityTarget(args), detail: `scope ${scope} < ${tool.scope}` });
+        const deniedId = newActivityId();
+        const deniedTarget = activityTarget(args);
+        void recordMcpActivity({ id: deniedId, actor, tool: name, state: "denied", scope, workflowId, target: deniedTarget, detail: `scope ${scope} < ${tool.scope}` });
+        await recordWorkflowStep(actor, workflowId, { id: deniedId, tool: name, state: "denied", target: deniedTarget, args, ts: new Date().toISOString() });
         return ok(id, {
           content: [{ type: "text", text: `error: this token holds scope "${scope}"; ${name} needs "${tool.scope}". Mint a new token in mso Settings → MCP.` }],
           isError: true,
@@ -92,7 +101,10 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
         const suffix = tool.limit.keyArg ? String(args[tool.limit.keyArg] ?? "") : (actor ?? "mcp");
         if (rateLimited(`${tool.limit.key}:${suffix}`, tool.limit.max, tool.limit.windowMs)) {
           void audit({ action: "mcp.denied", actor, target: name, ok: false, detail: "rate limited" });
-          void recordMcpActivity({ id: newActivityId(), actor, tool: name, state: "rate_limited", scope, target: activityTarget(args), detail: "rate limited" });
+          const limitedId = newActivityId();
+          const limitedTarget = activityTarget(args);
+          void recordMcpActivity({ id: limitedId, actor, tool: name, state: "rate_limited", scope, workflowId, target: limitedTarget, detail: "rate limited" });
+          await recordWorkflowStep(actor, workflowId, { id: limitedId, tool: name, state: "rate_limited", target: limitedTarget, args, ts: new Date().toISOString() });
           return ok(id, {
             content: [{ type: "text", text: `error: ${name} is rate limited (${tool.limit.max} per ${Math.round(tool.limit.windowMs / 1000)}s). Wait and retry.` }],
             isError: true,
@@ -109,9 +121,9 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       const activityId = newActivityId();
       const activityStarted = Date.now();
       const activityTgt = activityTarget(args);
-      void recordMcpActivity({ id: activityId, actor, tool: name, state: "started", scope, target: activityTgt });
+      void recordMcpActivity({ id: activityId, actor, tool: name, state: "started", scope, workflowId, target: activityTgt });
       try {
-        const result = await tool.run(args);
+        const result = await tool.run(args, { actor, scope, workflowId });
         if (trail) {
           // `ok: true` used to be unconditional here, which made the trail lie about
           // the one tool that matters most: runCommand REFUSES a destructive command
@@ -120,7 +132,9 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
           const o = trail.outcome?.(result);
           void audit({ action: o?.action ?? trail.action, actor, target, ok: o?.ok ?? true, detail: o?.detail, meta: { via: "mcp", scope } });
         }
-        void recordMcpActivity({ id: activityId, actor, tool: name, state: "completed", scope, target: activityTgt, durationMs: Date.now() - activityStarted });
+        const durationMs = Date.now() - activityStarted;
+        void recordMcpActivity({ id: activityId, actor, tool: name, state: "completed", scope, workflowId, target: activityTgt, durationMs });
+        await recordWorkflowStep(actor, workflowId, { id: activityId, tool: name, state: "completed", target: activityTgt, args, durationMs, ts: new Date().toISOString() });
         if (isMcpDirectResult(result)) return ok(id, { content: result.content, ...(result.isError ? { isError: true } : {}) });
         return ok(id, { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }] });
       } catch (e) {
@@ -129,7 +143,9 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
         // person sees the model give up with no reason shown.
         const msg = e instanceof Error ? e.message : String(e);
         if (trail) void audit({ action: trail.action, actor, target, ok: false, detail: msg.slice(0, 200), meta: { via: "mcp", scope } });
-        void recordMcpActivity({ id: activityId, actor, tool: name, state: "failed", scope, target: activityTgt, durationMs: Date.now() - activityStarted, detail: msg.slice(0, 220) });
+        const durationMs = Date.now() - activityStarted;
+        void recordMcpActivity({ id: activityId, actor, tool: name, state: "failed", scope, workflowId, target: activityTgt, durationMs, detail: msg.slice(0, 220) });
+        await recordWorkflowStep(actor, workflowId, { id: activityId, tool: name, state: "failed", target: activityTgt, args, durationMs, ts: new Date().toISOString() });
         return ok(id, { content: [{ type: "text", text: "error: " + msg.slice(0, 500) }], isError: true });
       }
     }
