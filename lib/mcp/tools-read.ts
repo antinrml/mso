@@ -1,4 +1,4 @@
-import { listDir, readFile, searchFs, usage, stats, processes, captureMsoScreen } from "@/lib/host";
+import { listDir, readFile, searchFs, usage, stats, processes, captureMsoScreen, createTempShare, tempShareUrl } from "@/lib/host";
 import { camoufoxStatus } from "@/lib/camoufox/service";
 import { listManagedApps, getManagedAppLogs } from "@/lib/managed-apps/manager";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
@@ -104,7 +104,8 @@ export const READ_TOOLS: McpTool[] = [
     description:
       "Capture the authenticated MSO desktop and return it as an image. This is intentionally limited to " +
       "MSO itself (no arbitrary URL capture), so it can be used to show visual progress without turning a read token " +
-      "into a browser exfiltration primitive. Choose macos, windows or dashboard; default macos.",
+      "into a browser exfiltration primitive. It also returns a 15-minute, session-gated temporary preview/download link. " +
+      "Choose macos, windows or dashboard; default macos.",
     scope: "read",
     annotations: READ_ONLY,
     limit: { key: "screen.capture", max: 10, windowMs: 60_000 },
@@ -122,9 +123,26 @@ export const READ_TOOLS: McpTool[] = [
         width: typeof a.width === "number" ? a.width : undefined,
         height: typeof a.height === "number" ? a.height : undefined,
       });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const share = await createTempShare({
+        data: Buffer.from(shot.data, "base64"),
+        filename: `mso-${shot.shell}-${stamp}.png`,
+        mimeType: shot.mimeType,
+        ttlMs: 15 * 60_000,
+        maxDownloads: 5,
+      });
+      const previewUrl = tempShareUrl(share.id);
+      const downloadUrl = tempShareUrl(share.id, true);
       return mcpDirect([
         { type: "image", data: shot.data, mimeType: shot.mimeType },
-        { type: "text", text: `MSO ${shot.shell} screenshot — ${shot.width}×${shot.height}` },
+        {
+          type: "text",
+          text:
+            `MSO ${shot.shell} screenshot — ${shot.width}×${shot.height}\n` +
+            `Temporary preview: ${previewUrl}\n` +
+            `Direct download: ${downloadUrl}\n` +
+            `Expires ${new Date(share.expiresAt).toISOString()} · ${share.downloadsLeft} authenticated downloads`,
+        },
       ]);
     },
   },

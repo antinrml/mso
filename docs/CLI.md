@@ -54,6 +54,7 @@ Commands:
   ls [path]            List a directory (default ~)
   cat <path>           Read a text file
   raw <path>           Stream a file's raw bytes to stdout (images, video, any blob)
+  share <id>           Download an authenticated temporary-link artifact to stdout
   write <path> <text>  Write a file
   mkdir <path>         Create a directory
   rm <path>            Delete, recursively

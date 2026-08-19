@@ -20,6 +20,7 @@
 #   ls [path]            List a directory (default ~)
 #   cat <path>           Read a text file
 #   raw <path>           Stream a file's raw bytes to stdout (images, video, any blob)
+#   share <id>           Download an authenticated temporary-link artifact to stdout
 #   write <path> <text>  Write a file
 #   mkdir <path>         Create a directory
 #   rm <path>            Delete, recursively
@@ -273,6 +274,7 @@ case "$cmd" in
   ls)     jget "/api/v1/fs/list?path=$(enc "${1:-~}")" ;;
   cat)    jget "/api/v1/fs/read?path=$(enc "${1:?path}")" | jq -r . ;;
   raw)    reqraw "$B/api/v1/fs/raw?path=$(enc "${1:?path}")"; exit 0 ;;
+  share)  reqraw "$B/api/v1/temp-share/$(enc "${1:?temporary link id}")?download=1"; exit 0 ;;
   usage)  jget "/api/v1/fs/usage?path=$(enc "${1:-~}")" ;;
   search) jget "/api/v1/fs/search?q=$(enc "${1:?query}")${2:+&root=$(enc "$2")}" ;;
   write)  jpost "/api/v1/fs/write" "$(jq -n --arg p "${1:?path}" --arg c "${2-}" '{path:$p,content:$c}')" ;;
