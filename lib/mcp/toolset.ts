@@ -2,9 +2,9 @@ import { createHash } from "crypto";
 import type { Scope } from "./scope";
 import type { McpTool } from "./tool-kit";
 
-export const MCP_SERVER_VERSION = "1.4.0";
-export const MCP_TOOLSET_VERSION = "2026.08.20.1";
-export const MCP_TOOLSET_CHANGED_AT = "2026-08-19T20:41:23Z";
+export const MCP_SERVER_VERSION = "1.4.1";
+export const MCP_TOOLSET_VERSION = "2026.08.20.2";
+export const MCP_TOOLSET_CHANGED_AT = "2026-08-19T21:24:00Z";
 
 export type McpToolsetInfo = {
   serverVersion: string;
@@ -25,6 +25,7 @@ export function toolsetInfo(tools: readonly McpTool[], scope?: Scope): McpToolse
     scope: tool.scope,
     inputSchema: tool.inputSchema,
     annotations: tool.annotations,
+    meta: tool.meta,
     limit: tool.limit,
   }));
   const hash = createHash("sha256").update(JSON.stringify(hashInput)).digest("hex").slice(0, 16);

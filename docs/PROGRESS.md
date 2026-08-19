@@ -1515,3 +1515,7 @@ behaviorally verified on an isolated `:4011` dev server (prod never touched).
 *34 older entries (2026-05-29 → 2026-06-15) were trimmed on 2026-08-10 to keep
 this file readable as the source of truth it claims to be. Nothing referenced them
 by line, and they are one command away: `git show 421ab7f:docs/PROGRESS.md`.*
+
+## 2026-08-20 — ChatGPT generated-file → VPS bridge (DONE)
+
+MCP now exposes `fs_upload_file` with `_meta["openai/fileParams"]`, so ChatGPT can generate or receive an image first and then transfer the exact file bytes into an existing bounded VPS directory. The server accepts only temporary HTTPS OpenAI file references, caps imports at 20 MiB, validates image MIME types, inherits the existing write-root and credential denylist through `uploadInto`, audits as `fs.upload`, and returns byte count plus SHA-256 without persisting the temporary download URL.

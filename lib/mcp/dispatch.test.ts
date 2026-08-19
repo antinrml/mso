@@ -44,9 +44,17 @@ describe("protocol", () => {
   it("publishes server and toolset metadata so action drift is visible", async () => {
     const r = await dispatch({ id: 1, method: "initialize" }, "exec");
     const result = r.result as { serverInfo: { version: string }; _meta: { toolset: { toolCount: number; hash: string } } };
-    expect(result.serverInfo.version).toBe("1.4.0");
+    expect(result.serverInfo.version).toBe("1.4.1");
     expect(result._meta.toolset.toolCount).toBe(TOOLS.length);
     expect(result._meta.toolset.hash).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+
+  it("publishes OpenAI file binding metadata on the upload bridge", async () => {
+    const r = await dispatch({ id: 1, method: "tools/list" }, "write");
+    const tools = (r.result as { tools: Array<{ name: string; _meta?: Record<string, unknown> }> }).tools;
+    const upload = tools.find((tool) => tool.name === "fs_upload_file");
+    expect(upload?._meta).toEqual({ "openai/fileParams": ["file"] });
   });
 
   it("answers ping and initialized", async () => {

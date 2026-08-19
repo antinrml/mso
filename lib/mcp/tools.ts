@@ -4,6 +4,7 @@ import { performManagedAppAction } from "@/lib/managed-apps/manager";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
 import { MANAGED_APP_ACTIONS, type ManagedAppAction } from "@/lib/managed-apps/types";
 import { type McpTool, str, opt, S, PATH_P, mcpDirect } from "./tool-kit";
+import { importOpenAiProvidedFile } from "./openai-file-upload";
 import {
   generateOpenAiImage,
   OPENAI_IMAGE_BACKGROUNDS,
@@ -43,6 +44,40 @@ const MUTATE_TOOLS: McpTool[] = [
       content: typeof a.content === "string" ? a.content : "",
       expectedSha256: opt(a, "expected_sha256"),
     })) }),
+  },
+  {
+    name: "fs_upload_file",
+    limit: { key: "fs.upload", max: 20, windowMs: 60_000 },
+    audit: { action: "fs.upload" as const, targetArg: "dest" },
+    description:
+      "Import one ChatGPT conversation/generated file into an existing VPS directory. " +
+      "ChatGPT binds the top-level file parameter through openai/fileParams, MSO downloads the temporary OpenAI URL immediately, validates the host/type/size, writes within OS_FS_WRITE_ROOTS, and returns byte count plus SHA-256. Existing same-name files may be replaced.",
+    scope: "write",
+    annotations: { destructiveHint: true, openWorldHint: true },
+    meta: { "openai/fileParams": ["file"] },
+    inputSchema: S({
+      file: {
+        type: "object",
+        description: "ChatGPT-provided file reference. Select or attach exactly one generated/uploaded image.",
+        properties: {
+          download_url: { type: "string" },
+          file_id: { type: "string" },
+          mime_type: { type: "string" },
+          file_name: { type: "string" },
+          name: { type: "string" },
+          size: { type: "number" },
+        },
+        required: ["download_url", "file_id"],
+        additionalProperties: true,
+      },
+      dest: { type: "string", description: "Existing destination directory on the VPS, within OS_FS_WRITE_ROOTS." },
+      filename: { type: "string", description: "Optional safe destination basename; defaults to the ChatGPT filename." },
+    }, ["file", "dest"]),
+    run: async (a) => importOpenAiProvidedFile({
+      file: a.file,
+      dest: str(a, "dest"),
+      filename: opt(a, "filename"),
+    }),
   },
   {
     name: "fs_mkdir",

@@ -32,6 +32,7 @@ const toolList = (scope: Scope) => visibleTools(scope).map((tool) => ({
   description: tool.description,
   inputSchema: tool.inputSchema,
   ...(tool.annotations ? { annotations: tool.annotations } : {}),
+  ...(tool.meta ? { _meta: tool.meta } : {}),
 }));
 
 function instructions(scope: Scope): string {
