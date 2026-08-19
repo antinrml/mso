@@ -27,7 +27,14 @@ function trustedDownloadUrl(raw: string): URL {
   try { url = new URL(raw); } catch { throw new HostError("file.download_url is invalid"); }
   if (url.protocol !== "https:") throw new HostError("file.download_url must use HTTPS");
   const host = url.hostname.toLowerCase();
-  if (host !== "files.oaiusercontent.com" && !host.endsWith(".oaiusercontent.com")) {
+  const exactOpenAiHosts = new Set([
+    "files.oaiusercontent.com",
+    // ChatGPT-generated conversation files in the Southeast Asia storage region.
+    // Keep this exact: accepting arbitrary *.blob.core.windows.net would turn the
+    // bridge into a server-side fetch primitive.
+    "oaisdmntprseasia.blob.core.windows.net",
+  ]);
+  if (!exactOpenAiHosts.has(host) && !host.endsWith(".oaiusercontent.com")) {
     throw new HostError(`file.download_url host is not allowed: ${host}`);
   }
   return url;
