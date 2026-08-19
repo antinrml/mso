@@ -21,7 +21,7 @@ export type McpActivityGroup = {
   intent?: string;
   project?: string;
   rows: McpActivityRow[];
-  state: "running" | "attention" | "done" | "completed" | "active";
+  state: "running" | "attention" | "cancelled" | "done" | "completed" | "active";
   durationMs: number;
   updatedAt: string;
 };
@@ -61,6 +61,7 @@ export function groupActivity(entries: McpActivityRow[]): McpActivityGroup[] {
     group.rows.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
     if (group.rows.some((row) => row.state === "started")) group.state = "running";
     else if (group.rows.some((row) => ["failed", "denied", "rate_limited"].includes(row.state))) group.state = "attention";
+    else if (group.rows.some((row) => row.tool === "workflow_cancel" && row.state === "completed")) group.state = "cancelled";
     else if (group.rows.some((row) => row.tool === "workflow_finish" && row.state === "completed")) group.state = "done";
     else if (!group.workflowId && group.rows.every((row) => row.state === "completed")) group.state = "completed";
     else group.state = "active";

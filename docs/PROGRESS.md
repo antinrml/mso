@@ -8,6 +8,32 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-19 — isolated parallel workflows and a skill-flow factory (DONE)
+
+The first bootstrap release still had one unsafe fallback: active workflow memory was
+keyed only by MCP actor, so a second conversation using the same token silently replaced
+the first, and `workflow_finish` could omit its id and close whichever run happened to
+be active. A real reconnect had already produced a mismatched learned recipe this way.
+
+Workflow memory is now a v2 multi-run store. Every `workflow_start` receives a unique
+id, and multiple conversations may run safely in parallel on the same MCP token. Both
+`workflow_finish` and the new `workflow_cancel` require that exact id; cancel removes
+only the interrupted run without creating a recipe. Every operational schema carries an
+optional `workflow_id`: exact-id calls join that recipe, missing-id calls remain
+standalone, and unknown ids are refused before execution. The loader migrates a live v1
+actor workflow without dropping it, serializes concurrent cold loads, prunes stale runs,
+and bounds each actor to 20 active workflows. Workflow cancel is audited, Activity
+renders cancelled runs explicitly, and migration/parallel/wrong-id cases have regression
+tests. The reusable best path is also compressed to at most 24 completed steps while the full redacted evidence remains available, preventing a long audit from becoming a 300-call recommendation. The MCP server/toolset advance to `1.3.0` / `2026.08.19.2`, with **22 tools**.
+
+Skill authoring is now repeatable rather than copy-paste. `bun run skill:new` renders
+`templates/mso-skill-flow/SKILL.md.template` into a new official skill and refuses an
+overwrite. The template standardizes selection boundaries, bounded-vs-terminal routing,
+visible operational trace, done conditions, rollback, approvals and recipe redaction.
+`bun run skill:check` validates every official skill's directory/name, description,
+risk, policy, H1, unresolved placeholders and 200-line ceiling, and is part of the main
+`check` gate. The new trusted `mso-skill-authoring` playbook explains the flow.
+
 ## 2026-08-19 — MCP one-call bootstrap, visible workflows and faster repository work (DONE)
 
 A refreshed ChatGPT connection proved the server really exposed all 21 MCP tools, but
@@ -63,6 +89,19 @@ and dark contrast audits with zero AA failures, and a clean high/critical depend
 audit. The committed pre-push gate performs the out-of-tree production build again
 before any push, and `bun run ship` preserves the required commit → changelog → push →
 build → restart order.
+
+The first live ship exposed one more orchestration fact that tests could not simulate:
+`exec_run` is a child of `mso.service`, and the service manager terminates the whole
+cgroup when that process is replaced. The new build came up healthy, but the parent
+release command died before it could write its exit file or perform its own chunk
+check—`nohup` did not move it to a different cgroup. `ship.sh` now detects that
+execution context after the gated push and hands rebuild-only
+build/restart/verification to the existing owner transient `mso-self-update.service`.
+The handoff has no request-derived shell payload, reuses the same fixed script and
+one-hour bound as Settings self-update, writes `~/.mso/self-update.log`, and is
+regression-tested with a fake `systemd-run` argv capture. SSH releases remain
+synchronous; MCP releases must poll the returned unit/log until `UPDATE OK` before
+declaring success.
 
 ## 2026-08-19 — v0.2.1: self-update stopped assuming passwordless sudo (DONE)
 

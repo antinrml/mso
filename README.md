@@ -150,8 +150,7 @@ Full command reference: [docs/CLI.md](./docs/CLI.md) (generated from `mso --help
 Global options: `--base <url>` to target another instance, `--env <file>` to pick a
 different secrets file. Device and service commands work even while the service is
 down. If you use [Claude Code](https://claude.com/claude-code), the installer also
-links the agent skills in `claude-skills/` into `~/.claude/skills/` — `/mso`,
-`/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`.
+links every committed official skill in `claude-skills/` into `~/.claude/skills/`. Create a consistent workflow skill with `bun run skill:new -- --help` and validate the catalog with `bun run skill:check`.
 
 ## Security warning
 

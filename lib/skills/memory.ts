@@ -53,9 +53,11 @@ export type LearnedRecipe = {
   lastUsedAt?: string;
 };
 
+type ActiveWorkflowBuckets = Record<string, Record<string, ActiveWorkflow>>;
+
 type SkillMemoryStore = {
-  version: 1;
-  active: Record<string, ActiveWorkflow>;
+  version: 2;
+  active: ActiveWorkflowBuckets;
   recipes: Record<string, LearnedRecipe>;
 };
 
@@ -68,9 +70,15 @@ export type FinishWorkflowResult = {
   improvedPct?: number;
 };
 
-const EMPTY = (): SkillMemoryStore => ({ version: 1, active: {}, recipes: {} });
+export type CancelWorkflowResult = {
+  workflow: ActiveWorkflow;
+  reason?: string;
+};
+
+const EMPTY = (): SkillMemoryStore => ({ version: 2, active: {}, recipes: {} });
 let cache: SkillMemoryStore | null = null;
 let cachePath = "";
+const loadInFlight = new Map<string, Promise<SkillMemoryStore>>();
 let writeChain: Promise<unknown> = Promise.resolve();
 
 function storePath(): string {
@@ -79,28 +87,69 @@ function storePath(): string {
   return (env || path.join(os.homedir(), ".mso", "skill-memory.json")).replace(/^~(?=$|\/)/, os.homedir());
 }
 
+function isActiveWorkflow(value: unknown): value is ActiveWorkflow {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Partial<ActiveWorkflow>;
+  return typeof row.id === "string" && typeof row.actor === "string" &&
+    typeof row.intent === "string" && typeof row.startedAt === "string" && Array.isArray(row.steps);
+}
+
+/** Migrate v1's one-workflow-per-actor map and accept v2 buckets. The current
+ *  production workflow must survive the deployment that introduces v2. */
+function normalizeActive(value: unknown): ActiveWorkflowBuckets {
+  if (!value || typeof value !== "object") return {};
+  const active: ActiveWorkflowBuckets = {};
+  for (const [legacyActor, candidate] of Object.entries(value as Record<string, unknown>)) {
+    if (isActiveWorkflow(candidate)) {
+      const actor = candidate.actor || legacyActor;
+      (active[actor] ??= {})[candidate.id] = candidate;
+      continue;
+    }
+    if (!candidate || typeof candidate !== "object") continue;
+    for (const workflow of Object.values(candidate as Record<string, unknown>)) {
+      if (!isActiveWorkflow(workflow)) continue;
+      const actor = workflow.actor || legacyActor;
+      (active[actor] ??= {})[workflow.id] = workflow;
+    }
+  }
+  return active;
+}
+
 async function loadStore(): Promise<SkillMemoryStore> {
   const file = storePath();
   if (cache && cachePath === file) return cache;
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
-      cache = EMPTY();
-      cachePath = file;
-      return cache;
+  const current = loadInFlight.get(file);
+  if (current) return current;
+
+  const pending = (async () => {
+    let raw: string;
+    try {
+      raw = await fs.readFile(file, "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+        cache = EMPTY();
+        cachePath = file;
+        return cache;
+      }
+      throw e;
     }
-    throw e;
+    const parsed = JSON.parse(raw) as { active?: unknown; recipes?: unknown };
+    cache = {
+      version: 2,
+      active: normalizeActive(parsed.active),
+      recipes: parsed.recipes && typeof parsed.recipes === "object"
+        ? parsed.recipes as Record<string, LearnedRecipe>
+        : {},
+    };
+    cachePath = file;
+    return cache;
+  })();
+  loadInFlight.set(file, pending);
+  try {
+    return await pending;
+  } finally {
+    if (loadInFlight.get(file) === pending) loadInFlight.delete(file);
   }
-  const parsed = JSON.parse(raw) as Partial<SkillMemoryStore>;
-  cache = {
-    version: 1,
-    active: parsed.active && typeof parsed.active === "object" ? parsed.active : {},
-    recipes: parsed.recipes && typeof parsed.recipes === "object" ? parsed.recipes : {},
-  };
-  cachePath = file;
-  return cache;
 }
 
 async function persist(store: SkillMemoryStore): Promise<void> {
@@ -193,6 +242,48 @@ function enrichBestSteps(best: WorkflowStep[], current: WorkflowStep[]): Workflo
   }));
 }
 
+const MAX_RECIPE_STEPS = 24;
+const IMPORTANT_RECIPE_TOOLS = new Set([
+  "fs_write", "fs_mkdir", "fs_move", "fs_copy", "fs_delete",
+  "apps_power", "browser_power", "exec_run", "screen_capture",
+]);
+
+/** Keep the recipe replayable without teaching the next run to repeat every
+ * exploratory read. Full redacted evidence stays in lastSteps; bestSteps is a
+ * compact successful route with mutations, terminal batches and final proof. */
+function compactRecipeSteps(steps: WorkflowStep[]): WorkflowStep[] {
+  const unique: Array<{ index: number; step: WorkflowStep }> = [];
+  const seen = new Set<string>();
+  for (const [index, step] of steps.entries()) {
+    if (step.state !== "completed") continue;
+    const signature = JSON.stringify([step.tool, step.target ?? "", step.args ?? {}]);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    unique.push({ index, step });
+  }
+  if (unique.length <= MAX_RECIPE_STEPS) return unique.map(({ step }) => step);
+
+  const selected = new Set<number>();
+  const add = (rows: Array<{ index: number }>) => rows.forEach(({ index }) => selected.add(index));
+  add(unique.slice(0, 6));
+  add(unique.slice(-6));
+  const important = unique.filter(({ step }) => IMPORTANT_RECIPE_TOOLS.has(step.tool));
+  add(important.length <= 12 ? important : [...important.slice(0, 6), ...important.slice(-6)]);
+
+  const remaining = MAX_RECIPE_STEPS - selected.size;
+  for (let slot = 1; slot <= remaining; slot += 1) {
+    const row = unique[Math.round((slot * (unique.length - 1)) / (remaining + 1))];
+    if (row) selected.add(row.index);
+  }
+  if (selected.size < MAX_RECIPE_STEPS) {
+    for (const { index } of unique) {
+      selected.add(index);
+      if (selected.size >= MAX_RECIPE_STEPS) break;
+    }
+  }
+  return unique.filter(({ index }) => selected.has(index)).slice(0, MAX_RECIPE_STEPS).map(({ step }) => step);
+}
+
 function elapsedMs(steps: WorkflowStep[], wallMs: number): number {
   const sum = steps.reduce((n, s) => n + (s.durationMs ?? 0), 0);
   return sum > 0 ? sum : wallMs;
@@ -214,17 +305,50 @@ function closestRecipe(store: SkillMemoryStore, intent: string, project?: string
   return best && best.score >= 0.48 ? best.recipe : undefined;
 }
 
+const WORKFLOW_LEASE_MS = 6 * 60 * 60_000;
+const MAX_ACTIVE_PER_ACTOR = 20;
+const workflowIsStale = (workflow: ActiveWorkflow): boolean =>
+  Date.now() - new Date(workflow.startedAt).getTime() > WORKFLOW_LEASE_MS;
+
+function pruneStaleWorkflows(store: SkillMemoryStore, actor: string): boolean {
+  const bucket = store.active[actor];
+  if (!bucket) return false;
+  let changed = false;
+  for (const [id, workflow] of Object.entries(bucket)) {
+    if (!workflowIsStale(workflow)) continue;
+    delete bucket[id];
+    changed = true;
+  }
+  if (!Object.keys(bucket).length) delete store.active[actor];
+  return changed;
+}
+
+function workflowFor(store: SkillMemoryStore, actor: string, workflowId: string): ActiveWorkflow | undefined {
+  return store.active[actor]?.[workflowId];
+}
+
+function removeActiveWorkflow(store: SkillMemoryStore, actor: string, workflowId: string): void {
+  const bucket = store.active[actor];
+  if (!bucket) return;
+  delete bucket[workflowId];
+  if (!Object.keys(bucket).length) delete store.active[actor];
+}
+
 export async function startWorkflow(input: {
   actor?: string;
   intent: string;
   project?: string;
   constraints?: string;
-}): Promise<{ workflow: ActiveWorkflow; replacedWorkflowId?: string }> {
+}): Promise<{ workflow: ActiveWorkflow; activeWorkflowCount: number }> {
   const actor = actorKey(input.actor);
   const intent = safeMemoryText(input.intent, 1000);
   if (!intent) throw new Error("intent must be a non-empty string");
   const store = await loadStore();
-  const replacedWorkflowId = store.active[actor]?.id;
+  pruneStaleWorkflows(store, actor);
+  const bucket = store.active[actor] ?? {};
+  if (Object.keys(bucket).length >= MAX_ACTIVE_PER_ACTOR) {
+    throw new Error(`this MCP client already has ${MAX_ACTIVE_PER_ACTOR} active workflows; finish or cancel an exact workflow_id first`);
+  }
   const workflow: ActiveWorkflow = {
     id: randomUUID(),
     actor,
@@ -234,48 +358,63 @@ export async function startWorkflow(input: {
     startedAt: new Date().toISOString(),
     steps: [],
   };
-  store.active[actor] = workflow;
+  (store.active[actor] ??= {})[workflow.id] = workflow;
   await persist(store);
-  return { workflow, ...(replacedWorkflowId ? { replacedWorkflowId } : {}) };
+  return { workflow, activeWorkflowCount: Object.keys(store.active[actor]).length };
 }
 
-export async function activeWorkflowForActor(actor?: string): Promise<ActiveWorkflow | null> {
+export async function activeWorkflowForActor(actor?: string, workflowId?: string): Promise<ActiveWorkflow | null> {
   if (!actor) return null;
   const store = await loadStore();
-  const workflow = store.active[actor];
-  if (!workflow) return null;
-  // Ignore abandoned sessions after six hours. The next workflow_start replaces it.
-  if (Date.now() - new Date(workflow.startedAt).getTime() > 6 * 60 * 60_000) return null;
+  const changed = pruneStaleWorkflows(store, actor);
+  const bucket = store.active[actor];
+  const workflow = workflowId
+    ? bucket?.[workflowId] ?? null
+    : (bucket && Object.keys(bucket).length === 1 ? Object.values(bucket)[0] : null);
+  if (changed) await persist(store);
   return workflow;
 }
 
 export async function recordWorkflowStep(actor: string | undefined, workflowId: string | undefined, step: WorkflowStepInput): Promise<void> {
   if (!actor || !workflowId) return;
   const store = await loadStore();
-  const workflow = store.active[actor];
-  if (!workflow || workflow.id !== workflowId) return;
-  if (["skills_search", "workflow_start", "workflow_finish"].includes(step.tool)) return;
+  const workflow = workflowFor(store, actor, workflowId);
+  if (!workflow) return;
+  if (["skills_search", "workflow_start", "workflow_finish", "workflow_cancel"].includes(step.tool)) return;
   workflow.steps.push({
     ...step,
     target: safeTarget(step.tool, step.target),
     args: safeArgs(step.tool, step.args),
   });
-  // A runaway client must not grow one JSON document forever.
   if (workflow.steps.length > 300) workflow.steps.splice(0, workflow.steps.length - 300);
   await persist(store);
 }
 
+export async function cancelWorkflow(input: {
+  actor?: string;
+  workflowId: string;
+  reason?: string;
+}): Promise<CancelWorkflowResult> {
+  const actor = actorKey(input.actor);
+  const store = await loadStore();
+  const workflow = workflowFor(store, actor, input.workflowId);
+  if (!workflow) throw new Error("workflow_id was not found for this MCP client");
+  removeActiveWorkflow(store, actor, input.workflowId);
+  await persist(store);
+  const reason = input.reason ? safeMemoryText(input.reason, 500) || undefined : undefined;
+  return { workflow, ...(reason ? { reason } : {}) };
+}
+
 export async function finishWorkflow(input: {
   actor?: string;
-  workflowId?: string;
+  workflowId: string;
   summary: string;
   success: boolean;
 }): Promise<FinishWorkflowResult> {
   const actor = actorKey(input.actor);
   const store = await loadStore();
-  const workflow = store.active[actor];
-  if (!workflow) throw new Error("no active workflow for this MCP client — call workflow_start first");
-  if (input.workflowId && input.workflowId !== workflow.id) throw new Error("workflow_id does not match this client's active workflow");
+  const workflow = workflowFor(store, actor, input.workflowId);
+  if (!workflow) throw new Error("workflow_id was not found for this MCP client");
 
   const now = new Date();
   const wallMs = Math.max(0, now.getTime() - new Date(workflow.startedAt).getTime());
@@ -285,6 +424,7 @@ export async function finishWorkflow(input: {
   const summary = safeMemoryText(input.summary, 1200) || (input.success ? "completed" : "failed");
   const vector = embedSkillText(recipeText(workflow.intent, workflow.project, summary));
   const timestamp = now.toISOString();
+  const compactSteps = compactRecipeSteps(workflow.steps);
 
   let recipe: LearnedRecipe;
   if (existing) {
@@ -301,7 +441,7 @@ export async function finishWorkflow(input: {
       embeddingVersion: SKILL_EMBEDDING_VERSION,
       embedding: vector,
       lastSteps: workflow.steps,
-      bestSteps: faster ? workflow.steps : (input.success ? enrichBestSteps(existing.bestSteps, workflow.steps) : existing.bestSteps),
+      bestSteps: faster ? compactSteps : (input.success ? enrichBestSteps(existing.bestSteps, compactSteps) : existing.bestSteps),
       attempts,
       successes,
       failures,
@@ -321,7 +461,7 @@ export async function finishWorkflow(input: {
       summary,
       embeddingVersion: SKILL_EMBEDDING_VERSION,
       embedding: vector,
-      bestSteps: input.success ? workflow.steps : [],
+      bestSteps: input.success ? compactSteps : [],
       lastSteps: workflow.steps,
       attempts: 1,
       successes: input.success ? 1 : 0,
@@ -337,8 +477,7 @@ export async function finishWorkflow(input: {
   }
 
   store.recipes[recipe.id] = recipe;
-  delete store.active[actor];
-  // Keep the memory bounded. Prefer recipes that worked and were used recently.
+  removeActiveWorkflow(store, actor, input.workflowId);
   const recipes = Object.values(store.recipes);
   if (recipes.length > 200) {
     recipes
@@ -383,5 +522,6 @@ export async function markRecipeUsed(id: string): Promise<void> {
 export function resetSkillMemoryCache(): void {
   cache = null;
   cachePath = "";
+  loadInFlight.clear();
   writeChain = Promise.resolve();
 }

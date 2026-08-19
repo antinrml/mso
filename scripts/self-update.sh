@@ -31,10 +31,30 @@ step() { printf '\n[%s] == %s\n' "$(date -Is)" "$*"; }
 die()  { printf '\n[%s] FAILED: %s\n' "$(date -Is)" "$*"; printf 'the running MSO was left untouched.\n'; exit 1; }
 
 REBUILD_ONLY=0
-[ "${1:-}" = "--rebuild-only" ] && REBUILD_ONLY=1
+SHIP_FINALIZE=0
+case "${1:-}" in
+  "") ;;
+  --rebuild-only) REBUILD_ONLY=1 ;;
+  --ship-finalize) REBUILD_ONLY=1; SHIP_FINALIZE=1 ;;
+  *) die "unknown mode: ${1:-}" ;;
+esac
 
-step "self-update starting (rebuild-only=$REBUILD_ONLY)"
-git rev-parse --short HEAD | sed 's/^/at /'
+step "self-update starting (rebuild-only=$REBUILD_ONLY, ship-finalize=$SHIP_FINALIZE)"
+HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+[ -n "$HEAD_SHA" ] || die "could not read checkout HEAD"
+printf 'at %s
+' "${HEAD_SHA:0:7}"
+
+if [ "$SHIP_FINALIZE" -eq 1 ]; then
+  EXPECTED_SHA="${MSO_EXPECTED_SHA:-}"
+  [ "${#EXPECTED_SHA}" -eq 40 ]     || die "ship finalizer requires an exact 40-character MSO_EXPECTED_SHA"
+  case "$EXPECTED_SHA" in
+    *[!0-9a-f]*) die "ship finalizer requires an exact 40-character MSO_EXPECTED_SHA" ;;
+  esac
+  [ "$HEAD_SHA" = "$EXPECTED_SHA" ] || die "checkout HEAD changed after the release gates"
+  [ "$(git rev-parse origin/main 2>/dev/null || true)" = "$EXPECTED_SHA" ]     || die "origin/main no longer matches the release SHA"
+  [ -z "$(git status --porcelain)" ]     || die "checkout changed after verification; refusing to build uncommitted bytes"
+fi
 
 if [ "$REBUILD_ONLY" -eq 0 ]; then
   step "fetching origin/main"
@@ -53,11 +73,16 @@ if [ "$REBUILD_ONLY" -eq 0 ]; then
   node -e "require('node-pty')" || die "node-pty did not load after install — every /api/v1 route imports it"
 fi
 
-step "verifying the build out-of-tree (this does not touch the live .next)"
-bash scripts/verify-build.sh >/dev/null || die "HEAD does not compile — nothing was deployed"
+if [ "$SHIP_FINALIZE" -eq 1 ]; then
+  step "using the exact commit already proven by the pre-push out-of-tree build"
+  [ "$(git rev-parse HEAD)" = "$EXPECTED_SHA" ] && [ -z "$(git status --porcelain)" ]     || die "checkout moved before the in-place build"
+else
+  step "verifying the build out-of-tree (this does not touch the live .next)"
+  bash scripts/verify-build.sh >/dev/null || die "HEAD does not compile — nothing was deployed"
+fi
 
 step "building in place"
-bun run build >/dev/null || die "build failed after it had already passed out-of-tree — check disk space"
+bun run build >/dev/null || die "in-place build failed — check disk space"
 
 step "restarting mso.service (same-user signal; no sudo)"
 # mso.service runs as the owner and has Restart=always. Signalling its MainPID is

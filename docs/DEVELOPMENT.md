@@ -41,11 +41,25 @@ every push). If those two lines stop appearing, the wiring is gone.
 ## Deploy — and the build hazard ⚠️
 
 mso deploys via **systemd on the VPS**, not `git push` (no webhook, no Dokploy/
-Vercel). A deploy is:
+Vercel). The normal release path is:
 
 ```bash
-bun run build && sudo systemctl restart mso.service   # build THEN restart, in that order
+bun run ship "feat(scope): describe the verified change"
 ```
+
+That command commits, regenerates the changelog, runs the push gates and out-of-tree
+build, then builds in place, replaces the service process and verifies the served CSS
+chunk. When launched through MSO/MCP, the gated push stays attached but finalization
+is handed to the owner transient `mso-self-update.service` unit; otherwise replacing
+`mso.service` would terminate the MCP call that launched it. Track completion with:
+
+```bash
+systemctl --user is-active mso-self-update.service
+tail -f ~/.mso/self-update.log     # success ends with UPDATE OK
+```
+
+A direct manual build-and-replace remains available for recovery, but it bypasses the
+release gates and should not be the normal path.
 
 **Never run `bun run build` inside the running prod checkout just to "verify" a change.**
 `next start` loads the build manifest at boot; overwriting `.next` under the live

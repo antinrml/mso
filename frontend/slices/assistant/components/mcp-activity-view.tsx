@@ -20,6 +20,7 @@ const stateMeta = {
 const groupMeta = {
   running: { label: "Running", Icon: CircleDashed, cls: "text-info" },
   attention: { label: "Needs attention", Icon: ShieldAlert, cls: "text-warning" },
+  cancelled: { label: "Cancelled", Icon: XCircle, cls: "text-muted-foreground" },
   done: { label: "Verified", Icon: BadgeCheck, cls: "text-success" },
   completed: { label: "Completed", Icon: CheckCircle2, cls: "text-success" },
   active: { label: "In progress", Icon: Route, cls: "text-muted-foreground" },

@@ -15,6 +15,7 @@ describe("MCP activity stream", () => {
     expect(activityTarget({ path: "/tmp/note.txt", content: "super secret body" })).toBe("/tmp/note.txt");
     expect(activityTarget({ content: "super secret body" })).toBeUndefined();
     expect(activityTarget({ query: "deploy token=abc123" })).toBe("deploy token=[redacted]");
+    expect(activityTarget({ workflow_id: "w1", command: "bun run verify" })).toBe("bun run verify");
   });
 
   it("collates started/completed rows newest-first with one correlation id", async () => {

@@ -8,6 +8,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Added**
 
+- `mcp` isolate workflows and standardize skill flows
 - `mcp` streamline bootstrap and workflow visibility
 - add semantic skill memory and workflow recipes
 - add secure temporary screenshot links

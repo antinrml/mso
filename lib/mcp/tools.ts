@@ -149,6 +149,22 @@ const MUTATE_TOOLS: McpTool[] = [
   },
 ];
 
-export const TOOLS: McpTool[] = [...READ_TOOLS, ...LEARNING_TOOLS, ...MUTATE_TOOLS];
+const WORKFLOW_CONTEXT_EXEMPT = new Set(["skills_search", "workflow_start", "workflow_cancel", "workflow_finish"]);
+const withWorkflowContext = (tool: McpTool): McpTool => WORKFLOW_CONTEXT_EXEMPT.has(tool.name) ? tool : ({
+  ...tool,
+  inputSchema: {
+    ...tool.inputSchema,
+    properties: {
+      ...tool.inputSchema.properties,
+      workflow_id: {
+        type: "string",
+        description:
+          "Exact id returned by workflow_start. Include it on every operational step in that run; omit it for a standalone call.",
+      },
+    },
+  },
+});
+
+export const TOOLS: McpTool[] = [...READ_TOOLS, ...LEARNING_TOOLS, ...MUTATE_TOOLS].map(withWorkflowContext);
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 export type { McpTool } from "./tool-kit";

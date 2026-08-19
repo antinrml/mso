@@ -4,7 +4,7 @@
 
 ## Cross-repo contract
 
-MSO currently exposes **21 tool names**. The gateway manifest still maps **15** of them through literal `x-upstream` strings:
+MSO currently exposes **22 tool names**. The gateway manifest still maps **15** of them through literal `x-upstream` strings:
 
 ```json
 { "id": "mso.fs.delete", "x-upstream": "fs_delete" }
@@ -23,7 +23,7 @@ A consumer CI should compare the upstream names it pins against this runtime man
 
 ## What the gateway exposes
 
-The gateway has not yet synchronized the six tools added or deliberately withheld from its 15-action manifest:
+The gateway has not yet synchronized the seven tools added or deliberately withheld from its 15-action manifest:
 
 | Not mapped in gateway | Reason/status |
 |---|---|
@@ -31,8 +31,9 @@ The gateway has not yet synchronized the six tools added or deliberately withhel
 | `browser_power` | deliberately omitted: controls a browser profile holding live sessions |
 | `skills_search` | added to MSO after the original gateway manifest |
 | `screen_capture` | added later; secure MSO-only visual artifact, requires a product decision in the gateway |
-| `workflow_start` | added later; should be mapped together with `workflow_finish` |
-| `workflow_finish` | added later; actor-scoped recipe boundary |
+| `workflow_start` | added later; starts the actor-scoped task lease |
+| `workflow_cancel` | added later; exact-id recovery for an interrupted run |
+| `workflow_finish` | added later; exact-id verified recipe boundary |
 
 `fs_delete` and `apps_power` remain the gateway's highest-risk mapped actions and should keep its human approval policy. The gateway's policy layer supplements, never replaces, MSO's scope checks, path jail, audit trail and per-operation rate limits.
 

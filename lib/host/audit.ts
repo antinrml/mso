@@ -27,6 +27,7 @@ export type AuditAction =
   | "managed-app.action"
   | "camoufox.power"
   | "workflow.start"
+  | "workflow.cancel"
   | "workflow.finish"
   /** An MCP token asked for a tool above its scope. Not an error — it is the
    *  signal that matters: a `read` connector repeatedly reaching for `exec_run`

@@ -45,13 +45,20 @@ there is nothing to keep in sync and no way for it to disagree with history. PRO
 is the WHY; CHANGELOG is the WHAT, and it is what Settings → About renders as
 "What's new" so a shipped change is visible in the running app.
 
+**New workflow skills use `bun run skill:new`, then `bun run skill:check`.** The source template is `templates/mso-skill-flow/SKILL.md.template`; do not hand-copy an untrusted skill into the official root.
+
 **Shipping is `bun run ship "<conventional commit>"`, not `git push`.** Prod is
 systemd with NO webhook, so a pushed commit changes nothing the owner can see until
 someone rebuilds. The script does changelog → commit+push (gates run) → build →
-restart → and then verifies the served CSS chunk actually resolves, which is the
-mismatch CLAUDE.md warns about, checked rather than remembered. Order is
-load-bearing: the changelog is derived, so regenerating it AFTER the commit leaves it
-one commit behind forever; and build-then-restart, never the reverse.
+restart → and then verifies the served CSS chunk actually resolves. When invoked
+through MSO/MCP, it automatically hands build/restart/verification to the owner
+`mso-self-update.service` transient user unit after the gated push: replacing
+`mso.service` kills every process in its cgroup, including `nohup` children and the
+MCP call itself. Poll `systemctl --user is-active mso-self-update.service` and
+`~/.mso/self-update.log`; do not treat the handoff call returning as deployment
+completion. An SSH invocation remains synchronous. Order is load-bearing: the
+changelog is derived, so regenerating it AFTER the commit leaves it one commit behind
+forever; and build-then-restart, never the reverse.
 Deleted 2026-07-28 as dead: `SHELL-INTEGRATION-PLAN.md` and `SYNC-PLAN.md` (both target
 sibling repos that do not exist on this machine), `browser-agent-plan.md` (the retired
 Playwright sidecar), `SIXFIX-PLAN.md` (a finished dated fix list). Nothing linked to any
@@ -306,8 +313,8 @@ that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
   decision, see the integration doc below). `tools/list` filters by it AND `tools/call`
   re-checks it — a client can call a name it was never shown.
 - **Tool names are a cross-repo contract.** `rahmanef63/connectors-gateway` registered
-  mso as a connector on 2026-08-17 and pins 15 of the 21 names as literal strings
-  (`x-upstream`), omitting `exec_run`, `browser_power`, and the four workflow/visual tools added later. `GET /mcp` plus `_meta.toolset` now expose a version/hash/name manifest for parity checks. Renaming or removing
+  mso as a connector on 2026-08-17 and pins 15 of the 22 names as literal strings
+  (`x-upstream`), omitting `exec_run`, `browser_power`, and the five skill/workflow/visual tools added later. `GET /mcp` plus `_meta.toolset` now expose a version/hash/name manifest for parity checks. Renaming or removing
   a tool here breaks it with **no error in either repo** — `parity.test.ts` guards the
   Alfa axis, not this one. Read `docs/CONNECTORS-GATEWAY-INTEGRATION.md` before touching
   a tool name.
@@ -330,7 +337,7 @@ that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
 (enforced by a test in `bin/mso.test.ts`), plus `doctor`, `completion` and `--base`.
 `scripts/install.sh` symlinks
 it to `~/.local/bin/mso` and symlinks `claude-skills/*` into `~/.claude/skills/`
-(`/mso`, `/mso-camoufox`, `/mso-apps`, `/mso-list`, `/mso-image-editor`).
+(every committed directory under `claude-skills/`, including `/mso-skill-authoring`).
 `mso -h` lists every verb; `mso api <METHOD> <path> [json]` is
 the escape hatch for anything without a named verb.
 - **Every CLI caller must send `Origin: <base>`.** `proxy.ts` blocks mutating `/api`

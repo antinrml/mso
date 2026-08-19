@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 import { promises as fs } from "fs";
@@ -23,6 +23,10 @@ const { resetSkillMemoryCache } = await import("@/lib/skills/memory");
 const { LEARNING_TOOLS } = await import("./tools-learning");
 
 describe("workflow_start bootstrap", () => {
+  beforeEach(async () => {
+    await fs.rm(process.env.OS_SKILL_MEMORY_STORE!, { force: true });
+    resetSkillMemoryCache();
+  });
   afterAll(async () => {
     if (previous.read === undefined) delete process.env.OS_FS_READ_ROOTS;
     else process.env.OS_FS_READ_ROOTS = previous.read;
@@ -71,4 +75,39 @@ describe("workflow_start bootstrap", () => {
       expect.objectContaining({ kind: "skill", name: "mso-repo-work", trust: "official" }),
     ]));
   });
+
+  it("supports parallel conversations and exposes explicit cancel/finish ids", async () => {
+    const start = LEARNING_TOOLS.find((tool) => tool.name === "workflow_start")!;
+    const cancel = LEARNING_TOOLS.find((tool) => tool.name === "workflow_cancel")!;
+    const finish = LEARNING_TOOLS.find((tool) => tool.name === "workflow_finish")!;
+    const context = { actor: "mcp:shared-bootstrap", scope: "write" as const };
+    const first = await start.run({ intent: "first workflow", project }, context) as {
+      workflow: { id: string }; activeWorkflowCount: number;
+    };
+    const second = await start.run({ intent: "second workflow", project }, context) as {
+      workflow: { id: string }; activeWorkflowCount: number;
+    };
+    expect(first.workflow.id).not.toBe(second.workflow.id);
+    expect(second.activeWorkflowCount).toBe(2);
+    expect(cancel.inputSchema.required).toContain("workflow_id");
+    expect(finish.inputSchema.required).toEqual(expect.arrayContaining(["workflow_id", "summary", "success"]));
+    await expect(finish.run({ workflow_id: "wrong", summary: "wrong", success: true }, context))
+      .rejects.toThrow("workflow_id was not found");
+
+    await expect(cancel.run({ workflow_id: first.workflow.id, reason: "interrupted" }, context))
+      .resolves.toMatchObject({ workflow: { id: first.workflow.id }, reason: "interrupted" });
+    await expect(finish.run({
+      workflow_id: second.workflow.id, summary: "verified", success: true,
+    }, context)).resolves.toMatchObject({ workflow: { id: second.workflow.id } });
+  });
+
+
+  it("does not retain an opaque workflow when bootstrap preflight fails", async () => {
+    const start = LEARNING_TOOLS.find((tool) => tool.name === "workflow_start")!;
+    const context = { actor: "mcp:preflight", scope: "write" as const };
+    await expect(start.run({ intent: "", project }, context)).rejects.toThrow("intent");
+    const { activeWorkflowForActor } = await import("@/lib/skills/memory");
+    await expect(activeWorkflowForActor(context.actor)).resolves.toBeNull();
+  });
+
 });

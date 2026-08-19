@@ -37,7 +37,7 @@ const toolList = (scope: Scope) => visibleTools(scope).map((tool) => ({
 function instructions(scope: Scope): string {
   const startup = scope === "read"
     ? "This token is read-only: use skills_search for capability discovery, then bounded read tools. Verify the answer without attempting workflow memory writes."
-    : "For any task needing two or more operational calls, call workflow_start directly as the ONE startup call; it already searches trusted skills and recipes, resolves the project, and reports the current toolset. Verify before workflow_finish.";
+    : "For any task needing two or more operational calls, call workflow_start directly as the ONE startup call; it already searches trusted skills and recipes, resolves the project, and reports the current toolset. Multiple workflows may run in parallel on one token. Use workflow_finish or workflow_cancel with the exact id, and pass that workflow_id on every operational call in its run; omit it for standalone work. Verify before workflow_finish.";
   return `${startup} Prefer bounded tools for one or two direct operations. At exec scope, use one narrow exec_run batch for repository-wide search, git, tests, builds, or three or more related checks. Show concise progress using badges such as [Skills], [Files], [Terminal], [Git], [Build], [Verify], and [Screenshot]; never expose private chain-of-thought.`;
 }
 
@@ -84,7 +84,11 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       const args = req.params?.arguments ?? {};
       const tool = TOOLS_BY_NAME.get(name);
       if (!tool) return fail(id, -32602, `unknown tool: ${name}`);
-      const activeWorkflow = await activeWorkflowForActor(actor);
+      const requestedWorkflowId = typeof args.workflow_id === "string" && args.workflow_id ? args.workflow_id : undefined;
+      const lifecycle = name === "workflow_finish" || name === "workflow_cancel";
+      const activeWorkflow = requestedWorkflowId
+        ? await activeWorkflowForActor(actor, requestedWorkflowId)
+        : null;
       const initialFlow = flowFields(activeWorkflow);
       if (!allows(scope, tool.scope)) {
         void audit({ action: "mcp.denied", actor, target: name, ok: false, detail: `scope ${scope} < ${tool.scope}` });
@@ -99,6 +103,16 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       }
       for (const key of tool.inputSchema.required ?? []) {
         if (args[key] == null) return fail(id, -32602, `${name} needs { ${(tool.inputSchema.required ?? []).join(", ")} }`);
+      }
+      if (requestedWorkflowId && !lifecycle && name !== "workflow_start" && name !== "skills_search" && !activeWorkflow) {
+        const mismatchId = newActivityId();
+        const target = activityTarget(args);
+        const message = "workflow_id was not found for this MCP client";
+        void recordMcpActivity({ id: mismatchId, actor, tool: name, state: "failed", scope, target, detail: message });
+        return ok(id, {
+          content: [{ type: "text", text: `error: ${message}. Use the exact id returned by workflow_start, or omit workflow_id for a standalone call.` }],
+          isError: true,
+        });
       }
       if (tool.limit) {
         const suffix = tool.limit.keyArg ? String(args[tool.limit.keyArg] ?? "") : (actor ?? "mcp");

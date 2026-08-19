@@ -9,7 +9,7 @@ metadata:
 
 # /mso-repo-work — fast, bounded repository changes
 
-For multi-step work, call `workflow_start` directly. It already searches skills and prior recipes, resolves aliases such as `os-vps` → `mso`, reports the current toolset, and returns repository context.
+For multi-step work, call `workflow_start` directly. It already searches skills and prior recipes, resolves aliases such as `os-vps` → `mso`, reports the current toolset, and returns repository context. Carry its exact `workflow_id` on every operational call in that run.
 
 ## Route selection
 

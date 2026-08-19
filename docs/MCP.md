@@ -60,13 +60,13 @@ Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`.
 | Scope | Tools |
 |---|---|
 | `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `skills_search` `screen_capture` `browser_status` |
-| `write` | + `workflow_start` `workflow_finish` `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
+| `write` | + `workflow_start` `workflow_cancel` `workflow_finish` `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
 | `exec` | + `exec_run` `browser_power` |
 
 Alfa — the in-app assistant — has the same host capabilities under dot.case names,
 and `lib/mcp/parity.test.ts` fails if one surface gains a tool the other lacks
 without a written reason. `skills_search` maps to Alfa's `skills.search`.
-`screen_capture`, `workflow_start` and `workflow_finish` are explicitly MCP-only:
+`screen_capture`, `workflow_start`, `workflow_cancel` and `workflow_finish` are explicitly MCP-only:
 the external connector needs visual proof and an actor-scoped task boundary, while
 Alfa already runs inside the rendered shell and owns an in-app run boundary. The
 two catalogs stay separate on purpose (different transport and guard) but may not
@@ -93,7 +93,7 @@ The catalog has a stable server version plus a schema-derived toolset signature.
 
 Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
 
-Current catalog: **21 tools**. Public names remain stable in this release.
+Current catalog: **22 tools**. `workflow_cancel` is the only new public name in this release.
 
 ## Safe text inspection and overwrite
 
@@ -104,17 +104,24 @@ Current catalog: **21 tools**. Public names remain stable in this release.
 MSO does not need to rediscover the same safe procedure on every conversation.
 For a multi-step task, `workflow_start` is the **single bootstrap call**. It:
 
-1. creates the actor-scoped task boundary;
+1. creates a unique exact-id run boundary;
 2. searches trusted `SKILL.md` instructions, the current scoped MCP catalog and learned recipes;
 3. resolves project paths and aliases such as `os-vps` → `mso`;
 4. returns toolset version/hash/count, package metadata and bounded Git context;
 5. recommends the closest successful recipe and execution policy.
 
+Every operational tool advertises an optional `workflow_id`. Carry the exact id returned
+by `workflow_start` on each step in that run. Multiple conversations may hold isolated
+workflows in parallel on the same token. A call that omits the id is deliberately
+standalone, and an unknown id is refused before the operation runs.
+
 Use `skills_search` alone for capability research or an unfamiliar single-step task;
-do not call it immediately before `workflow_start` for the same work. After independent
-verification, `workflow_finish` records the redacted sequence and merges semantically
-equivalent intents. A faster successful run replaces the best path; a failed run remains
-evidence but never replaces a successful recipe.
+do not call it immediately before `workflow_start` for the same work. `workflow_finish`
+requires the exact returned id and, after independent verification, records the redacted
+sequence and merges semantically equivalent intents. `workflow_cancel` also requires the
+exact id and abandons only that run without creating a recipe. A faster successful run
+replaces the best path; a failed run remains evidence but never replaces a successful
+recipe.
 
 The index uses `mso-local-hybrid-v1`: a deterministic, local 384-dimensional
 feature-hashed vector over words, bilingual aliases, bigrams and character n-grams,
@@ -127,6 +134,7 @@ Connected clients receive the bootstrap, terminal-batching, verification and vis
 
 ```text
 workflow_start → bounded tools or one scoped terminal batch → verify → workflow_finish
+interrupted run → workflow_cancel with the exact workflow id
 ```
 
 A recipe is guidance, not permission. The connector still checks current tool
@@ -143,6 +151,26 @@ mso skills search "deploy MSO and verify production"
 
 The same search is available to Alfa as `skills.search` and through the
 session-gated endpoint `GET /api/skills?q=...`.
+
+## Creating a workflow skill
+
+Use the committed template rather than copying an arbitrary `SKILL.md`:
+
+```bash
+bun run skill:new -- \
+  --name mso-example \
+  --description "Route a repeated MSO task through the smallest safe tools and verify the requested outcome." \
+  --risk medium \
+  --policy inspect-execute-verify \
+  --title "Example Workflow"
+bun run skill:check
+```
+
+The generator reads `templates/mso-skill-flow/SKILL.md.template`, writes only a new
+`claude-skills/<name>/SKILL.md`, and refuses to overwrite an existing skill. The
+template standardizes trigger boundaries, route selection, visible trace, verification,
+rollback, approvals and recipe-memory hygiene. `mso-skill-authoring` is the trusted
+playbook for completing and reviewing the generated file.
 
 ## Visual progress and secure temporary links
 
@@ -212,7 +240,7 @@ State-changing calls also land in the append-only security trail
 `~/.mso/audit.log`, with `actor=mcp:<id>` matching Settings → MCP and
 `mso mcp list`. The audit records `fs.write`, `fs.mkdir`, `fs.move`, `fs.copy`,
 `fs.delete`, `exec.run`, `managed-app.action`, `camoufox.power`,
-`workflow.start`, `workflow.finish`, and `mcp.denied`. It is intentionally quieter
+`workflow.start`, `workflow.cancel`, `workflow.finish`, and `mcp.denied`. It is intentionally quieter
 than the activity stream so security-relevant lines are not buried by reads.
 
 ```bash
@@ -253,8 +281,7 @@ Learned workflows live separately in `~/.mso/skill-memory.json` (override with
 atomic rename. It stores intent/summary, local semantic vectors, tool names, redacted targets and only
 explicitly allowlisted scalar arguments, timings and outcomes. It does **not** store `fs_write.content`, raw file
 contents, browser credentials, bearer tokens, API keys, or full secret-looking shell
-arguments. One active workflow is retained per MCP actor; completed memory is bounded
-to 200 recipes and each workflow to 300 terminal steps.
+arguments. The v2 store keeps up to 20 isolated active workflows per MCP actor, keyed by exact id; it migrates a live v1 actor workflow on read. Completed memory is bounded to 200 recipes. Each workflow retains at most 300 redacted evidence steps, while the reusable best path is compressed to at most 24 successful steps so exploratory reads and failed attempts are not taught back to the next run.
 
 ## Rate limits
 
@@ -278,7 +305,7 @@ lib/mcp/scope.ts          the read/write/exec ladder + the env kill switch
 lib/mcp/store.ts          ~/.mso/mcp.json — clients, codes, tokens (hashed)
 lib/mcp/tool-kit.ts       McpTool, direct image content and run context
 lib/mcp/tools-read.ts     bounded reads + skills_search + screen_capture
-lib/mcp/tools-learning.ts one-call bootstrap + workflow_start / workflow_finish
+lib/mcp/tools-learning.ts one-call bootstrap + start / cancel / finish
 lib/mcp/toolset.ts        server/toolset version, schema hash and scoped manifest
 lib/mcp/tools.ts          write/exec tools and the assembled catalog
 lib/mcp/activity.ts       workflow-correlated live activity
@@ -288,7 +315,7 @@ lib/host/guarded-write.ts optimistic SHA-256 file overwrite guard
 lib/skills/catalog.ts     trusted SKILL.md roots and provenance
 lib/skills/semantic.ts    local hybrid embedding/search primitives
 lib/skills/search.ts      unified skill/tool/recipe ranking
-lib/skills/memory.ts      atomic redacted workflow recipe store
+lib/skills/memory.ts      migrated multi-run exact-id workflow and recipe store
 app/api/skills/route.ts   browser/Alfa list, read and semantic search
 app/mcp/route.ts          bearer, rate limits and dispatch
 app/oauth/*               authorize (consent) · token · register (DCR)

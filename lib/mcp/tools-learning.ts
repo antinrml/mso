@@ -1,5 +1,5 @@
 import { inspectProject, resolveProjectHint } from "@/lib/host";
-import { finishWorkflow, markRecipeUsed, startWorkflow } from "@/lib/skills/memory";
+import { cancelWorkflow, finishWorkflow, markRecipeUsed, startWorkflow } from "@/lib/skills/memory";
 import { searchSkillMemory } from "@/lib/skills/search";
 import { allows } from "./scope";
 import { type McpTool, str, opt, S } from "./tool-kit";
@@ -16,7 +16,7 @@ export const LEARNING_TOOLS: McpTool[] = [
     description:
       "The ONE startup call for a multi-step task. It starts the workflow, searches trusted skills and prior recipes, " +
       "resolves project aliases, reports the current toolset/version, and inspects repository context when available. " +
-      "Do not call skills_search first for the same task; this already includes it.",
+      "Do not call skills_search first for the same task; this already includes it. Multiple conversations may start isolated workflows on the same token; correlate every later step with the returned workflow_id.",
     scope: "write",
     annotations: { idempotentHint: false },
     limit: { key: "workflow.memory", max: 30, windowMs: 60_000 },
@@ -31,23 +31,28 @@ export const LEARNING_TOOLS: McpTool[] = [
       const projectHint = opt(a, "project");
       const project = projectHint ? await resolveProjectHint(projectHint).catch(() => null) : null;
       const tools = await visibleTools(context.scope);
-      const started = await startWorkflow({
-        actor: context.actor,
-        intent,
-        project: project?.path ?? projectHint,
-        constraints: opt(a, "constraints"),
-      });
+      // Complete every fallible read-only preflight before allocating the run id.
+      // A failed skill scan or repo inspection must not
+      // leave a run the client never received an id for and therefore cannot close.
       const search = await searchSkillMemory(intent, {
         topK: 8,
         toolDocs: tools.map((tool) => ({
           name: tool.name, description: tool.description, scope: tool.scope, inputSchema: tool.inputSchema,
         })),
       });
-      if (search.recommendedRecipe) await markRecipeUsed(search.recommendedRecipe.id);
       const repository = project
         ? await inspectProject(project, { includeGitStatus: context.scope === "exec" }).catch(() => undefined)
         : undefined;
       const toolset = toolsetInfo(tools, context.scope);
+      const started = await startWorkflow({
+        actor: context.actor,
+        intent,
+        project: project?.path ?? projectHint,
+        constraints: opt(a, "constraints"),
+      });
+      // Recommendation telemetry is useful, but failure to persist lastUsedAt must
+      // never turn a successfully-created workflow into an opaque tool failure.
+      if (search.recommendedRecipe) await markRecipeUsed(search.recommendedRecipe.id).catch(() => undefined);
       return {
         ...started,
         bootstrap: {
@@ -64,7 +69,7 @@ export const LEARNING_TOOLS: McpTool[] = [
             simple: "Use bounded tools for one or two direct operations.",
             repository: "For repository-wide search, git, tests, builds, or 3+ related checks, use one narrow exec_run batch when exec scope is available.",
             progress: "Show only high-level feature/tool badges and outcomes; never private chain-of-thought.",
-            finish: "Call workflow_finish only after independent verification.",
+            finish: "Call workflow_finish with this exact workflow id only after independent verification; use workflow_cancel for an abandoned run.",
           },
         },
         search,
@@ -73,22 +78,41 @@ export const LEARNING_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "workflow_cancel",
+    description:
+      "Cancel one exact active workflow without saving a learned recipe. Use this only when the task is being abandoned or the prior run was interrupted; " +
+      "workflow_id is required so a different conversation cannot be cancelled accidentally.",
+    scope: "write",
+    annotations: { idempotentHint: false },
+    limit: { key: "workflow.memory", max: 30, windowMs: 60_000 },
+    audit: { action: "workflow.cancel" as const, targetArg: "workflow_id" },
+    inputSchema: S({
+      workflow_id: { type: "string", description: "Exact id returned by workflow_start." },
+      reason: { type: "string", description: "Optional concise reason; no secrets or file contents." },
+    }, ["workflow_id"]),
+    run: (a, context) => cancelWorkflow({
+      actor: context.actor,
+      workflowId: str(a, "workflow_id"),
+      reason: opt(a, "reason"),
+    }),
+  },
+  {
     name: "workflow_finish",
     description:
-      "Finish the active learned workflow after verification. MSO saves the redacted tool sequence, durations and outcome, merges it with a semantically equivalent recipe, " +
-      "and keeps the fastest successful path for the next request. Never put credentials or raw file contents in summary.",
+      "Finish one exact learned workflow after verification. workflow_id is required so another conversation using the same token cannot close the wrong run. " +
+      "MSO saves the redacted sequence and keeps the fastest successful path. Never put credentials or raw file contents in summary.",
     scope: "write",
     annotations: { idempotentHint: false },
     limit: { key: "workflow.memory", max: 30, windowMs: 60_000 },
     audit: { action: "workflow.finish" as const, targetArg: "workflow_id" },
     inputSchema: S({
-      workflow_id: { type: "string", description: "Optional id returned by workflow_start. Omit to finish this client's active workflow." },
+      workflow_id: { type: "string", description: "Exact id returned by workflow_start." },
       summary: { type: "string", description: "Concise outcome and verification result; no secrets." },
       success: { type: "boolean", description: "True only after the requested result is verified." },
-    }, ["summary", "success"]),
+    }, ["workflow_id", "summary", "success"]),
     run: (a, context) => finishWorkflow({
       actor: context.actor,
-      workflowId: opt(a, "workflow_id"),
+      workflowId: str(a, "workflow_id"),
       summary: str(a, "summary"),
       success: a.success === true,
     }),

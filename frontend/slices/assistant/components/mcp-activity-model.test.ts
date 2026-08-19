@@ -29,4 +29,12 @@ describe("MCP activity workflow grouping", () => {
     expect(group.state).toBe("completed");
   });
 
+  it("marks an explicitly abandoned workflow as cancelled", () => {
+    const [group] = groupActivity([
+      row({ id: "c", tool: "workflow_cancel", state: "completed", workflowId: "w" }),
+      row({ id: "a", tool: "fs_read", state: "completed", workflowId: "w" }),
+    ]);
+    expect(group.state).toBe("cancelled");
+  });
+
 });

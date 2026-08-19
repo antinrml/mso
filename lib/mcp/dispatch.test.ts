@@ -15,6 +15,7 @@ vi.mock("@/lib/host", async (orig) => {
 
 const { dispatch, isNotification } = await import("./dispatch");
 const { TOOLS } = await import("./tools");
+const { activeWorkflowForActor } = await import("@/lib/skills/memory");
 
 const call = (name: string, args: Record<string, unknown> = {}) =>
   ({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } });
@@ -30,18 +31,20 @@ describe("protocol", () => {
     const readInstructions = (read.result as { instructions?: string }).instructions;
     expect(readInstructions).toContain("skills_search");
     expect(readInstructions).not.toContain("workflow_start");
+    expect(readInstructions).not.toContain("workflow_cancel");
     expect(readInstructions).not.toContain("workflow_finish");
 
     const exec = await dispatch({ id: 2, method: "initialize" }, "exec");
     const execInstructions = (exec.result as { instructions?: string }).instructions;
     expect(execInstructions).toContain("workflow_start");
+    expect(execInstructions).toContain("workflow_cancel");
     expect(execInstructions).toContain("workflow_finish");
   });
 
   it("publishes server and toolset metadata so action drift is visible", async () => {
     const r = await dispatch({ id: 1, method: "initialize" }, "exec");
     const result = r.result as { serverInfo: { version: string }; _meta: { toolset: { toolCount: number; hash: string } } };
-    expect(result.serverInfo.version).toBe("1.2.0");
+    expect(result.serverInfo.version).toBe("1.3.0");
     expect(result._meta.toolset.toolCount).toBe(TOOLS.length);
     expect(result._meta.toolset.hash).toMatch(/^[a-f0-9]{16}$/);
   });
@@ -84,6 +87,7 @@ describe("tools/list is scope-filtered", () => {
     expect(n).toContain("fs_write");
     expect(n).toContain("fs_delete");
     expect(n).toContain("workflow_start");
+    expect(n).toContain("workflow_cancel");
     expect(n).toContain("workflow_finish");
     expect(n).not.toContain("exec_run");
     expect(n).not.toContain("browser_power");
@@ -124,6 +128,40 @@ describe("tools/call enforces scope even when the tool was never listed", () => 
     expect((r.result as { isError?: boolean }).isError).toBe(true);
   });
 
+  it("isolates parallel runs and treats missing workflow ids as standalone", async () => {
+    const actor = "mcp:workflow-context";
+    const firstStart = await dispatch(call("workflow_start", {
+      intent: "check server stats as the first correlated test",
+    }), "write", actor);
+    const first = JSON.parse((firstStart.result as { content: { text: string }[] }).content[0].text) as {
+      workflow: { id: string };
+    };
+    const secondStart = await dispatch(call("workflow_start", {
+      intent: "check server stats as the second correlated test",
+    }), "write", actor);
+    const second = JSON.parse((secondStart.result as { content: { text: string }[] }).content[0].text) as {
+      workflow: { id: string };
+    };
+
+    await dispatch(call("sys_stats", { workflow_id: first.workflow.id }), "read", actor);
+    await dispatch(call("sys_stats", { workflow_id: second.workflow.id }), "read", actor);
+    expect((await activeWorkflowForActor(actor, first.workflow.id))?.steps.map((step) => step.tool)).toEqual(["sys_stats"]);
+    expect((await activeWorkflowForActor(actor, second.workflow.id))?.steps.map((step) => step.tool)).toEqual(["sys_stats"]);
+
+    await dispatch(call("sys_stats"), "read", actor);
+    expect((await activeWorkflowForActor(actor, first.workflow.id))?.steps).toHaveLength(1);
+    expect((await activeWorkflowForActor(actor, second.workflow.id))?.steps).toHaveLength(1);
+
+    const wrong = await dispatch(call("sys_stats", { workflow_id: "wrong" }), "read", actor);
+    expect((wrong.result as { isError?: boolean }).isError).toBe(true);
+    expect((await activeWorkflowForActor(actor, first.workflow.id))?.steps).toHaveLength(1);
+
+    await dispatch(call("workflow_cancel", { workflow_id: first.workflow.id, reason: "test cleanup" }), "write", actor);
+    await dispatch(call("workflow_cancel", { workflow_id: second.workflow.id, reason: "test cleanup" }), "write", actor);
+    await expect(activeWorkflowForActor(actor, first.workflow.id)).resolves.toBeNull();
+    await expect(activeWorkflowForActor(actor, second.workflow.id)).resolves.toBeNull();
+  });
+
   it("supports direct MCP image content for visual tools", async () => {
     const tool = TOOLS.find((t) => t.name === "screen_capture");
     expect(tool).toBeTruthy();
@@ -152,6 +190,15 @@ describe("catalog hygiene", () => {
     const names = TOOLS.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
     for (const n of names) expect(n).toMatch(/^[a-z][a-z0-9_]*$/);
+  });
+
+  it("offers optional workflow correlation on every operational tool", () => {
+    const exempt = new Set(["skills_search", "workflow_start", "workflow_cancel", "workflow_finish"]);
+    for (const tool of TOOLS) {
+      if (exempt.has(tool.name)) continue;
+      expect(tool.inputSchema.properties, tool.name).toHaveProperty("workflow_id");
+      expect(tool.inputSchema.required ?? [], tool.name).not.toContain("workflow_id");
+    }
   });
 
   it("every required arg is declared in properties — a mismatch is unfixable by the model", () => {

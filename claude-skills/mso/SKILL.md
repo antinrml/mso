@@ -42,9 +42,10 @@ Use the absolute CLI path above in automation. `$HOME/.local/bin/mso` is a conve
 For any task likely to need two or more operational calls:
 
 1. Call `workflow_start` directly with the user's complete intent, project hint and constraints. It already searches trusted skills, the live MCP tool catalog and learned recipes, resolves project aliases, and reports the current toolset.
-2. Reuse a relevant successful recipe when it is still safe and applicable.
-3. Use bounded tools for one or two direct operations. For repository-wide search, Git, tests, builds, or three or more related checks, use one narrow `exec_run` batch when exec scope is available.
-4. Verify independently, then call `workflow_finish(success=true)`.
+2. Carry its exact `workflow_id` on every operational call in that run. Different conversations may run isolated workflows in parallel on the same token; a missing ID is standalone.
+3. Reuse a relevant successful recipe when it is still safe and applicable.
+4. Use bounded tools for one or two direct operations. For repository-wide search, Git, tests, builds, or three or more related checks, use one narrow `exec_run` batch when exec scope is available.
+5. Verify independently, then call `workflow_finish` with the exact ID and `success=true`; use `workflow_cancel` for an abandoned run.
 
 Use `skills_search` by itself for capability research or an unfamiliar single-step task; do not call it immediately before `workflow_start` for the same work. MSO stores the redacted tool sequence and durations, merges equivalent intents, and keeps the fastest successful path.
 

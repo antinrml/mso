@@ -9,7 +9,7 @@ metadata:
 
 # /mso-service-debug — diagnose before touching service state
 
-Call `workflow_start` directly for a multi-step incident. Begin with `sys_stats`, `apps_list`, and `apps_logs`; these answer most CPU, memory, stopped-service, and journal questions without shell power.
+Call `workflow_start` directly for a multi-step incident and carry its exact `workflow_id` on every operational call. Begin with `sys_stats`, `apps_list`, and `apps_logs`; these answer most CPU, memory, stopped-service, and journal questions without shell power.
 
 Use one scoped `exec_run` batch only when bounded tools cannot identify the cause:
 

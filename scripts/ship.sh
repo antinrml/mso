@@ -20,6 +20,12 @@
 #                    the changelog staleness check that this ordering satisfies.
 #   4. build       — in place, because the next line restarts immediately.
 #   5. restart     — build THEN restart, always. Never the reverse.
+#
+# When invoked THROUGH MSO/MCP, steps 4–5 cannot remain a child of mso.service:
+# restarting the service kills its whole cgroup, including nohup children and this
+# script before it can verify the new chunks. After the gated push, that case hands
+# rebuild/restart/verification to the same owner transient user unit used by the
+# Settings self-updater. An SSH/terminal invocation stays synchronous.
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -60,26 +66,35 @@ fi
 echo "▶ 3/5 push (gates run here, ~70s)"
 git push origin main
 
-echo "▶ 4/5 build"
-bun run build >/dev/null
+inside_mso_service() {
+  [ "${MSO_SHIP_FORCE_HANDOFF:-0}" = "1" ] && return 0
+  grep -Eq '(^|/)mso\.service($|/)' /proc/self/cgroup 2>/dev/null
+}
 
-echo "▶ 5/5 restart"
-sudo -n systemctl restart mso.service
-sleep 4
+RELEASE_SHA="$(git rev-parse HEAD)"
+echo "▶ 4/5 hand off exact-SHA build/restart to owner user unit"
+HANDOFF="$(bash scripts/ship-handoff.sh "$PWD" "$RELEASE_SHA")"
+printf '%s\n' "$HANDOFF"
+RELEASE_LOG="$(printf '%s\n' "$HANDOFF" | sed -n 's/^release_log=//p' | tail -1)"
 
-# The chunk-mismatch check from CLAUDE.md, run every time rather than remembered:
-# if the HTML references a chunk the restarted process does not serve, every asset
-# 404s and the UI is unstyled. Cheaper to check than to notice.
-CSS=$(curl -fsS http://127.0.0.1:4005/ | grep -o '/_next/static/[^"]*\.css' | head -1 || true)
-if [ -z "$CSS" ]; then
-  echo "❌ no CSS reference in the served HTML — the app is not rendering." >&2; exit 1
+if inside_mso_service; then
+  echo "▶ 5/5 restart and chunk verification continue outside mso.service"
+  echo
+  echo "✅ pushed ${RELEASE_SHA:0:7}; deployment finalizer is running"
+  echo "   Poll the returned user unit and log; this message means scheduled, not deployed."
+  exit 0
 fi
-TYPE=$(curl -fsSI "http://127.0.0.1:4005$CSS" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
-case "$TYPE" in
-  text/css*) ;;
-  *) echo "❌ chunk mismatch: $CSS served as '${TYPE:-nothing}'. Fix: rm -rf .next && bun run build && restart" >&2; exit 1 ;;
-esac
+
+echo "▶ 5/5 wait for restart and chunk verification"
+while systemctl --user is-active --quiet mso-self-update.service; do sleep 1; done
+[ -n "$RELEASE_LOG" ] && [ -f "$RELEASE_LOG" ] \
+  || { echo "❌ release finalizer produced no log" >&2; exit 1; }
+if ! tail -n 8 "$RELEASE_LOG" | grep -q '^UPDATE OK$'; then
+  tail -n 80 "$RELEASE_LOG" >&2
+  echo "❌ release finalizer failed" >&2
+  exit 1
+fi
 
 echo
-echo "✅ shipped $(git rev-parse --short HEAD) → https://mso.rahmanef.com"
+echo "✅ shipped ${RELEASE_SHA:0:7} → https://mso.rahmanef.com"
 echo "   What's new is in Settings → About (docs/CHANGELOG.md, regenerated above)."
