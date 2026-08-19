@@ -33,12 +33,13 @@ export function mcpEnabled(): boolean {
   return process.env.OS_MCP_ENABLED === "1";
 }
 
-/** The ceiling the deployment allows, whatever a consent page asks for. Set
- *  `OS_MCP_MAX_SCOPE=read` to make it impossible to mint an exec token even by
- *  accident. Defaults to `write`: shell access is opt-in, twice. */
+/** The ceiling the deployment allows, whatever a consent page asks for. The
+ *  owner wants full MCP capability on a fresh install, so an absent value defaults
+ *  to `exec`. Set `OS_MCP_MAX_SCOPE=read` or `write` to opt down. A malformed explicit
+ *  value still fails closed to `write` rather than silently granting shell access. */
 export function maxScope(): Scope {
   const raw = process.env.OS_MCP_MAX_SCOPE;
-  if (!raw) return "write";
+  if (!raw) return "exec";
   const s = String(raw).trim();
   return (SCOPES as readonly string[]).includes(s) ? (s as Scope) : "write";
 }
@@ -46,4 +47,9 @@ export function maxScope(): Scope {
 export function clampScope(asked: Scope): Scope {
   const ceiling = maxScope();
   return RANK[asked] > RANK[ceiling] ? ceiling : asked;
+}
+
+/** OAuth consent starts at the deployment ceiling; the owner may select a lower tier. */
+export function defaultConsentScope(ceiling: Scope): Scope {
+  return ceiling;
 }

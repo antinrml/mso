@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { approve } from "./actions";
 import { followOAuthRedirect } from "./oauth-navigation";
-import type { Scope } from "@/lib/mcp/scope";
+import { defaultConsentScope, type Scope } from "@/lib/mcp/scope";
 
 const TIERS: { value: Scope; label: string; blurb: string }[] = [
   { value: "read", label: "Read only", blurb: "List and read files, disk usage, CPU/memory, processes, installed apps." },
@@ -32,7 +32,8 @@ export function ConsentForm({
   hidden: Record<string, string>;
 }) {
   const allowed = TIERS.slice(0, TIERS.findIndex((t) => t.value === ceiling) + 1);
-  const [scope, setScope] = useState<Scope>("read");
+  // Preselect the highest tier this deployment permits; the owner may still lower it before allowing.
+  const [scope, setScope] = useState<Scope>(defaultConsentScope(ceiling));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 

@@ -8,6 +8,20 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-20 — image generation and full-access defaults (DONE)
+
+Fresh MSO installs now expose Codex provider-side `image_generation` when
+`OS_CODEX_BUILTIN_TOOLS` is absent, matching the owner's expected assistant capability.
+An explicit empty value still disables every provider built-in, and an explicit list
+replaces the default through the existing allowlist. Regression tests cover the default,
+the opt-out, and unknown-tool filtering.
+
+MCP now defaults its ceiling to `exec`, and the OAuth consent form preselects the highest
+tier that ceiling permits, so “Allow” grants full access without an extra radio change on
+the owner's single-user deployment. `OS_MCP_MAX_SCOPE=read|write` still opts the whole
+server down, malformed explicit values fail closed to `write`, the form still shows the
+full-shell warning, and the server action keeps absent/unknown submitted scopes at `read`.
+
 ## 2026-08-19 — isolated parallel workflows and a skill-flow factory (DONE)
 
 The first bootstrap release still had one unsafe fallback: active workflow memory was

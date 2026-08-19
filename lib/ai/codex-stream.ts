@@ -39,12 +39,11 @@ type ResponsesTool =
   | { type: "function"; name: string; description: string; strict: boolean; parameters: Record<string, unknown> }
   | { type: string };
 
-/** Built-ins the owner opted into, e.g. `OS_CODEX_BUILTIN_TOOLS=image_generation`.
- *  Off by default: a provider-run tool bills to the owner's ChatGPT account and
- *  returns content this shell does not render yet, so it is opt-in rather than a
- *  surprise on the next reply. */
+/** Provider-run built-ins available to Codex. `image_generation` is enabled when
+ *  the variable is absent; an explicit empty `OS_CODEX_BUILTIN_TOOLS=` disables all
+ *  built-ins, while a comma/space-separated value replaces the default. */
 function builtinTools(): ResponsesTool[] {
-  return (process.env.OS_CODEX_BUILTIN_TOOLS ?? "")
+  return (process.env.OS_CODEX_BUILTIN_TOOLS ?? "image_generation")
     .split(/[\s,]+/)
     .filter((t) => BUILTIN_TOOL_TYPES.has(t))
     .map((type) => ({ type }));

@@ -309,9 +309,9 @@ that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
   (including `~/.mso` itself) and `exec.ts`'s destructive filter for free. A tool that
   reimplements an operation reimplements its guard too — don't.
 - Scope ladder `read < write < exec`, picked per token on the consent page, capped by
-  `OS_MCP_MAX_SCOPE` (default `write`; **the running box is set to `exec`** — open
-  decision, see the integration doc below). `tools/list` filters by it AND `tools/call`
-  re-checks it — a client can call a name it was never shown.
+  `OS_MCP_MAX_SCOPE`. The default ceiling is `exec`, and consent preselects the highest
+  permitted tier; set the env to `read` or `write` to opt down. `tools/list` filters by
+  it AND `tools/call` re-checks it — a client can call a name it was never shown.
 - **Tool names are a cross-repo contract.** `rahmanef63/connectors-gateway` registered
   mso as a connector on 2026-08-17 and pins 15 of the 22 names as literal strings
   (`x-upstream`), omitting `exec_run`, `browser_power`, and the five skill/workflow/visual tools added later. `GET /mcp` plus `_meta.toolset` now expose a version/hash/name manifest for parity checks. Renaming or removing

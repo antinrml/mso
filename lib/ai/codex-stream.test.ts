@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { streamCodex } from "./codex-stream";
 import type { OaMsg, OaTool } from "./openai-stream";
 
@@ -7,8 +7,14 @@ import type { OaMsg, OaTool } from "./openai-stream";
 // simply never sent them — so the UI advertised a catalog the model never saw.
 
 const realFetch = globalThis.fetch;
+beforeEach(() => {
+  // Most tests exercise host function tools in isolation. Provider built-ins have
+  // their own cases below, including the real default when the env is absent.
+  vi.stubEnv("OS_CODEX_BUILTIN_TOOLS", "");
+});
 afterEach(() => {
   globalThis.fetch = realFetch;
+  vi.unstubAllEnvs();
 });
 
 const sse = (...events: unknown[]) =>
@@ -191,18 +197,25 @@ describe("reading calls back", () => {
 });
 
 describe("provider-executed built-ins", () => {
-  it("declares nothing extra by default — a provider-run tool bills the owner", async () => {
+  it("enables image_generation when OS_CODEX_BUILTIN_TOOLS is absent", async () => {
+    vi.unstubAllEnvs();
+    delete process.env.OS_CODEX_BUILTIN_TOOLS;
+    const sent = capture(sse({ type: "response.completed", response: { output: [] } }));
+    await run({ tools: [TOOL] });
+    expect((sent().tools ?? []).map((t) => t.type)).toEqual(["function", "image_generation"]);
+  });
+
+  it("accepts an explicit empty value to disable every provider built-in", async () => {
     const sent = capture(sse({ type: "response.completed", response: { output: [] } }));
     await run({ tools: [TOOL] });
     expect(sent().tools).toHaveLength(1);
   });
 
-  it("adds an opted-in built-in by type alone, and ignores an unknown one", async () => {
+  it("uses an explicit built-in list by type alone and ignores unknown entries", async () => {
     vi.stubEnv("OS_CODEX_BUILTIN_TOOLS", "image_generation, not_a_tool");
     const sent = capture(sse({ type: "response.completed", response: { output: [] } }));
     await run({ tools: [TOOL] });
     const tools = sent().tools ?? [];
     expect(tools.map((t) => t.type)).toEqual(["function", "image_generation"]);
-    vi.unstubAllEnvs();
   });
 });

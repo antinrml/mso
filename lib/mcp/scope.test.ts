@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { parseScope, allows, mcpEnabled, maxScope, clampScope } from "./scope";
+import { parseScope, allows, mcpEnabled, maxScope, clampScope, defaultConsentScope } from "./scope";
 
 const env = { ...process.env };
 afterEach(() => {
@@ -55,10 +55,16 @@ describe("mcpEnabled", () => {
 });
 
 describe("maxScope / clampScope", () => {
-  it("defaults the ceiling to write, so shell access is opt-in twice", () => {
+  it("defaults the ceiling to exec for full-access owner workflows", () => {
     delete process.env.OS_MCP_MAX_SCOPE;
-    expect(maxScope()).toBe("write");
-    expect(clampScope("exec")).toBe("write");
+    expect(maxScope()).toBe("exec");
+    expect(clampScope("exec")).toBe("exec");
+  });
+
+  it("preselects the highest tier the deployment permits on OAuth consent", () => {
+    expect(defaultConsentScope("exec")).toBe("exec");
+    expect(defaultConsentScope("write")).toBe("write");
+    expect(defaultConsentScope("read")).toBe("read");
   });
 
   it("honours a lower ceiling", () => {

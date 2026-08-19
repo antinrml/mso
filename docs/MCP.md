@@ -13,7 +13,7 @@ unauthenticated one.
 ```bash
 # .env.local
 OS_MCP_ENABLED=1
-OS_MCP_MAX_SCOPE=write   # read | write | exec — the ceiling the consent screen may grant
+OS_MCP_MAX_SCOPE=exec    # optional: exec is the default; use read/write to opt down
 ```
 
 Then `bun run build && sudo systemctl restart mso.service` (build THEN restart —
@@ -55,7 +55,7 @@ OAuth" — it means `OS_MCP_ENABLED` is not set on the running process.
 
 ## The three scopes
 
-Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`.
+Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`. The highest allowed tier is preselected (`exec` on a default install); lower it before Allow when a client does not need full host access.
 
 | Scope | Tools |
 |---|---|
