@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { parseCommits, blockingReason } = await import("./self-update");
+const { parseCommits, blockingReason, updateUnitArgs } = await import("./self-update");
 
 const status = (over: Partial<Parameters<typeof blockingReason>[0]> = {}) => ({
   supported: true,
@@ -44,6 +44,25 @@ describe("parseCommits", () => {
   it("returns nothing for the up-to-date case rather than an empty-shaped row", () => {
     expect(parseCommits("")).toEqual([]);
     expect(parseCommits("\n  \n")).toEqual([]);
+  });
+});
+
+describe("updateUnitArgs", () => {
+  it("runs in the owner's user manager without sudo or a root User property", () => {
+    const args = updateUnitArgs("/srv/mso", "/home/alice/.mso/self-update.log");
+
+    expect(args.slice(0, 2)).toEqual(["--user", "--collect"]);
+    expect(args).toContain("--unit=mso-self-update");
+    expect(args).toContain("--property=WorkingDirectory=/srv/mso");
+    expect(args).toContain("/srv/mso/scripts/self-update.sh");
+    expect(args).not.toContain("--rebuild-only");
+    expect(args.some((arg) => arg.startsWith("--property=User="))).toBe(false);
+    expect(args.join(" ")).not.toContain("sudo");
+  });
+
+  it("exposes only the rebuild boolean as the optional operation", () => {
+    const args = updateUnitArgs("/srv/mso", "/tmp/update.log", true);
+    expect(args.at(-1)).toBe("--rebuild-only");
   });
 });
 

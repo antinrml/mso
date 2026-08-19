@@ -2,9 +2,10 @@
 # self-update.sh — pull main, prove it compiles, build, restart. The body of the
 # Settings → About update button.
 #
-# RUN BY systemd-run, NOT by mso.service (lib/host/self-update.ts explains why: the
-# last step restarts mso.service, and systemd kills the whole cgroup — a child of the
-# service would die mid-build with .next already deleted).
+# RUN BY systemd-run --user, NOT by mso.service (lib/host/self-update.ts explains
+# why: replacing mso.service kills that service's whole cgroup, so an updater child
+# would die mid-build with .next already deleted). The user unit survives, signals
+# mso.service's same-UID MainPID, and Restart=always starts the freshly-built app.
 #
 # Order is the same load-bearing order as scripts/ship.sh, with ONE addition: the
 # out-of-tree verification. ship.sh is run by a human who is watching; this is run by
@@ -58,15 +59,59 @@ bash scripts/verify-build.sh >/dev/null || die "HEAD does not compile — nothin
 step "building in place"
 bun run build >/dev/null || die "build failed after it had already passed out-of-tree — check disk space"
 
-step "restarting mso.service"
-sudo -n systemctl restart mso.service || die "could not restart mso.service"
-sleep 4
+step "restarting mso.service (same-user signal; no sudo)"
+# mso.service runs as the owner and has Restart=always. Signalling its MainPID is
+# therefore the least-privilege equivalent of `systemctl restart`: systemd cleans
+# the rest of that service cgroup and starts it again, while this updater lives in a
+# separate USER-manager cgroup and survives. Verify the uid before signalling so a
+# hand-edited unit can never turn this into a cross-user kill.
+RESTART_POLICY="$(systemctl show -p Restart --value mso.service 2>/dev/null || true)"
+[ -n "$RESTART_POLICY" ] && [ "$RESTART_POLICY" != "no" ] \
+  || die "mso.service has no automatic restart policy"
+OLD_PID="$(systemctl show -p MainPID --value mso.service 2>/dev/null || true)"
+case "$OLD_PID" in
+  ""|*[!0-9]*) die "could not read mso.service MainPID" ;;
+esac
+[ "$OLD_PID" -gt 1 ] || die "mso.service has no running MainPID"
+SELF_UID="$(id -u)"
+PID_UID="$(stat -c %u "/proc/$OLD_PID" 2>/dev/null || true)"
+[ "$PID_UID" = "$SELF_UID" ] || die "mso.service MainPID $OLD_PID belongs to uid ${PID_UID:-unknown}, not $SELF_UID"
+kill -TERM "$OLD_PID" || die "could not signal mso.service MainPID $OLD_PID"
+
+NEW_PID=""
+for _ in $(seq 1 40); do
+  CANDIDATE="$(systemctl show -p MainPID --value mso.service 2>/dev/null || true)"
+  case "$CANDIDATE" in
+    ""|*[!0-9]*) ;;
+    *)
+      if [ "$CANDIDATE" -gt 1 ] && [ "$CANDIDATE" != "$OLD_PID" ] && systemctl is-active --quiet mso.service; then
+        NEW_PID="$CANDIDATE"
+        break
+      fi
+      ;;
+  esac
+  sleep 1
+done
+[ -n "$NEW_PID" ] || die "mso.service did not come back with a new MainPID"
+printf 'restarted %s -> %s\n' "$OLD_PID" "$NEW_PID"
 
 # The chunk-mismatch check CLAUDE.md warns about, verified rather than remembered —
-# the same check scripts/ship.sh ends with. If the HTML references a chunk the
-# restarted process does not serve, every asset 404s and the UI comes up unstyled.
-PORT="${PORT:-4005}"
-CSS=$(curl -fsS --max-time 10 "http://127.0.0.1:$PORT/" | grep -o '/_next/static/[^"]*\.css' | head -1)
+# the same check scripts/ship.sh ends with. `active` only means npm has started, not
+# that Next is already accepting connections, so wait for real HTML before checking
+# its referenced CSS chunk.
+# The user transient unit intentionally does not inherit arbitrary service env.
+# Read the fixed numeric PORT from the installed unit instead; fall back to the
+# installer's default for older or hand-written units.
+SERVICE_PORT="$(systemctl show -p Environment --value mso.service 2>/dev/null \
+  | tr ' ' '\n' | sed -n 's/^PORT=//p' | head -1)"
+PORT="${PORT:-${SERVICE_PORT:-4005}}"
+HTML=""
+for _ in $(seq 1 30); do
+  HTML="$(curl -fsS --max-time 3 "http://127.0.0.1:$PORT/" 2>/dev/null || true)"
+  [ -n "$HTML" ] && break
+  sleep 1
+done
+CSS=$(printf '%s' "$HTML" | grep -o '/_next/static/[^"]*\.css' | head -1)
 if [ -z "$CSS" ]; then
   die "no CSS reference in the served HTML — recover with: rm -rf .next && bun run build && sudo systemctl restart mso.service"
 fi

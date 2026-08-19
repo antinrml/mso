@@ -14,12 +14,13 @@ import { HostError } from "./host-error";
 // it a button.
 //
 // THE UPDATE DOES NOT RUN IN THIS PROCESS, and that is not a style choice: the last
-// step is `systemctl restart mso.service`, and systemd's default KillMode kills
-// everything in the unit's cgroup — including a child we spawned. A detached child
-// is still in that cgroup, so it would be killed mid-`next build`, with `.next`
-// already deleted (the build's first act) and nothing to restart into. So the work
-// is handed to a TRANSIENT unit via `systemd-run`, which lives in its own cgroup and
-// survives the restart it performs.
+// step replaces the process serving MSO, and systemd's default KillMode kills every
+// child in mso.service's cgroup. A detached child is still in that cgroup, so it
+// would die mid-`next build`, with `.next` already deleted and nothing to restart
+// into. The job is therefore handed to the OWNER'S transient user unit via
+// `systemd-run --user`. That gives it a separate cgroup without granting the web app
+// passwordless root. At the end the updater signals mso.service's same-UID MainPID;
+// Restart=always brings the system unit back on the freshly-built checkout.
 const UNIT = "mso-self-update";
 const LOG_TAIL = 12_000;
 const GIT_TIMEOUT_MS = 20_000;
@@ -62,6 +63,25 @@ export const updateLogPath = (): string => {
 };
 
 const repoRoot = (): string => process.cwd();
+
+/** Arguments are pure/testable because this boundary is security-sensitive: the
+ * request may choose only update vs rebuild. No path, command, ref, or root-capable
+ * argument comes from the client. */
+export function updateUnitArgs(root: string, logPath: string, rebuildOnly = false): string[] {
+  return [
+    "--user",
+    "--collect",
+    `--unit=${UNIT}`,
+    `--property=WorkingDirectory=${root}`,
+    // A build on a small VPS is minutes, not seconds; the default 90s start
+    // timeout would kill it exactly at the point of no return.
+    "--property=TimeoutStartSec=3600",
+    `--setenv=MSO_UPDATE_LOG=${logPath}`,
+    "/bin/bash",
+    path.join(root, "scripts", "self-update.sh"),
+    ...(rebuildOnly ? ["--rebuild-only"] : []),
+  ];
+}
 
 interface Ran {
   code: number;
@@ -122,9 +142,13 @@ export function blockingReason(status: UpdateStatus, rebuildOnly: boolean): stri
 async function isRunning(): Promise<boolean> {
   // `is-active` on a transient unit that has been collected exits non-zero, which
   // is the same answer as "never ran" — both mean "not running", so the code is
-  // all we need here.
-  const result = await run("systemctl", ["is-active", `${UNIT}.service`], 10_000);
-  return result.code === 0;
+  // all we need here. Check the old system-unit location too while installations
+  // migrate from the pre-0.2.1 sudo-based updater.
+  const [userUnit, legacySystemUnit] = await Promise.all([
+    run("systemctl", ["--user", "is-active", `${UNIT}.service`], 10_000),
+    run("systemctl", ["is-active", `${UNIT}.service`], 10_000),
+  ]);
+  return userUnit.code === 0 || legacySystemUnit.code === 0;
 }
 
 async function readLog(): Promise<string> {
@@ -159,6 +183,40 @@ export async function getUpdateStatus(fetchRemote = true): Promise<UpdateStatus>
   const inside = await git(["rev-parse", "--is-inside-work-tree"]);
   if (inside.code !== 0 || inside.stdout.trim() !== "true") {
     return { ...base, reason: "this deployment is not a git checkout, so there is nothing to pull" };
+  }
+
+  // The installer enables linger and gives mso.service XDG_RUNTIME_DIR precisely
+  // so the service can reach this per-user manager. Unlike the old sudo path, this
+  // is both non-interactive and non-root.
+  const userManager = await run("systemctl", ["--user", "show-environment"], 10_000);
+  if (userManager.code !== 0) {
+    return {
+      ...base,
+      reason:
+        "the per-user systemd manager is unavailable — re-run scripts/install.sh once to restore linger and the user bus",
+    };
+  }
+
+  const [loadState, serviceUser, restartPolicy] = await Promise.all([
+    run("systemctl", ["show", "-p", "LoadState", "--value", "mso.service"], 10_000),
+    run("systemctl", ["show", "-p", "User", "--value", "mso.service"], 10_000),
+    run("systemctl", ["show", "-p", "Restart", "--value", "mso.service"], 10_000),
+  ]);
+  if (loadState.code !== 0 || loadState.stdout.trim() !== "loaded") {
+    return { ...base, reason: "mso.service is not installed as a systemd service, so it cannot safely restart itself" };
+  }
+  if (restartPolicy.code !== 0 || restartPolicy.stdout.trim() === "no") {
+    return {
+      ...base,
+      reason: "mso.service has no automatic restart policy; refusing to stop the running process during self-update",
+    };
+  }
+  const owner = os.userInfo().username;
+  if (serviceUser.code !== 0 || serviceUser.stdout.trim() !== owner) {
+    return {
+      ...base,
+      reason: `mso.service runs as ${serviceUser.stdout.trim() || "an unknown user"}, not ${owner}; refusing a cross-user update`,
+    };
   }
 
   const running = await isRunning();
@@ -214,29 +272,13 @@ export async function startUpdate(rebuildOnly = false): Promise<UpdateStatus> {
   if (!(await fs.stat(script).catch(() => null))) throw new HostError(`missing ${script}`);
 
   const started = await run(
-    "sudo",
-    [
-      "-n",
-      "systemd-run",
-      "--collect",
-      `--unit=${UNIT}`,
-      `--property=User=${os.userInfo().username}`,
-      `--property=WorkingDirectory=${repoRoot()}`,
-      // A build on a small VPS is minutes, not seconds; the default 90s start
-      // timeout would kill it exactly at the point of no return.
-      "--property=TimeoutStartSec=3600",
-      `--setenv=MSO_UPDATE_LOG=${updateLogPath()}`,
-      "/bin/bash",
-      script,
-      ...(rebuildOnly ? ["--rebuild-only"] : []),
-    ],
+    "systemd-run",
+    updateUnitArgs(repoRoot(), updateLogPath(), rebuildOnly),
     30_000,
   );
   if (started.code !== 0) {
-    // The common causes are both fixable and neither is obvious from "exit 1":
-    // no passwordless sudo, or no systemd-run on the host.
     throw new HostError(
-      `could not start the updater: ${(started.stderr || started.stdout).trim().slice(0, 300) || `exit ${started.code}`}`,
+      `could not start the updater: ${(started.stderr || started.stdout).trim().slice(0, 300) || `exit ${started.code}`}. Re-run scripts/install.sh once if the user systemd manager is unavailable`,
     );
   }
   return { ...status, running: true };

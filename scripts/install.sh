@@ -297,7 +297,15 @@ EOF
   # Idempotent; failure is not fatal, it only means managed-app installs will say
   # so plainly when they preflight the bus.
   sudo_do loginctl enable-linger "$(id -un)" >/dev/null 2>&1 \
-    || warn "could not enable linger for $(id -un) — managed-app installs may not be able to create user services"
+    || warn "could not enable linger for $(id -un) — self-update and managed-app user services may stop after logout"
+  # `enable-linger` makes the manager persistent, but some minimal images do not
+  # start user@UID.service until the next login. Start it now so the first update
+  # button works immediately, then prove the bus MSO will use actually answers.
+  sudo_do systemctl start "user@$(id -u).service" >/dev/null 2>&1 \
+    || warn "could not start the per-user systemd manager — self-update may be unavailable"
+  if ! XDG_RUNTIME_DIR="/run/user/$(id -u)" systemctl --user show-environment >/dev/null 2>&1; then
+    warn "per-user systemd bus is unavailable — self-update and managed-app services will not work until user@$(id -u).service is running"
+  fi
 
   sudo_do systemctl daemon-reload
   sudo_do systemctl enable "$SERVICE"

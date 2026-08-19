@@ -8,6 +8,34 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-19 — v0.2.1: self-update stopped assuming passwordless sudo (DONE)
+
+A real 0.2.0 installation exposed the gap: Settings found the incoming commits, but
+pressing Update failed immediately with `sudo: a password is required`. Nothing had
+been pulled or built, so the running copy stayed safe; the button was nevertheless
+unusable on an ordinary VPS account. The installer never created a passwordless
+sudo rule — correctly — while `startUpdate()` had silently required one.
+
+The updater is non-root now. `startUpdate()` launches an owner-scoped transient unit
+with `systemd-run --user`, which gives the build its own cgroup so it survives
+replacing `mso.service`. At the end, the script reads the service's `MainPID`, proves
+that PID belongs to the same uid as the updater, sends it `SIGTERM`, and waits for a
+new active PID. The installed system unit's existing `Restart=always` starts the
+fresh build; no sudo credential or broad sudoers exception is needed.
+
+The preflight also refuses clearly when the per-user systemd manager is unavailable,
+when `mso.service` is missing, or when the service belongs to another user. The
+installer now starts `user@UID.service` after enabling linger and verifies that the
+user bus answers, so a fresh install can use the update button immediately. Argument
+construction has regression tests that explicitly reject `sudo` and a root-capable
+`User=` property. Typecheck, lint, the architecture/contrast checks, dependency audit,
+and the full 1,336-test coverage suite passed before release; the final rebuild-only
+path was exercised against the live service and ended in `UPDATE OK`.
+
+Existing 0.2.0 installations need one interactive installer run to receive this fix,
+because the broken updater cannot bootstrap its own replacement. After that one-time
+migration, future Settings updates run without a sudo prompt.
+
 ## 2026-08-17 (audit) — a codebase pass: what was duplicated, what had drifted, what was undefended (DONE)
 
 Not a UI pass. Scanned for dead exports, parallel implementations, unguarded
@@ -102,12 +130,14 @@ deploy.
 
 Three things about it are load-bearing:
 
-- **The work does not run in `mso.service`.** Its last step is `systemctl restart
-  mso.service`, and systemd's default KillMode kills the whole cgroup — a detached
-  child included. It would die mid-`next build`, with `.next` already deleted (the
-  build's first act) and nothing to restart into. So `startUpdate()` hands the job to
-  a TRANSIENT unit via `sudo systemd-run --collect --unit=mso-self-update`, which
-  lives in its own cgroup and survives the restart it performs.
+- **The work does not run in `mso.service`.** Replacing that service makes systemd
+  kill its whole cgroup — a detached child included. It would die mid-`next build`,
+  with `.next` already deleted and nothing to restart into. `startUpdate()` now hands
+  the job to the owner's TRANSIENT user unit via `systemd-run --user`; that separate
+  cgroup survives while the script signals the same-uid service PID and lets
+  `Restart=always` bring MSO back. The original 0.2.0 implementation used a system
+  transient unit through `sudo -n`, which failed on normal password-protected sudo
+  accounts and was replaced in 0.2.1.
 - **It verifies out-of-tree BEFORE building in place.** `scripts/ship.sh` is run by a
   person who is watching; this is run by an operator who pressed a button and walked
   away. `scripts/verify-build.sh` proves the pulled HEAD compiles without touching

@@ -52,7 +52,7 @@ For a real deployment, put MSO behind **Tailscale, a VPN, or a TLS reverse proxy
 - **Open a real terminal** — interactive PTY support for tools like `vim`, `top`, and `ssh`.
 - **Manage files** — browse, upload, search, preview, rename, move, copy, zip, and delete within configured filesystem roots.
 - **Inspect system health** — view live CPU, memory, disk, network, process, and uptime signals.
-- **Update itself** — Settings → About shows what is on `origin/main`, lists the incoming commits, and runs the whole deploy (pull → verify the build out-of-tree → build → restart) from a button. The verification runs first on purpose: a commit that does not compile becomes a refusal, not an outage. Same thing from a shell: `mso update run`.
+- **Update itself** — Settings → About shows what is on `origin/main`, lists the incoming commits, and runs the whole deploy (pull → verify the build out-of-tree → build → restart) from a button. The verification runs first on purpose: a commit that does not compile becomes a refusal, not an outage. The updater runs in the owner's systemd user manager and does not require passwordless sudo. Same thing from a shell: `mso update run`.
 - **Manage other apps on the box** — detect, start/stop/restart, health, version, logs, and state backups for separate applications you already run (Hermes, OpenClaw), driven through their own CLIs and systemd units. Each app's own dashboard opens in a window; give each one its own hostname and it is served from its own origin (opt-in, two env vars). See [docs/MANAGED-APPS.md](./docs/MANAGED-APPS.md).
 
 **Work** — code/text editor, browser, and media tools in the same workspace.
