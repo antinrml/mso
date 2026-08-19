@@ -44,7 +44,7 @@ describe("protocol", () => {
   it("publishes server and toolset metadata so action drift is visible", async () => {
     const r = await dispatch({ id: 1, method: "initialize" }, "exec");
     const result = r.result as { serverInfo: { version: string }; _meta: { toolset: { toolCount: number; hash: string } } };
-    expect(result.serverInfo.version).toBe("1.3.0");
+    expect(result.serverInfo.version).toBe("1.4.0");
     expect(result._meta.toolset.toolCount).toBe(TOOLS.length);
     expect(result._meta.toolset.hash).toMatch(/^[a-f0-9]{16}$/);
   });
@@ -77,6 +77,7 @@ describe("tools/list is scope-filtered", () => {
     expect(n).toContain("fs_list");
     expect(n).toContain("sys_stats");
     expect(n).toContain("skills_search");
+    expect(n).toContain("image_generation_status");
     expect(n).not.toContain("workflow_start");
     expect(n).not.toContain("fs_write");
     expect(n).not.toContain("exec_run");
@@ -91,6 +92,7 @@ describe("tools/list is scope-filtered", () => {
     expect(n).toContain("workflow_finish");
     expect(n).not.toContain("exec_run");
     expect(n).not.toContain("browser_power");
+    expect(n).not.toContain("image_generate");
   });
 
   it("shows an exec token the whole catalog", async () => {
@@ -217,7 +219,7 @@ describe("catalog hygiene", () => {
   });
 
   it("the irreversible tools carry destructiveHint so clients keep prompting", () => {
-    for (const name of ["fs_delete", "exec_run", "browser_power"]) {
+    for (const name of ["fs_delete", "exec_run", "browser_power", "image_generate"]) {
       expect(TOOLS.find((t) => t.name === name)?.annotations?.destructiveHint, name).toBe(true);
     }
   });

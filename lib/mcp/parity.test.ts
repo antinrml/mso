@@ -36,6 +36,8 @@ const ALFA_ONLY: Record<string, string> = {
 
 const MCP_ONLY: Record<string, string> = {
   "screen.capture": "external MCP clients need visual proof of the rendered OS; in-shell Alfa already runs inside that browser UI",
+  "image.generation.status": "provider readiness is exposed to external asset agents; Alfa currently has no image-generation output renderer",
+  "image.generate": "the external asset agent needs provider bytes, durable sandbox paths and provenance; Alfa currently cannot render or persist provider image output",
   "workflow.start": "the external connector needs an actor-scoped task boundary; Alfa already owns an in-app conversation/run boundary",
   "workflow.cancel": "same actor-scoped boundary; external runs need explicit recovery from an interrupted task",
   "workflow.finish": "same actor-scoped learning loop; Alfa recipes can use the session route later without weakening MCP scope semantics",
@@ -99,6 +101,7 @@ describe("MCP rate limits mirror the routes", () => {
       // MCP clients and is expensive enough to deserve a much smaller bucket.
       "screen.capture": 10,
       "workflow.memory": 30,
+      "image.generate": 5,
     };
     for (const t of TOOLS) {
       if (!t.limit) continue;

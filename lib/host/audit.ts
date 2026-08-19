@@ -26,6 +26,7 @@ export type AuditAction =
   | "sys.update"
   | "managed-app.action"
   | "camoufox.power"
+  | "image.generate"
   | "workflow.start"
   | "workflow.cancel"
   | "workflow.finish"

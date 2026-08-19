@@ -2,6 +2,7 @@ import { listDir, readFile, searchFs, usage, stats, processes, captureMsoScreen,
 import { camoufoxStatus } from "@/lib/camoufox/service";
 import { listManagedApps, getManagedAppLogs } from "@/lib/managed-apps/manager";
 import { searchSkillMemory } from "@/lib/skills/search";
+import { imageGenerationStatus } from "@/lib/image-generation/openai";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
 import { type McpTool, str, opt, S, PATH_P, READ_ONLY, mcpDirect } from "./tool-kit";
 
@@ -125,6 +126,16 @@ export const READ_TOOLS: McpTool[] = [
         toolDocs: TOOLS.map((t) => ({ name: t.name, description: t.description, scope: t.scope, inputSchema: t.inputSchema })),
       });
     },
+  },
+  {
+    name: "image_generation_status",
+    description:
+      "Check whether the official OpenAI Images API is configured, which model/output root will be used, and which sizes/background modes are available. " +
+      "This never generates an image, spends credits, or exposes the API key.",
+    scope: "read",
+    annotations: READ_ONLY,
+    inputSchema: S({}),
+    run: () => imageGenerationStatus(),
   },
   {
     name: "screen_capture",

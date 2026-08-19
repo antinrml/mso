@@ -8,6 +8,19 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-20 — provider-backed MCP image generation (DONE)
+
+MCP now exposes `image_generation_status` (read) and `image_generate` (exec).
+Generation uses the official OpenAI Images API rather than the prior procedural
+icon scripts or the internal unofficial Codex backend. One billed call creates one
+lossless PNG sandbox master plus a prompt-free 0600 provenance sidecar containing
+provider/model/request id, prompt and byte hashes, dimensions, alpha status and
+eligibility findings. The raw prompt is excluded from activity, audit and learned
+workflow memory. The output root is write-jailed (`OS_IMAGE_OUTPUT_ROOT`, default
+`~/generated-images`), generated filenames are unique, temporary previews remain
+authenticated/expiring, and image calls are limited to 5/min. The MCP server/toolset
+advance to `1.4.0` / `2026.08.20.1`, with **24 tools**.
+
 ## 2026-08-20 — image generation and full-access defaults (DONE)
 
 Fresh MSO installs now expose Codex provider-side `image_generation` when

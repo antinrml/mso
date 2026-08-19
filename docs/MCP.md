@@ -59,14 +59,14 @@ Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`. The highe
 
 | Scope | Tools |
 |---|---|
-| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `skills_search` `screen_capture` `browser_status` |
+| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `skills_search` `image_generation_status` `screen_capture` `browser_status` |
 | `write` | + `workflow_start` `workflow_cancel` `workflow_finish` `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
-| `exec` | + `exec_run` `browser_power` |
+| `exec` | + `image_generate` `exec_run` `browser_power` |
 
 Alfa — the in-app assistant — has the same host capabilities under dot.case names,
 and `lib/mcp/parity.test.ts` fails if one surface gains a tool the other lacks
 without a written reason. `skills_search` maps to Alfa's `skills.search`.
-`screen_capture`, `workflow_start`, `workflow_cancel` and `workflow_finish` are explicitly MCP-only:
+`screen_capture`, `image_generation_status`, `image_generate`, `workflow_start`, `workflow_cancel` and `workflow_finish` are explicitly MCP-only:
 the external connector needs visual proof and an actor-scoped task boundary, while
 Alfa already runs inside the rendered shell and owns an in-app run boundary. The
 two catalogs stay separate on purpose (different transport and guard) but may not
@@ -93,7 +93,7 @@ The catalog has a stable server version plus a schema-derived toolset signature.
 
 Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
 
-Current catalog: **22 tools**. `workflow_cancel` is the only new public name in this release.
+Current catalog: **24 tools**. `image_generation_status` and `image_generate` are the new public names in this release.
 
 ## Safe text inspection and overwrite
 
@@ -187,6 +187,27 @@ a valid approved-device session, uses an unguessable id, expires after 15 minute
 is limited to five downloads, sends `Cache-Control: no-store`, and is deleted after
 expiry/exhaustion. This provides visual progress without turning a read token into a
 general browser or public-file-hosting primitive.
+
+## Provider-backed image generation
+
+`image_generation_status` is read-only and reports whether an OpenAI API key is
+available without returning it. `image_generate` is exec-scope because it spends
+provider credits, sends the prompt off-box, and writes binary bytes. Each call is
+exactly one official OpenAI Images API request and produces:
+
+- a lossless PNG master under `OS_IMAGE_OUTPUT_ROOT` (default `~/generated-images`);
+- a prompt SHA-256 and byte SHA-256;
+- actual provider model and `x-request-id` as the generation run identifier;
+- width, height and alpha status parsed from the returned PNG;
+- a 0600 provenance JSON sidecar that does not contain the raw prompt;
+- a temporary authenticated preview when the image is at most 10 MiB.
+
+Configure provider OpenAI in Settings → AI or set `OPENAI_API_KEY`. A ChatGPT
+subscription/OAuth login is separate from API billing and is not silently reused.
+Transparent requests automatically use `gpt-image-1.5` unless another compatible
+model is explicitly selected; `gpt-image-2` is refused for transparent output.
+Repository candidates are never written automatically—the generated PNG remains a
+sandbox master until a project-specific validator/post-process promotes it.
 
 ## What this does and does not protect
 
@@ -301,7 +322,7 @@ also carries the **per-operation** limit its route already applies, on the SAME
 bucket key — MCP and the browser share one allowance rather than getting one each.
 `exec_run` 60/min, fs writes 120/min, fs copy/delete 60/min, `apps_power` and
 `browser_power` 12/min per app. MCP-native expensive/stateful operations are
-stricter: `screen_capture` 10/min and workflow-memory writes 30/min.
+stricter: `screen_capture` 10/min, `image_generate` 5/min, and workflow-memory writes 30/min.
 
 ## Layout
 

@@ -3,7 +3,19 @@ import { setCamoufoxEnabled } from "@/lib/camoufox/service";
 import { performManagedAppAction } from "@/lib/managed-apps/manager";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
 import { MANAGED_APP_ACTIONS, type ManagedAppAction } from "@/lib/managed-apps/types";
-import { type McpTool, str, opt, S, PATH_P } from "./tool-kit";
+import { type McpTool, str, opt, S, PATH_P, mcpDirect } from "./tool-kit";
+import {
+  generateOpenAiImage,
+  OPENAI_IMAGE_BACKGROUNDS,
+  OPENAI_IMAGE_MODELS,
+  OPENAI_IMAGE_QUALITIES,
+  OPENAI_IMAGE_SIZES,
+  shouldReturnDirectImage,
+  type OpenAiImageBackground,
+  type OpenAiImageModel,
+  type OpenAiImageQuality,
+  type OpenAiImageSize,
+} from "@/lib/image-generation/openai";
 import { READ_TOOLS } from "./tools-read";
 import { LEARNING_TOOLS } from "./tools-learning";
 
@@ -101,6 +113,43 @@ const MUTATE_TOOLS: McpTool[] = [
       // envelope — a client that learned the shape from the CLI or the route must
       // not have to learn a second one here.
       return performManagedAppAction(id, action as ManagedAppAction).then((app) => ({ app }));
+    },
+  },
+  {
+    name: "image_generate",
+    limit: { key: "image.generate", max: 5, windowMs: 60_000 },
+    audit: { action: "image.generate" as const, targetArg: "project" },
+    description:
+      "Generate exactly one genuinely new raster image through the official OpenAI Images API. " +
+      "The provider response is saved as a lossless PNG sandbox master under OS_IMAGE_OUTPUT_ROOT and accompanied by prompt SHA-256, byte SHA-256, dimensions, alpha status, provider/model/request id, and a provenance sidecar. " +
+      "This is a billed external operation and requires an OpenAI API key configured in MSO Settings → AI or OPENAI_API_KEY.",
+    scope: "exec",
+    annotations: { destructiveHint: true, openWorldHint: true },
+    inputSchema: S({
+      prompt: { type: "string", description: "Complete image-generation prompt. It is sent to OpenAI but never stored in MCP activity or workflow memory." },
+      project: { type: "string", description: "Safe project slug used only to organize the sandbox output directory. Default general." },
+      filename_stem: { type: "string", description: "Safe filename stem. A timestamp and random run id are always added." },
+      model: { type: "string", enum: [...OPENAI_IMAGE_MODELS], description: "OpenAI image model. Default OS_IMAGE_MODEL or gpt-image-2. Transparent requests default to gpt-image-1.5." },
+      size: { type: "string", enum: [...OPENAI_IMAGE_SIZES], description: "Requested output size. Default 1024x1024." },
+      quality: { type: "string", enum: [...OPENAI_IMAGE_QUALITIES], description: "Provider quality. Default high." },
+      background: { type: "string", enum: [...OPENAI_IMAGE_BACKGROUNDS], description: "auto, opaque, or transparent. gpt-image-2 does not support transparent output." },
+    }, ["prompt"]),
+    run: async (a) => {
+      const result = await generateOpenAiImage({
+        prompt: str(a, "prompt"),
+        project: opt(a, "project"),
+        filenameStem: opt(a, "filename_stem"),
+        model: opt(a, "model") as OpenAiImageModel | undefined,
+        size: opt(a, "size") as OpenAiImageSize | undefined,
+        quality: opt(a, "quality") as OpenAiImageQuality | undefined,
+        background: opt(a, "background") as OpenAiImageBackground | undefined,
+      });
+      const content: Array<{ type: "image"; data: string; mimeType: string } | { type: "text"; text: string }> = [];
+      if (shouldReturnDirectImage(result.data.byteLength)) {
+        content.push({ type: "image", data: result.data.toString("base64"), mimeType: "image/png" });
+      }
+      content.push({ type: "text", text: JSON.stringify(result.summary, null, 2) });
+      return mcpDirect(content);
     },
   },
   {
