@@ -18,6 +18,12 @@ const APP_ICON_ASSETS = [
   "reel", "settings", "store", "studio", "terminal", "viewer",
 ].map((name) => `/app-icons/${name}.webp`);
 
+const OFFICIAL_BRAND_ICON_ASSETS = [
+  "/brand/official/camoufox.webp",
+  "/brand/official/hermes.webp",
+  "/brand/official/openclaw.webp",
+];
+
 const PLATFORM_APP_ICON_ASSETS = [
   "files", "terminal", "code", "monitor", "settings", "assistant", "camoufox", "store", "docs", "studio", "claude", "reel", "viewer", "create", "links", "hermes", "openclaw",
 ].flatMap((name) => [
@@ -32,7 +38,7 @@ const CACHE = "mso-${BUILD_ID}";
 // catch-all answers an unknown path with the app HTML and a 200, so addAll() did not
 // throw; it quietly cached the HTML shell under two icon URLs, which is exactly what
 // the comment above promises this never does.
-const ASSETS = ${JSON.stringify(["/icon.svg", "/icon-maskable.svg", "/manifest.webmanifest", ...APP_ICON_ASSETS, ...PLATFORM_APP_ICON_ASSETS])};
+const ASSETS = ${JSON.stringify(["/icon.svg", "/icon-maskable.svg", "/manifest.webmanifest", ...APP_ICON_ASSETS, ...PLATFORM_APP_ICON_ASSETS, ...OFFICIAL_BRAND_ICON_ASSETS])};
 self.addEventListener("install", (e) => {
   // Do NOT skipWaiting here. Auto-activating skipped the "waiting" state, so the
   // client's "new version" toast (which needs reg.waiting) never showed and the

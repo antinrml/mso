@@ -50,11 +50,7 @@ export const APP_MARKS: Record<string, AppIconComponent> = {
     "/app-icons/macos/files.webp",
     "/app-icons/windows/files.webp",
   ),
-  "camoufox-browser": platformMark(
-    "/app-icons/camoufox.webp",
-    "/app-icons/macos/camoufox.webp",
-    "/app-icons/windows/camoufox.webp",
-  ),
+  "camoufox-browser": mark("/brand/official/camoufox.webp"),
   "code-editor": platformMark(
     "/app-icons/code.webp",
     "/app-icons/macos/code.webp",
@@ -100,8 +96,8 @@ export const APP_MARKS: Record<string, AppIconComponent> = {
     "/app-icons/macos/docs.webp",
     "/app-icons/windows/docs.webp",
   ),
-  hermes: platformMark("/app-icons/hermes.webp", "/app-icons/macos/hermes.webp", "/app-icons/windows/hermes.webp"),
-  openclaw: platformMark("/app-icons/openclaw.webp", "/app-icons/macos/openclaw.webp", "/app-icons/windows/openclaw.webp"),
+  hermes: mark("/brand/official/hermes.webp"),
+  openclaw: mark("/brand/official/openclaw.webp"),
 };
 
 export const HermesMark = APP_MARKS.hermes;
