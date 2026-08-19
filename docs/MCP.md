@@ -115,6 +115,12 @@ by `workflow_start` on each step in that run. Multiple conversations may hold is
 workflows in parallel on the same token. A call that omits the id is deliberately
 standalone, and an unknown id is refused before the operation runs.
 
+On approval, MSO returns the validated PKCE callback to the consent client, which uses
+a top-level `location.replace()` rather than a nested Server Action redirect. This avoids
+the confusing state where ChatGPT has already exchanged the code but the MSO tab remains
+open. A setup started from ChatGPT Settings may still return to the app setup/tool-scan
+surface rather than to the exact conversation that was open.
+
 Use `skills_search` alone for capability research or an unfamiliar single-step task;
 do not call it immediately before `workflow_start` for the same work. `workflow_finish`
 requires the exact returned id and, after independent verification, records the redacted

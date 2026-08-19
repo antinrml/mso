@@ -16,6 +16,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Fixed**
 
+- `oauth` force visible ChatGPT callback
 - `icons` use native macOS and Windows artwork
 - `update` remove passwordless sudo requirement
 - use official agent logos

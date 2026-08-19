@@ -34,6 +34,15 @@ visible operational trace, done conditions, rollback, approvals and recipe redac
 risk, policy, H1, unresolved placeholders and 200-line ceiling, and is part of the main
 `check` gate. The new trusted `mso-skill-authoring` playbook explains the flow.
 
+OAuth consent now also forces a visible top-level callback. The previous success path
+called Next's `redirect()` from a Server Action nested inside a client form action. The
+authorization callback could run through the action transport—ChatGPT exchanged the code
+and created an exec token—while the MSO tab remained on “Connecting…”. The server action
+now returns only its already-validated, PKCE-bound callback URL, and the client performs
+`window.location.replace()`. This preserves the same-origin approval boundary while making
+the browser visibly leave MSO for ChatGPT; non-HTTPS non-loopback targets are refused again
+at the browser boundary.
+
 ## 2026-08-19 — MCP one-call bootstrap, visible workflows and faster repository work (DONE)
 
 A refreshed ChatGPT connection proved the server really exposed all 21 MCP tools, but

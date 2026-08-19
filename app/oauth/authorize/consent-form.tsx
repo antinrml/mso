@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { approve } from "./actions";
+import { followOAuthRedirect } from "./oauth-navigation";
 import type { Scope } from "@/lib/mcp/scope";
 
 const TIERS: { value: Scope; label: string; blurb: string }[] = [
@@ -39,10 +40,14 @@ export function ConsentForm({
     <form
       action={async (fd) => {
         setBusy(true);
-        // approve() redirects on success, so anything returned here is a failure.
-        const r = await approve(fd);
+        setError(null);
+        const result = await approve(fd);
+        if (result.ok) {
+          followOAuthRedirect(result.redirectTo);
+          return;
+        }
         setBusy(false);
-        if (r?.error) setError(r.error);
+        setError(result.error);
       }}
       className="space-y-5"
     >
