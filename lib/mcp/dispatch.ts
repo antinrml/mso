@@ -1,5 +1,7 @@
 import { audit, rateLimited } from "@/lib/host";
 import { TOOLS, TOOLS_BY_NAME } from "./tools";
+import { isMcpDirectResult } from "./tool-kit";
+import { activityTarget, newActivityId, recordMcpActivity } from "./activity";
 import { allows, type Scope } from "./scope";
 
 // JSON-RPC 2.0 dispatch for the MCP server. No SDK: the surface is initialize,
@@ -73,6 +75,7 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
         // reaching for exec_run is what a prompt-injected model looks like from
         // the outside, and it is the only place that signal is visible.
         void audit({ action: "mcp.denied", actor, target: name, ok: false, detail: `scope ${scope} < ${tool.scope}` });
+        void recordMcpActivity({ id: newActivityId(), actor, tool: name, state: "denied", scope, target: activityTarget(args), detail: `scope ${scope} < ${tool.scope}` });
         return ok(id, {
           content: [{ type: "text", text: `error: this token holds scope "${scope}"; ${name} needs "${tool.scope}". Mint a new token in mso Settings → MCP.` }],
           isError: true,
@@ -89,6 +92,7 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
         const suffix = tool.limit.keyArg ? String(args[tool.limit.keyArg] ?? "") : (actor ?? "mcp");
         if (rateLimited(`${tool.limit.key}:${suffix}`, tool.limit.max, tool.limit.windowMs)) {
           void audit({ action: "mcp.denied", actor, target: name, ok: false, detail: "rate limited" });
+          void recordMcpActivity({ id: newActivityId(), actor, tool: name, state: "rate_limited", scope, target: activityTarget(args), detail: "rate limited" });
           return ok(id, {
             content: [{ type: "text", text: `error: ${name} is rate limited (${tool.limit.max} per ${Math.round(tool.limit.windowMs / 1000)}s). Wait and retry.` }],
             isError: true,
@@ -102,6 +106,10 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
       // what it did first. Reads stay unaudited, same rule the routes follow.
       const trail = tool.audit;
       const target = trail?.targetArg != null ? String(args[trail.targetArg] ?? "") : undefined;
+      const activityId = newActivityId();
+      const activityStarted = Date.now();
+      const activityTgt = activityTarget(args);
+      void recordMcpActivity({ id: activityId, actor, tool: name, state: "started", scope, target: activityTgt });
       try {
         const result = await tool.run(args);
         if (trail) {
@@ -112,6 +120,8 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
           const o = trail.outcome?.(result);
           void audit({ action: o?.action ?? trail.action, actor, target, ok: o?.ok ?? true, detail: o?.detail, meta: { via: "mcp", scope } });
         }
+        void recordMcpActivity({ id: activityId, actor, tool: name, state: "completed", scope, target: activityTgt, durationMs: Date.now() - activityStarted });
+        if (isMcpDirectResult(result)) return ok(id, { content: result.content, ...(result.isError ? { isError: true } : {}) });
         return ok(id, { content: [{ type: "text", text: typeof result === "string" ? result : JSON.stringify(result) }] });
       } catch (e) {
         // A handler failure stays INSIDE result with isError, never as a JSON-RPC
@@ -119,6 +129,7 @@ export async function dispatch(req: RpcRequest, scope: Scope, actor?: string): P
         // person sees the model give up with no reason shown.
         const msg = e instanceof Error ? e.message : String(e);
         if (trail) void audit({ action: trail.action, actor, target, ok: false, detail: msg.slice(0, 200), meta: { via: "mcp", scope } });
+        void recordMcpActivity({ id: activityId, actor, tool: name, state: "failed", scope, target: activityTgt, durationMs: Date.now() - activityStarted, detail: msg.slice(0, 220) });
         return ok(id, { content: [{ type: "text", text: "error: " + msg.slice(0, 500) }], isError: true });
       }
     }

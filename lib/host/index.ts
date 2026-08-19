@@ -10,6 +10,8 @@ export type { MultipartPart } from "./multipart";
 export { runCommand } from "./exec";
 export { openPty, attachPty, writePty, resizePty, closePty, hasPty } from "./pty";
 export { stats, processes } from "./sys";
+export { captureMsoScreen } from "./screenshot";
+export type { ScreenshotShell, ScreenshotResult } from "./screenshot";
 export { audit, readAuditTail } from "./audit";
 export type { AuditAction, AuditEntry, AuditRecord } from "./audit";
 export { rateLimited } from "./rate-limit";

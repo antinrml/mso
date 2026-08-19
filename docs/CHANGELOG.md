@@ -6,6 +6,10 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 ## 2026-08-19
 
+**Added**
+
+- add MCP screenshots and live activity
+
 **Fixed**
 
 - use official agent logos

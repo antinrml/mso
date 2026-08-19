@@ -34,7 +34,9 @@ const ALFA_ONLY: Record<string, string> = {
   "memory.forget": "same store; an MCP client has its own memory",
 };
 
-const MCP_ONLY: Record<string, string> = {};
+const MCP_ONLY: Record<string, string> = {
+  "screen.capture": "external MCP clients need visual proof of the rendered OS; in-shell Alfa already runs inside that browser UI",
+};
 
 describe("Alfa ↔ MCP capability parity", () => {
   const alfa = new Set(HOST_TOOLS.map((t) => capability(t.name)));
@@ -89,11 +91,16 @@ describe("MCP rate limits mirror the routes", () => {
       "fs.write": 120, "fs.mkdir": 120, "fs.move": 120, "fs.copy": 60,
       "fs.delete": 60, "exec": 60, "managed-app": 12, "camoufox": 12,
     };
+    const MCP_NATIVE_LIMITS: Record<string, number> = {
+      // screen_capture has no HTTP route by design; it exists only for connected
+      // MCP clients and is expensive enough to deserve a much smaller bucket.
+      "screen.capture": 10,
+    };
     for (const t of TOOLS) {
       if (!t.limit) continue;
-      const route = ROUTE_LIMITS[t.limit.key];
-      expect(route, `${t.name} limits on key "${t.limit.key}", which no route uses`).toBeDefined();
-      expect(t.limit.max, `${t.name} allows more than its route`).toBeLessThanOrEqual(route);
+      const authority = ROUTE_LIMITS[t.limit.key] ?? MCP_NATIVE_LIMITS[t.limit.key];
+      expect(authority, `${t.name} limits on unknown key "${t.limit.key}"`).toBeDefined();
+      expect(t.limit.max, `${t.name} exceeds its limit authority`).toBeLessThanOrEqual(authority);
     }
   });
 });

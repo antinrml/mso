@@ -98,6 +98,28 @@ describe("tools/call enforces scope even when the tool was never listed", () => 
     expect(r.error).toBeUndefined();
     expect((r.result as { isError?: boolean }).isError).toBe(true);
   });
+
+  it("supports direct MCP image content for visual tools", async () => {
+    const tool = TOOLS.find((t) => t.name === "screen_capture");
+    expect(tool).toBeTruthy();
+    // Do not launch Chrome in the unit suite; temporarily replace the handler so
+    // this test only locks the dispatcher response shape.
+    const original = tool!.run;
+    tool!.run = async () => ({
+      __mcpDirect: true,
+      content: [
+        { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+        { type: "text", text: "shot" },
+      ],
+    });
+    try {
+      const r = await dispatch(call("screen_capture"), "read", "mcp:test");
+      const content = (r.result as { content: Array<{ type: string }> }).content;
+      expect(content.map((c) => c.type)).toEqual(["image", "text"]);
+    } finally {
+      tool!.run = original;
+    }
+  });
 });
 
 describe("catalog hygiene", () => {

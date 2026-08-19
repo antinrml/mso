@@ -173,8 +173,7 @@ export function McpSection() {
                   ))}
                 </ul>
                 <p className="pt-1.5 text-[11px] text-muted-foreground">
-                  Reads are not logged (bounded and high-volume). Writes, deletes, commands and
-                  refused-for-scope attempts are. Full trail: <code className="font-mono">mso audit</code>.
+                  This forensic trail still records privileged mutations and denials. The Assistant → MCP tab adds a separate live activity stream for all tool calls, including reads. Full forensic trail: <code className="font-mono">mso audit</code>.
                 </p>
               </div>
             )}

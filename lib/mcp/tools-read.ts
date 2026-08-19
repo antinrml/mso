@@ -1,8 +1,8 @@
-import { listDir, readFile, searchFs, usage, stats, processes } from "@/lib/host";
+import { listDir, readFile, searchFs, usage, stats, processes, captureMsoScreen } from "@/lib/host";
 import { camoufoxStatus } from "@/lib/camoufox/service";
 import { listManagedApps, getManagedAppLogs } from "@/lib/managed-apps/manager";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
-import { type McpTool, str, opt, S, PATH_P, READ_ONLY } from "./tool-kit";
+import { type McpTool, str, opt, S, PATH_P, READ_ONLY, mcpDirect } from "./tool-kit";
 
 // The read tier: observability with no way to change anything. Everything here is
 // answerable without granting a shell, which is the whole point of the tiering —
@@ -97,6 +97,35 @@ export const READ_TOOLS: McpTool[] = [
       const id = str(a, "id");
       if (!isManagedAppId(id)) throw new Error(`unknown managed application "${id}" — call apps_list for valid ids`);
       return getManagedAppLogs(id);
+    },
+  },
+  {
+    name: "screen_capture",
+    description:
+      "Capture the authenticated MSO desktop and return it as an image. This is intentionally limited to " +
+      "MSO itself (no arbitrary URL capture), so it can be used to show visual progress without turning a read token " +
+      "into a browser exfiltration primitive. Choose macos, windows or dashboard; default macos.",
+    scope: "read",
+    annotations: READ_ONLY,
+    limit: { key: "screen.capture", max: 10, windowMs: 60_000 },
+    inputSchema: S({
+      shell: { type: "string", enum: ["macos", "windows", "dashboard"], description: "Desktop shell to render. Default macos." },
+      width: { type: "number", minimum: 900, maximum: 1920, description: "Viewport width. Default 1440." },
+      height: { type: "number", minimum: 600, maximum: 1200, description: "Viewport height. Default 900." },
+    }),
+    run: async (a) => {
+      const shell = typeof a.shell === "string" && ["macos", "windows", "dashboard"].includes(a.shell)
+        ? (a.shell as "macos" | "windows" | "dashboard")
+        : "macos";
+      const shot = await captureMsoScreen({
+        shell,
+        width: typeof a.width === "number" ? a.width : undefined,
+        height: typeof a.height === "number" ? a.height : undefined,
+      });
+      return mcpDirect([
+        { type: "image", data: shot.data, mimeType: shot.mimeType },
+        { type: "text", text: `MSO ${shot.shell} screenshot — ${shot.width}×${shot.height}` },
+      ]);
     },
   },
   {

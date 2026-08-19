@@ -90,7 +90,7 @@ Commands:
   models *             Model catalog: list | test
   skills [name]        Skill catalog the assistant sees; with a name, its SKILL.md
   changelog            What shipped, newest first (same text Settings → About shows)
-  mcp *                MCP bearer tokens: list | revoke <id> | revoke all
+  mcp *                MCP tokens + live activity: list | activity [n] | revoke <id> | revoke all
   oauth <prov> *       Provider sign-in (device code): start | poll
   audit [n] [prefix]   Audit trail, newest first (writes/exec/auth; reads are not logged)
   stock <query> [page] Stock-image search (Unsplash key optional, Openverse fallback)

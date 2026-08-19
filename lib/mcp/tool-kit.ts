@@ -8,6 +8,25 @@ import type { Scope } from "./scope";
 // catastrophic-command filter in exec.ts. That is the whole reason this file is
 // thin: a tool that reimplemented an operation would reimplement its guard too.
 
+
+export type McpContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
+export interface McpDirectResult {
+  __mcpDirect: true;
+  content: McpContent[];
+  isError?: boolean;
+}
+
+export function mcpDirect(content: McpContent[], isError = false): McpDirectResult {
+  return { __mcpDirect: true, content, ...(isError ? { isError: true } : {}) };
+}
+
+export function isMcpDirectResult(value: unknown): value is McpDirectResult {
+  return Boolean(value && typeof value === "object" && (value as McpDirectResult).__mcpDirect === true);
+}
+
 export interface McpTool {
   name: string;
   description: string;

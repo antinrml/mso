@@ -16,8 +16,9 @@ import { ChatPanel, type ChatHandle } from "./components/chat-panel";
 import { ThreadList } from "./components/thread-list";
 import { LibraryGrid } from "./components/library-grid";
 import { SkillForm } from "./components/skill-form";
+import { McpActivityView } from "./components/mcp-activity-view";
 
-type Tab = "chat" | "agents" | "skills" | "automations";
+type Tab = "chat" | "agents" | "skills" | "automations" | "mcp";
 type FormState =
   | { kind: "skill"; item?: Skill }
   | { kind: "agent"; item?: Agent }
@@ -29,6 +30,7 @@ const TABS: [Tab, string][] = [
   ["agents", "Agents"],
   ["skills", "Skills"],
   ["automations", "Automations"],
+  ["mcp", "MCP"],
 ];
 
 // Alfa: tabbed assistant. Chat keeps the real Claude stream; the other tabs
@@ -152,6 +154,8 @@ export default function Assistant() {
           onNew={() => setForm({ kind: "automation" })}
           onEdit={(it) => setForm({ kind: "automation", item: it })}
         />
+      ) : tab === "mcp" ? (
+        <McpActivityView />
       ) : null}
     </AppFrame>
   );
