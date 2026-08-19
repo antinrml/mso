@@ -14,6 +14,8 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Fixed**
 
+- `icons` use native macOS and Windows artwork
+- `update` remove passwordless sudo requirement
 - use official agent logos
 
 ## 2026-08-18

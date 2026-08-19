@@ -38,3 +38,7 @@ camoufox-profile*/
 **/cookies.sqlite*
 **/key4.db
 **/logins.json
+
+# Python icon-generator bytecode.
+__pycache__/
+*.py[cod]
