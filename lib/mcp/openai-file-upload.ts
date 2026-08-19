@@ -33,6 +33,9 @@ function trustedDownloadUrl(raw: string): URL {
     // Keep this exact: accepting arbitrary *.blob.core.windows.net would turn the
     // bridge into a server-side fetch primitive.
     "oaisdmntprseasia.blob.core.windows.net",
+    // ChatGPT-generated conversation files observed from the Australia East region.
+    // Exact account only; never allow arbitrary Azure Blob hosts.
+    "oaisdmntpraustraliaeast.blob.core.windows.net",
   ]);
   if (!exactOpenAiHosts.has(host) && !host.endsWith(".oaiusercontent.com")) {
     throw new HostError(`file.download_url host is not allowed: ${host}`);
