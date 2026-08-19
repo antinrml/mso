@@ -1,40 +1,74 @@
+import { inspectProject, resolveProjectHint } from "@/lib/host";
 import { finishWorkflow, markRecipeUsed, startWorkflow } from "@/lib/skills/memory";
 import { searchSkillMemory } from "@/lib/skills/search";
+import { allows } from "./scope";
 import { type McpTool, str, opt, S } from "./tool-kit";
+import { toolsetInfo } from "./toolset";
 
-const toolDocs = async () => {
+const visibleTools = async (scope: "read" | "write" | "exec"): Promise<McpTool[]> => {
   const { TOOLS } = await import("./tools");
-  return TOOLS.map((t) => ({ name: t.name, description: t.description, scope: t.scope, inputSchema: t.inputSchema }));
+  return TOOLS.filter((tool) => allows(scope, tool.scope));
 };
 
 export const LEARNING_TOOLS: McpTool[] = [
   {
     name: "workflow_start",
     description:
-      "Start a learned workflow for a multi-step task. USE THIS before the first operational tool call when the task will likely need two or more calls. " +
-      "MSO groups subsequent tool activity under this workflow and returns semantically similar skills, tools and the fastest successful recipe from prior runs.",
+      "The ONE startup call for a multi-step task. It starts the workflow, searches trusted skills and prior recipes, " +
+      "resolves project aliases, reports the current toolset/version, and inspects repository context when available. " +
+      "Do not call skills_search first for the same task; this already includes it.",
     scope: "write",
     annotations: { idempotentHint: false },
     limit: { key: "workflow.memory", max: 30, windowMs: 60_000 },
     audit: { action: "workflow.start" as const, targetArg: "project" },
     inputSchema: S({
       intent: { type: "string", description: "The user's task in one complete sentence." },
-      project: { type: "string", description: "Optional project/workspace, e.g. projects/mso." },
+      project: { type: "string", description: "Optional project/workspace or alias, e.g. os-vps, mso, projects/mso." },
       constraints: { type: "string", description: "Optional important constraints, such as no downtime or WebP only." },
     }, ["intent"]),
     run: async (a, context) => {
+      const intent = str(a, "intent");
+      const projectHint = opt(a, "project");
+      const project = projectHint ? await resolveProjectHint(projectHint).catch(() => null) : null;
+      const tools = await visibleTools(context.scope);
       const started = await startWorkflow({
         actor: context.actor,
-        intent: str(a, "intent"),
-        project: opt(a, "project"),
+        intent,
+        project: project?.path ?? projectHint,
         constraints: opt(a, "constraints"),
       });
-      const search = await searchSkillMemory(str(a, "intent"), { topK: 8, toolDocs: await toolDocs() });
+      const search = await searchSkillMemory(intent, {
+        topK: 8,
+        toolDocs: tools.map((tool) => ({
+          name: tool.name, description: tool.description, scope: tool.scope, inputSchema: tool.inputSchema,
+        })),
+      });
       if (search.recommendedRecipe) await markRecipeUsed(search.recommendedRecipe.id);
+      const repository = project
+        ? await inspectProject(project, { includeGitStatus: context.scope === "exec" }).catch(() => undefined)
+        : undefined;
+      const toolset = toolsetInfo(tools, context.scope);
       return {
         ...started,
+        bootstrap: {
+          ready: true,
+          toolset,
+          project: project ?? (projectHint ? { hint: projectHint, matchedBy: "unresolved" } : undefined),
+          repository,
+          trace: [
+            `[MSO] connected · ${context.scope} scope · ${toolset.toolCount} tools · ${toolset.version}/${toolset.hash}`,
+            project ? `[Project] ${project.hint} → ${project.path} (${project.matchedBy})` : `[Project] ${projectHint ?? "not specified"}`,
+            "[Plan] inspect → change → test/build when needed → verify → workflow_finish",
+          ],
+          policy: {
+            simple: "Use bounded tools for one or two direct operations.",
+            repository: "For repository-wide search, git, tests, builds, or 3+ related checks, use one narrow exec_run batch when exec scope is available.",
+            progress: "Show only high-level feature/tool badges and outcomes; never private chain-of-thought.",
+            finish: "Call workflow_finish only after independent verification.",
+          },
+        },
         search,
-        instruction: "Reuse a relevant successful recipe when safe. After verification, call workflow_finish so MSO can keep the fastest successful path.",
+        instruction: "Use the returned project, trusted skill, and safe recipe directly. Verify the result, then call workflow_finish.",
       };
     },
   },

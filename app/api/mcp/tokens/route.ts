@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/agent/server";
 import { listTokens, revokeToken, revokeAllTokens } from "@/lib/mcp/store";
 import { mcpEnabled, maxScope } from "@/lib/mcp/scope";
+import { TOOLS } from "@/lib/mcp/tools";
+import { toolsetInfo } from "@/lib/mcp/toolset";
 
 // Token management for Settings → MCP. Under /api on purpose: this one IS
 // cookie-authenticated and DOES want the depth-2 CSRF gate in proxy.ts, unlike
@@ -12,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   if (!(await verifyAuth(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  return NextResponse.json({ enabled: mcpEnabled(), maxScope: maxScope(), tokens: await listTokens() });
+  return NextResponse.json({ enabled: mcpEnabled(), maxScope: maxScope(), toolset: toolsetInfo(TOOLS), tokens: await listTokens() });
 }
 
 export async function DELETE(req: Request) {

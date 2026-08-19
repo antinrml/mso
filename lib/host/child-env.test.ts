@@ -25,7 +25,7 @@ describe("childEnv (secret scrub for spawned shells)", () => {
     saved.OS_FS_READ_ROOTS = process.env.OS_FS_READ_ROOTS;
     process.env.OS_FS_READ_ROOTS = "/srv";
     const env = childEnv();
-    expect(env.PATH).toBe(process.env.PATH);
+    for (const part of (process.env.PATH ?? "").split(":")) expect(env.PATH?.split(":")).toContain(part);
     expect(env.NODE_ENV).toBe(process.env.NODE_ENV);
     expect(env.OS_FS_READ_ROOTS).toBe("/srv"); // bounds config is not a secret
   });
@@ -44,4 +44,14 @@ describe("childEnv (secret scrub for spawned shells)", () => {
     const env = childEnv();
     expect(Object.values(env).every((v) => typeof v === "string")).toBe(true);
   });
+  it("adds owner CLI directories to PATH without duplicates", () => {
+    saved.HOME = process.env.HOME;
+    saved.PATH = process.env.PATH;
+    process.env.HOME = "/home/tester";
+    process.env.PATH = "/usr/bin:/home/tester/.bun/bin";
+    const env = childEnv();
+    expect(env.PATH?.split(":").slice(0, 2)).toEqual(["/home/tester/.local/bin", "/home/tester/.bun/bin"]);
+    expect(env.PATH?.split(":").filter((part) => part === "/home/tester/.bun/bin")).toHaveLength(1);
+  });
+
 });

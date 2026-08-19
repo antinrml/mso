@@ -5,6 +5,7 @@ import { promises as fs, createReadStream, type ReadStream } from "fs";
 import path from "path";
 import type { FsList, FsUsage } from "@/lib/os-api/types";
 import { HostError } from "./host-error";
+import { projectAliasTarget } from "./project-aliases";
 import {
   appSecretCopyFilter,
   assertNoAppSecretDescendants,
@@ -121,6 +122,12 @@ export async function searchFs(
   const max = opts.max ?? 30;
   const maxDepth = opts.maxDepth ?? 6;
   const out: { name: string; path: string; kind: "dir" }[] = [];
+  const alias = projectAliasTarget(query);
+  if (alias) {
+    const candidate = await resolveReadable(path.join(root, alias)).catch(() => null);
+    if (candidate && (await fs.stat(candidate).catch(() => null))?.isDirectory())
+      return [{ name: alias, path: candidate, kind: "dir" }];
+  }
 
   async function walk(dir: string, depth: number): Promise<void> {
     if (out.length >= max || depth > maxDepth) return;
@@ -133,7 +140,8 @@ export async function searchFs(
     for (const e of ents) {
       if (out.length >= max) return;
       if (!e.isDirectory()) continue;
-      if (e.name.toLowerCase().includes(q)) out.push({ name: e.name, path: path.join(dir, e.name), kind: "dir" });
+      const hitPath = path.join(dir, e.name);
+      if (e.name.toLowerCase().includes(q) && !out.some((hit) => hit.path === hitPath)) out.push({ name: e.name, path: hitPath, kind: "dir" });
       if (!SEARCH_SKIP.has(e.name) && !e.name.startsWith(".")) await walk(path.join(dir, e.name), depth + 1);
     }
   }

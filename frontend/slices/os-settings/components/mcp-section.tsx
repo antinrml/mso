@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SettingsSection } from "@/features/shell-settings";
 import { toast } from "@/features/os-shell";
 import { IS_DEMO } from "@/lib/demo";
+import { McpToolsetCard, type McpToolsetInfo } from "./mcp-toolset-card";
 
 type AuditRow = {
   ts?: string;
@@ -55,7 +56,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 }
 
 export function McpSection() {
-  const [state, setState] = useState<{ enabled: boolean; maxScope: string; tokens: TokenRow[] } | null>(null);
+  const [state, setState] = useState<{ enabled: boolean; maxScope: string; toolset: McpToolsetInfo; tokens: TokenRow[] } | null>(null);
   const [trail, setTrail] = useState<AuditRow[]>([]);
   const [origin, setOrigin] = useState("");
 
@@ -124,6 +125,7 @@ export function McpSection() {
               <code className="font-mono">{origin}/mcp</code> and nothing else. Highest tier this server will
               mint: <strong>{state.maxScope}</strong> (<code className="font-mono">OS_MCP_MAX_SCOPE</code>).
             </p>
+            <McpToolsetCard info={state.toolset} />
           </div>
 
           <div className="mt-3 border-t border-border pt-3">

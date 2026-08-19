@@ -24,4 +24,13 @@ describe("MCP activity stream", () => {
     expect(rows[0]).toMatchObject({ id: "a", state: "completed", durationMs: 12 });
     expect(rows[1]).toMatchObject({ id: "a", state: "started" });
   });
+  it("preserves redacted workflow context for UI grouping", async () => {
+    await recordMcpActivity({
+      id: "flow", tool: "exec_run", state: "completed", scope: "exec", workflowId: "w1",
+      workflowIntent: "deploy token=secret-value", workflowProject: "~/projects/mso", durationMs: 8,
+    });
+    const [row] = await readMcpActivity(1);
+    expect(row).toMatchObject({ workflowId: "w1", workflowIntent: "deploy token=[redacted]", workflowProject: "~/projects/mso" });
+  });
+
 });

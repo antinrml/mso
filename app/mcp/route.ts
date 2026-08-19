@@ -3,6 +3,8 @@ import { validateToken, touchToken } from "@/lib/mcp/store";
 import { mcpEnabled } from "@/lib/mcp/scope";
 import { publicOrigin, clientIp } from "@/lib/mcp/origin";
 import { rateLimited } from "@/lib/host";
+import { TOOLS } from "@/lib/mcp/tools";
+import { toolsetInfo } from "@/lib/mcp/toolset";
 
 // The MCP endpoint. Deliberately at /mcp and NOT under /api: proxy.ts blocks
 // mutating /api that cannot prove same-origin, and an MCP client is by definition
@@ -70,5 +72,6 @@ export async function GET(req: Request) {
     transport: "streamable-http (JSON-RPC over POST)",
     auth: "Bearer <mcp token> — obtain via OAuth 2.1 + PKCE",
     authorization_servers: [publicOrigin(req)],
+    toolset: toolsetInfo(TOOLS),
   });
 }

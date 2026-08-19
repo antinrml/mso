@@ -13,6 +13,8 @@ export interface McpActivityEntry {
   state: McpActivityState;
   scope?: string;
   workflowId?: string;
+  workflowIntent?: string;
+  workflowProject?: string;
   target?: string;
   durationMs?: number;
   detail?: string;
@@ -59,6 +61,8 @@ export function recordMcpActivity(entry: Omit<McpActivityEntry, "ts"> & { ts?: s
   const line = JSON.stringify({
     ...entry,
     ts: entry.ts ?? new Date().toISOString(),
+    workflowIntent: trunc(entry.workflowIntent ? safeActivityText(entry.workflowIntent) : undefined, 500),
+    workflowProject: trunc(entry.workflowProject ? safeActivityText(entry.workflowProject) : undefined, 240),
     target: trunc(entry.target),
     detail: trunc(entry.detail, 220),
   }) + "\n";

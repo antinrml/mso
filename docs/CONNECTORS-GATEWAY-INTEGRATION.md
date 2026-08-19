@@ -1,90 +1,71 @@
 # mso → Connectors Gateway
 
-**Status: mso is a registered connector there as of 2026-08-17** (`connectors-gateway@03e0948`).
-Nothing in THIS repo changed to make that happen — no config, no code, no token. This
-file exists so the next person here knows the dependency is there, because otherwise
-it is invisible from inside mso.
+**Status:** mso is a registered connector in `rahmanef63/connectors-gateway` as of 2026-08-17. MSO is the provider; the gateway is one consumer alongside ChatGPT, Claude.ai and Cursor. Every client reaches `https://mso.rahmanef.com/mcp` through the same OAuth and scope rules documented in [`MCP.md`](./MCP.md).
 
-Direction matters: mso is the **provider**. `rahmanef63/connectors-gateway` is a consumer
-of mso's MCP surface, alongside CareerPack and Composio. It reaches mso the same way
-ChatGPT or Claude.ai would — over `https://mso.rahmanef.com/mcp`, through the OAuth in
-[`MCP.md`](./MCP.md). mso grants it nothing special.
+## Cross-repo contract
 
-## The thing that will break, and how
+MSO currently exposes **21 tool names**. The gateway manifest still maps **15** of them through literal `x-upstream` strings:
 
-The gateway keeps its own manifest of mso's tools, and it pins **upstream tool names as
-strings**:
-
-```
-connectors-gateway/adapters/remote-mcp/connectors/mso.connector.json
-  { "id": "mso.fs.delete", …, "x-upstream": "fs_delete" }
+```json
+{ "id": "mso.fs.delete", "x-upstream": "fs_delete" }
 ```
 
-There is no shared type, no generated client, and no build step that reads this repo.
+Renaming or removing a tool here breaks that action at runtime even when both repositories typecheck. Adding a tool here does not make it appear in the gateway until its manifest is deliberately updated.
 
-**So renaming or removing a tool in `lib/mcp/tools.ts` or `tools-read.ts` breaks the
-gateway silently.** Both repos still typecheck, both test suites still pass, and the
-failure only shows up as one action erroring at call time for whoever is using it. The
-same is true in reverse: a tool ADDED here does not appear in the gateway until someone
-edits that JSON.
+The runtime contract is no longer invisible:
 
-`lib/mcp/parity.test.ts` already guards the Alfa ↔ MCP axis. It does not know about this
-one. If you rename a tool, grep the gateway repo for its name.
+- unauthenticated `GET /mcp` returns the current toolset version, hash, count and names;
+- MCP `initialize` and `tools/list` return `_meta.toolset` for the token's visible scope;
+- Settings → MCP shows the same signature and lets the operator mark the ChatGPT action snapshot as refreshed;
+- the signature hashes names, descriptions, schemas, scope, annotations and limits, so a schema-only change is visible too.
 
-## What is exposed there, and what is deliberately not
+A consumer CI should compare the upstream names it pins against this runtime manifest. Source parsing remains useful for review, but it is no longer the only way to detect drift.
 
-15 of the 17 tools. The whole `read` and `write` tiers, and **neither `exec` tool**:
+## What the gateway exposes
 
-| Omitted | Why |
+The gateway has not yet synchronized the six tools added or deliberately withheld from its 15-action manifest:
+
+| Not mapped in gateway | Reason/status |
 |---|---|
-| `exec_run` | arbitrary shell on the VPS the gateway itself runs on |
-| `browser_power` | drives the Camoufox profile holding live Google / LinkedIn sessions |
+| `exec_run` | deliberately omitted: arbitrary owner-level shell |
+| `browser_power` | deliberately omitted: controls a browser profile holding live sessions |
+| `skills_search` | added to MSO after the original gateway manifest |
+| `screen_capture` | added later; secure MSO-only visual artifact, requires a product decision in the gateway |
+| `workflow_start` | added later; should be mapped together with `workflow_finish` |
+| `workflow_finish` | added later; actor-scoped recipe boundary |
 
-They are **omitted from the manifest, not disabled in policy**. That was decided in the
-gateway's `docs/16-connector-strategy.md` before the connector was written: a disabled
-action is one policy edit away from live, while a name absent from the catalog cannot be
-resolved into an action id at all.
+`fs_delete` and `apps_power` remain the gateway's highest-risk mapped actions and should keep its human approval policy. The gateway's policy layer supplements, never replaces, MSO's scope checks, path jail, audit trail and per-operation rate limits.
 
-`connectors-gateway/adapters/remote-mcp/src/mso.test.ts` pins it, and checks `x-upstream`
-rather than the local id — so renaming an action over there cannot smuggle the same shell
-back in.
+## Change procedure
 
-Two tools are rated `R3` + destructive there, which routes them through that platform's
-human approval queue before they ever reach mso: **`fs_delete`** and **`apps_power`**. The
-second one because stopping or restarting a daemon cuts off whatever is using it.
+Before changing the MCP catalog:
 
-## Open decision — yours, not the gateway's
+1. Read `lib/mcp/tools.ts`, `tools-read.ts`, `tools-learning.ts` and `toolset.ts`.
+2. Do not rename a public tool unless migration is intentional.
+3. Run MSO parity, dispatch and toolset tests.
+4. Compare the new `GET /mcp` signature and names with the gateway manifest.
+5. Update the gateway mapping or explicitly document why a capability stays absent.
+6. Refresh affected custom-app action snapshots after deployment.
 
-`.env.local` on the running box has:
+The Alfa ↔ MCP axis is guarded by `lib/mcp/parity.test.ts`; this document and the runtime toolset signature cover the cross-repo axis until the gateway adds an automated parity check.
 
-```
+## Scope ceiling
+
+The running MSO instance currently allows tokens up to:
+
+```text
 OS_MCP_MAX_SCOPE=exec
 ```
 
-`MCP.md`'s own example in this repo says `write`, and the gateway's `docs/16` says to
-narrow it to `write` before connecting mso. It has **not** been changed — that is a
-production config change to this application, so it is the owner's call rather than a
-side effect of work done in another repo.
+The gateway's mapped actions do not require `exec`, so narrowing the gateway token to `write` costs it nothing. The server-wide ceiling remains an owner decision because it also governs separately minted ChatGPT, Claude or Cursor tokens.
 
-Narrowing it costs nothing for this integration: the gateway omits both `exec` tools, so
-it never asks for that scope. What the ceiling protects against is a *different* token —
-minted later, from the consent screen, by anyone who can sign in — being able to reach
-`exec_run` at all.
-
-## What was done in this repo: nothing
-
-The gateway's manifest was written by reading `lib/mcp/tools.ts`, `lib/mcp/tools-read.ts`
-and `lib/mcp/tool-kit.ts` directly, rather than by calling `tools/list` against the live
-server. That was deliberate: it meant **no MCP bearer had to be minted on this deployment**
-to build the integration. `mso mcp list` was empty before and is empty after.
-
-## Checking it from here
+## Operator checks
 
 ```bash
-mso mcp list          # tokens the gateway (or anything else) holds. Empty = not connected yet.
-mso audit 50          # every mutating MCP call, actor `mcp:<id>`
+curl -s https://mso.rahmanef.com/mcp | jq '.toolset'
+mso mcp list
+mso mcp activity 100
+mso audit 50 mcp.
 ```
 
-The gateway side lives at `connectors-gateway/docs/16-connector-strategy.md` (why mso is
-connected read/write only) and `docs/18-oauth.md` (how a client authorizes to that gateway
-— unrelated to how the gateway authorizes to mso).
+The gateway strategy and its user-facing OAuth are maintained in the gateway repository. This file owns only the provider-side contract and drift procedure.

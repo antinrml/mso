@@ -25,10 +25,25 @@ describe("protocol", () => {
     expect((r.result as Record<string, unknown>).protocolVersion).toBe("2025-06-18");
   });
 
-  it("advertises the learning loop to connected MCP clients", async () => {
-    const r = await dispatch({ id: 1, method: "initialize" }, "read");
-    expect((r.result as { instructions?: string }).instructions).toContain("skills_search");
-    expect((r.result as { instructions?: string }).instructions).toContain("workflow_finish");
+  it("advertises only the workflow operations available at each scope", async () => {
+    const read = await dispatch({ id: 1, method: "initialize" }, "read");
+    const readInstructions = (read.result as { instructions?: string }).instructions;
+    expect(readInstructions).toContain("skills_search");
+    expect(readInstructions).not.toContain("workflow_start");
+    expect(readInstructions).not.toContain("workflow_finish");
+
+    const exec = await dispatch({ id: 2, method: "initialize" }, "exec");
+    const execInstructions = (exec.result as { instructions?: string }).instructions;
+    expect(execInstructions).toContain("workflow_start");
+    expect(execInstructions).toContain("workflow_finish");
+  });
+
+  it("publishes server and toolset metadata so action drift is visible", async () => {
+    const r = await dispatch({ id: 1, method: "initialize" }, "exec");
+    const result = r.result as { serverInfo: { version: string }; _meta: { toolset: { toolCount: number; hash: string } } };
+    expect(result.serverInfo.version).toBe("1.2.0");
+    expect(result._meta.toolset.toolCount).toBe(TOOLS.length);
+    expect(result._meta.toolset.hash).toMatch(/^[a-f0-9]{16}$/);
   });
 
   it("answers ping and initialized", async () => {

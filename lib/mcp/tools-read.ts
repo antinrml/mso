@@ -1,4 +1,4 @@
-import { listDir, readFile, searchFs, usage, stats, processes, captureMsoScreen, createTempShare, tempShareUrl } from "@/lib/host";
+import { listDir, readFile, searchFs, usage, stats, processes, captureMsoScreen, createTempShare, tempShareUrl, sha256Text, utf8Bytes } from "@/lib/host";
 import { camoufoxStatus } from "@/lib/camoufox/service";
 import { listManagedApps, getManagedAppLogs } from "@/lib/managed-apps/manager";
 import { searchSkillMemory } from "@/lib/skills/search";
@@ -24,12 +24,16 @@ export const READ_TOOLS: McpTool[] = [
   {
     name: "fs_read",
     description:
-      "Read a text file on the VPS and return its contents. For binary files this will be garbage — " +
+      "Read a text file on the VPS and return its contents plus UTF-8 byte count and SHA-256. " +
+      "Use that hash as fs_write.expected_sha256 to avoid overwriting a file changed since inspection. For binary files this will be garbage — " +
       "check the extension from fs_list first. NOT for finding a file: use fs_search.",
     scope: "read",
     annotations: READ_ONLY,
     inputSchema: S(PATH_P, ["path"]),
-    run: async (a) => ({ path: a.path, content: await readFile(str(a, "path")) }),
+    run: async (a) => {
+      const content = await readFile(str(a, "path"));
+      return { path: a.path, content, bytes: utf8Bytes(content), sha256: sha256Text(content) };
+    },
   },
   {
     name: "fs_search",
@@ -104,7 +108,7 @@ export const READ_TOOLS: McpTool[] = [
     name: "skills_search",
     description:
       "Semantic search across trusted SKILL.md files, the live MCP tool catalog and learned successful workflows. " +
-      "USE THIS FIRST for an unfamiliar or multi-step task so the fastest verified prior path is considered before rediscovering it. " +
+      "Use this alone for capability research or unfamiliar single-step work. For a multi-step task call workflow_start directly — it already performs this search and avoids a duplicate startup call. " +
       "The embedding runs locally with no API cost; untrusted skill instructions are excluded unless explicitly requested.",
     scope: "read",
     annotations: READ_ONLY,

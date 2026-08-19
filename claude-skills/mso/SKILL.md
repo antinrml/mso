@@ -1,6 +1,6 @@
 ---
 name: mso
-description: Control MSO and its VPS safely. Prefer bounded file/system/app capabilities, use the MSO CLI for parity/debugging, and use full shell only when no bounded operation covers the task.
+description: Control MSO and its VPS safely. Prefer bounded operations for direct work, use one scoped terminal batch for repository-wide tasks, and verify every mutation.
 metadata:
   mso:
     risk: high
@@ -20,7 +20,7 @@ Choose the least-powerful capability that can finish the task:
 3. **MSO CLI/API** — when reproducing exactly what the UI/API does.
 4. **Full shell (`exec`)** — only when the bounded surface cannot express the task.
 
-Never choose Bash merely because it is shorter. The permission boundary is a feature. Before destructive actions, service topology changes, credential changes, production rollback, or deleting data you did not create in the current task, require explicit human approval.
+Never choose Bash merely because it is shorter for a simple operation. For repository-wide work, one scoped terminal batch is safer and faster than many disconnected discovery calls. The permission boundary remains a feature. Before destructive actions, service topology changes, credential changes, production rollback, or deleting data you did not create in the current task, require explicit human approval.
 
 ## Resolve the install — never hardcode a username/path
 
@@ -37,14 +37,16 @@ MSO_CLI="$MSO_ROOT/bin/mso"
 
 Use the absolute CLI path above in automation. `$HOME/.local/bin/mso` is a convenience symlink and may not be on PATH in non-login shells, CI, MCP executors, or systemd.
 
-## Learning loop — search first, keep the fastest verified path
+## Learning loop — bootstrap once, keep the fastest verified path
 
-For any task likely to need two or more tool calls:
+For any task likely to need two or more operational calls:
 
-1. Call `skills_search` with the user's complete intent. It searches trusted skills, the live MCP tool catalog, and learned recipes using the local semantic index.
-2. Call `workflow_start` before the first operational tool. Reuse a relevant successful recipe when it is still safe and applicable.
-3. Execute with bounded tools first and verify the result.
-4. Call `workflow_finish` with `success=true` only after verification. MSO stores the redacted tool sequence and durations, merges equivalent intents, and keeps the fastest successful path.
+1. Call `workflow_start` directly with the user's complete intent, project hint and constraints. It already searches trusted skills, the live MCP tool catalog and learned recipes, resolves project aliases, and reports the current toolset.
+2. Reuse a relevant successful recipe when it is still safe and applicable.
+3. Use bounded tools for one or two direct operations. For repository-wide search, Git, tests, builds, or three or more related checks, use one narrow `exec_run` batch when exec scope is available.
+4. Verify independently, then call `workflow_finish(success=true)`.
+
+Use `skills_search` by itself for capability research or an unfamiliar single-step task; do not call it immediately before `workflow_start` for the same work. MSO stores the redacted tool sequence and durations, merges equivalent intents, and keeps the fastest successful path.
 
 The memory never stores `fs_write.content`, raw file bodies, bearer tokens, browser credentials, or full secret-looking command arguments. Failed runs are useful evidence but never replace a successful best path.
 

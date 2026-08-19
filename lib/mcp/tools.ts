@@ -1,4 +1,4 @@
-import { writeFile, makeDir, remove, move, copy, runCommand } from "@/lib/host";
+import { writeFileGuarded, makeDir, remove, move, copy, runCommand } from "@/lib/host";
 import { setCamoufoxEnabled } from "@/lib/camoufox/service";
 import { performManagedAppAction } from "@/lib/managed-apps/manager";
 import { isManagedAppId } from "@/lib/managed-apps/catalog";
@@ -16,15 +16,21 @@ const MUTATE_TOOLS: McpTool[] = [
     limit: { key: "fs.write", max: 120, windowMs: 60_000 },
     audit: { action: "fs.write" as const, targetArg: "path" },
     description:
-      "Create or overwrite a text file on the VPS. Overwrites without warning — fs_read first if you need " +
-      "the old contents. Bounded to OS_FS_WRITE_ROOTS (home + ~/projects by default).",
+      "Create or overwrite a text file on the VPS. Inspect with fs_read first and pass its SHA-256 as expected_sha256 " +
+      "to refuse a stale overwrite when another process changed the file. Omitting the hash keeps legacy overwrite behaviour. " +
+      "Bounded to OS_FS_WRITE_ROOTS (home + ~/projects by default).",
     scope: "write",
     annotations: { idempotentHint: true },
-    inputSchema: S({ ...PATH_P, content: { type: "string" } }, ["path", "content"]),
-    run: async (a) => {
-      await writeFile(str(a, "path"), typeof a.content === "string" ? a.content : "");
-      return { ok: true, path: a.path };
-    },
+    inputSchema: S({
+      ...PATH_P,
+      content: { type: "string" },
+      expected_sha256: { type: "string", description: "Optional SHA-256 returned by fs_read; refuse if the current file no longer matches." },
+    }, ["path", "content"]),
+    run: async (a) => ({ ok: true, ...(await writeFileGuarded({
+      path: str(a, "path"),
+      content: typeof a.content === "string" ? a.content : "",
+      expectedSha256: opt(a, "expected_sha256"),
+    })) }),
   },
   {
     name: "fs_mkdir",

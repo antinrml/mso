@@ -306,8 +306,8 @@ that is the kill switch, and demo mode forces it off. Read `docs/MCP.md` first.
   decision, see the integration doc below). `tools/list` filters by it AND `tools/call`
   re-checks it — a client can call a name it was never shown.
 - **Tool names are a cross-repo contract.** `rahmanef63/connectors-gateway` registered
-  mso as a connector on 2026-08-17 and pins 15 of the 17 names as literal strings
-  (`x-upstream`), omitting `exec_run` and `browser_power` entirely. Renaming or removing
+  mso as a connector on 2026-08-17 and pins 15 of the 21 names as literal strings
+  (`x-upstream`), omitting `exec_run`, `browser_power`, and the four workflow/visual tools added later. `GET /mcp` plus `_meta.toolset` now expose a version/hash/name manifest for parity checks. Renaming or removing
   a tool here breaks it with **no error in either repo** — `parity.test.ts` guards the
   Alfa axis, not this one. Read `docs/CONNECTORS-GATEWAY-INTEGRATION.md` before touching
   a tool name.

@@ -8,6 +8,62 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-19 — MCP one-call bootstrap, visible workflows and faster repository work (DONE)
+
+A refreshed ChatGPT connection proved the server really exposed all 21 MCP tools, but
+it also made the remaining orchestration cost visible. The client still had to search
+skills and start a workflow as separate calls; `os-vps` no longer matched the renamed
+`mso` directory; MCP activity was a flat list even though the backend already stored a
+`workflowId`; tool descriptions and schemas could change without an operator-visible
+signature; and the systemd environment handed `exec_run` no `~/.bun/bin`, so every Bun
+command first failed or required an absolute path. The live baseline also returned no
+toolset metadata from `GET /mcp`, and `fs_search("os-vps")` returned an empty result.
+
+This release keeps the public catalog at **21 stable names** and makes the existing
+`workflow_start` the one bootstrap call for multi-step work. It now starts the
+actor-scoped workflow, searches trusted skills/tools/recipes, resolves the project,
+returns package and Git context, reports the scoped toolset version/hash/count, and
+emits the high-level `[MSO]`, `[Project]`, and `[Plan]` trace. `skills_search` remains the
+standalone capability-research route; clients are explicitly told not to call it
+immediately before `workflow_start` for the same task. Initialize instructions now
+prefer bounded tools for one or two direct operations and one narrow terminal batch for
+repository-wide search, Git, tests, builds, or three-plus related checks. They request
+feature badges such as Skills, Files, Terminal, Git, Build, Verify and Screenshot—not
+private chain-of-thought.
+
+Project resolution now has safe aliases for `os-vps`, Manef Shell OS and MSO, with an
+immediate exact-name/alias return instead of parsing every project package. Package and
+Git metadata refuse symlinks. `fs_read` returns UTF-8 bytes plus SHA-256, and
+`fs_write.expected_sha256` provides an optimistic stale-overwrite guard. Spawned shells
+retain secret scrubbing but prepend the owner's `~/.local/bin` and `~/.bun/bin`, so Bun
+and owner-installed CLIs work without rediscovery after restart.
+
+The MCP protocol, public `/mcp` descriptor and Settings API now expose server version
+`1.2.0` plus a schema-derived toolset signature (`2026.08.19.1`). Settings → MCP displays
+that signature and records a browser-local acknowledgement after ChatGPT is refreshed;
+a later change becomes a visible stale-snapshot warning. Assistant → MCP now groups
+activity by workflow intent/project, collapses start/completion pairs, aggregates steps
+and duration, and renders feature-specific icons. Only a completed `workflow_finish`
+marks a workflow Verified; standalone calls are merely Completed. Workflow intent and
+project are redacted/truncated before persistence.
+
+Three official operational skills were added: `mso-repo-work`, `mso-deploy`, and
+`mso-service-debug`. The MCP and connectors-gateway documentation now treats the 21-tool
+runtime signature as the cross-client contract and records that the gateway still maps
+15 actions. New public `repo_*` or `job_*` names were deliberately not added in this
+release: keeping the action catalog stable lets the refreshed connection benefit
+immediately, while scoped terminal batching and the existing release/job infrastructure
+cover the current bottleneck without another catalog expansion.
+
+Verification before ship: targeted bootstrap, alias, symlink, guarded-write, toolset,
+activity and dispatch tests passed; `bun run verify` passed typecheck and lint, **144 test
+files / 1,351 tests**, the coverage thresholds (22.51% statements, 20.80% branches,
+16.67% functions, 23.02% lines), 765-file cycle scan with zero value cycles, both light
+and dark contrast audits with zero AA failures, and a clean high/critical dependency
+audit. The committed pre-push gate performs the out-of-tree production build again
+before any push, and `bun run ship` preserves the required commit → changelog → push →
+build → restart order.
+
 ## 2026-08-19 — v0.2.1: self-update stopped assuming passwordless sudo (DONE)
 
 A real 0.2.0 installation exposed the gap: Settings found the incoming commits, but

@@ -87,19 +87,34 @@ restarting a daemon does not require handing one over either.
 `tools/list` is filtered by the token's scope, and `tools/call` re-checks it — a
 client that calls a tool it was never shown still gets refused.
 
+## Toolset version, hash and action refresh
+
+The catalog has a stable server version plus a schema-derived toolset signature. It is returned by public `GET /mcp`, MCP `initialize`, scoped `tools/list`, and the authenticated Settings → MCP endpoint. The signature changes when a name, description, input schema, scope, annotation or per-operation limit changes—not only when the tool count changes.
+
+Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
+
+Current catalog: **21 tools**. Public names remain stable in this release.
+
+## Safe text inspection and overwrite
+
+`fs_read` returns `content`, UTF-8 byte count and SHA-256. For an existing file, pass that digest as `fs_write.expected_sha256`; the write is refused if another process changed the file since inspection. Omitting it preserves create/legacy overwrite behaviour. Workflow memory stores the path, never the content or digest.
+
 ## Semantic skill search and learned workflows
 
-MSO does not need to rediscover the same safe procedure on every conversation. Its
-learning loop has three layers:
+MSO does not need to rediscover the same safe procedure on every conversation.
+For a multi-step task, `workflow_start` is the **single bootstrap call**. It:
 
-1. `skills_search` searches trusted `SKILL.md` instructions, the live MCP tool
-   catalog and previously learned workflows.
-2. `workflow_start` creates an actor-scoped task boundary before multi-step work and
-   returns the closest prior recipe, including its best tool sequence, success rate
-   and fastest verified duration.
-3. `workflow_finish` records the verified outcome and merges semantically equivalent
-   intents. A faster successful run replaces the best path; a failed run remains
-   evidence but never replaces a successful recipe.
+1. creates the actor-scoped task boundary;
+2. searches trusted `SKILL.md` instructions, the current scoped MCP catalog and learned recipes;
+3. resolves project paths and aliases such as `os-vps` → `mso`;
+4. returns toolset version/hash/count, package metadata and bounded Git context;
+5. recommends the closest successful recipe and execution policy.
+
+Use `skills_search` alone for capability research or an unfamiliar single-step task;
+do not call it immediately before `workflow_start` for the same work. After independent
+verification, `workflow_finish` records the redacted sequence and merges semantically
+equivalent intents. A faster successful run replaces the best path; a failed run remains
+evidence but never replaces a successful recipe.
 
 The index uses `mso-local-hybrid-v1`: a deterministic, local 384-dimensional
 feature-hashed vector over words, bilingual aliases, bigrams and character n-grams,
@@ -108,10 +123,10 @@ or token budget. This is a small local semantic router for MSO's skill/tool cata
 not a general-purpose cloud embedding model. A future encoder can re-index recipes
 because every saved vector carries its version.
 
-Connected clients receive this sequence in the MCP `initialize.instructions` field:
+Connected clients receive the bootstrap, terminal-batching, verification and visible-trace policy in MCP `initialize.instructions`:
 
 ```text
-skills_search → workflow_start → bounded operational tools → verify → workflow_finish
+workflow_start → bounded tools or one scoped terminal batch → verify → workflow_finish
 ```
 
 A recipe is guidance, not permission. The connector still checks current tool
@@ -177,10 +192,12 @@ MSO keeps two deliberately different records.
 
 Every MCP tool call, including reads, produces correlated `started` and terminal
 (`completed`, `failed`, `denied`, `rate_limited`) rows in
-`~/.mso/mcp-activity.log`. When a workflow is active, the rows carry its
-`workflowId`, so the Assistant can show one task as a continuous sequence rather
-than unrelated calls. Targets are truncated and secret-looking values are redacted;
-`fs_write.content`, file bodies, bearer values and raw tool results are never stored.
+`~/.mso/mcp-activity.log`. Workflow rows carry `workflowId`, intent and project, so
+Assistant → MCP groups one task into a collapsible sequence instead of unrelated calls.
+Each row renders a high-level feature badge/icon such as Skills, Files, Terminal, Git,
+Build, Verify or Screenshot, plus status, duration and redacted target. This is an
+execution trace, not private chain-of-thought. `fs_write.content`, file bodies, bearer
+values and raw tool results are never stored.
 
 View it in **Assistant → MCP** (live polling with pause/resume) or from the CLI:
 
@@ -261,10 +278,13 @@ lib/mcp/scope.ts          the read/write/exec ladder + the env kill switch
 lib/mcp/store.ts          ~/.mso/mcp.json — clients, codes, tokens (hashed)
 lib/mcp/tool-kit.ts       McpTool, direct image content and run context
 lib/mcp/tools-read.ts     bounded reads + skills_search + screen_capture
-lib/mcp/tools-learning.ts actor-scoped workflow_start / workflow_finish
+lib/mcp/tools-learning.ts one-call bootstrap + workflow_start / workflow_finish
+lib/mcp/toolset.ts        server/toolset version, schema hash and scoped manifest
 lib/mcp/tools.ts          write/exec tools and the assembled catalog
-lib/mcp/activity.ts       live correlated tool activity
-lib/mcp/dispatch.ts       JSON-RPC, scope checks, activity + recipe capture
+lib/mcp/activity.ts       workflow-correlated live activity
+lib/mcp/dispatch.ts       JSON-RPC, scope checks, metadata, activity + recipe capture
+lib/host/projects.ts      bounded project resolution, aliases and repo context
+lib/host/guarded-write.ts optimistic SHA-256 file overwrite guard
 lib/skills/catalog.ts     trusted SKILL.md roots and provenance
 lib/skills/semantic.ts    local hybrid embedding/search primitives
 lib/skills/search.ts      unified skill/tool/recipe ranking

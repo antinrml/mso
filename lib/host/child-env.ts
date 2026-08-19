@@ -1,9 +1,12 @@
+import os from "os";
+import path from "path";
+
 // SERVER-ONLY. The environment handed to spawned shells (exec + PTY) with the
 // app's OWN secrets scrubbed out. Without this, any `printenv` in the terminal
 // reveals the session secret / login password / browser secret / agent token /
 // BYOK key — which would let a hijacked session mint cookies forever, defeating
-// the credential denylist in paths.ts. PATH/HOME/SHELL/locale + everything else
-// pass through unchanged (a real login shell still works).
+// the credential denylist in paths.ts. HOME/SHELL/locale + everything else pass through; PATH is supplemented with
+// owner CLI directories (a real login shell still works).
 //
 // Residual (documented in SECURITY.md): a same-uid process can still read
 // /proc/<pid>/environ of the mso process itself — the boundary is the OS
@@ -34,5 +37,13 @@ export function childEnv(): Record<string, string> {
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined && !isSecretVar(k)) env[k] = v;
   }
+  // systemd commonly supplies only system paths. MSO-managed projects use Bun and
+  // owner-installed CLIs, so every exec/PTY otherwise starts by rediscovering an
+  // absolute binary path. These are executable directories, not credentials, and
+  // the child already runs as the same owner. Keep them first, without duplicates.
+  const home = env.HOME || os.homedir();
+  const userBins = [path.join(home, ".local/bin"), path.join(home, ".bun/bin")];
+  const current = (env.PATH || "").split(path.delimiter).filter(Boolean);
+  env.PATH = [...new Set([...userBins, ...current])].join(path.delimiter);
   return env;
 }
