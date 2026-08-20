@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 // lib/mcp/parity.test.ts.
 import { claudeCodeApp, osTerminalApp } from "@/frontend/slices/os-terminal";
 import { HOST_TOOLS, SHELL_APPS } from "./catalog";
-import { findHostTool, HOST_AI_TOOLS } from "./registry";
+import { findHostTool, HOST_AI_TOOLS, HOST_SYSTEM } from "./registry";
 
 // Runs in the node env: the catalog + registry pull only the schema helpers and
 // type-only imports. The one exception is that barrel, imported for the two
@@ -70,5 +70,39 @@ describe("host-tools registry", () => {
       expect(t.description).toBeTruthy();
       expect(t.input_schema).toMatchObject({ type: "object" });
     }
+  });
+});
+
+// THE GLOBAL-CAPABILITY INVARIANT for Alfa. CONTRACT.md decided it on 2026-07-30:
+// every agent gets every tool, and the lock is the per-call approval card plus
+// lib/host's path jail — not a shortened list. This block exists because the
+// previous scoping attempt shipped a UI that COUNTED tools per agent while all of
+// them were sent, so the owner believed in containment that did not exist.
+describe("every agent gets every tool, always", () => {
+  it("HOST_AI_TOOLS is the whole catalog, in catalog order", () => {
+    expect(HOST_AI_TOOLS.map((t) => t.name)).toEqual(HOST_TOOLS.map((t) => t.name));
+  });
+
+  it("exposes no per-agent, per-playbook or per-project filter to call it through", async () => {
+    const registry = await import("./registry");
+    // A filter would have to be a function taking an agent/playbook/project. If one
+    // appears here, the contract changed and CONTRACT.md has to change with it.
+    const exported = Object.keys(registry).sort();
+    expect(exported).toEqual(["HOST_AI_TOOLS", "HOST_SYSTEM", "findHostTool"]);
+    expect(typeof registry.HOST_AI_TOOLS).toBe("object");
+  });
+
+  it("sends the same array on every turn — no per-turn narrowing", async () => {
+    const { HOST_AI_TOOLS: again } = await import("./registry");
+    expect(again).toBe(HOST_AI_TOOLS);
+  });
+
+  it("tells the model its skills span ALL projects, not the current one", () => {
+    expect(HOST_SYSTEM).toMatch(/skills across all of the owner's projects/i);
+  });
+
+  it("never points the model at a native or provider image-generation tool", () => {
+    expect(HOST_SYSTEM).not.toMatch(/image/i);
+    expect(HOST_TOOLS.filter((t) => /image/i.test(t.name))).toEqual([]);
   });
 });

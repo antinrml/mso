@@ -8,11 +8,13 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Added**
 
+- `mcp` global project/skill discovery, drop image generation
 - `mcp` import ChatGPT generated files
 - `mcp` add provider-backed image generation
 
 **Fixed**
 
+- `mcp` make ChatGPT file imports region agnostic
 - `mcp` allow ChatGPT India South Central file storage
 - `mcp` allow ChatGPT New Zealand file storage
 - `mcp` allow ChatGPT Australia file storage

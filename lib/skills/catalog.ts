@@ -2,25 +2,11 @@ import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
+import { SKILL_FILE, skillIsExecutableByDefault, type SkillInfo, type SkillSource, type SkillTrust } from "./catalog-types";
+import { PROJECT_SKILL_LIMITS, projectSkillRoots, projectSkillTrust, type ProjectRef } from "./project-skills";
 
-export const SKILL_FILE = "SKILL.md";
-
-export type SkillTrust = "official" | "verified" | "local" | "untrusted";
-export type SkillSource = "mso" | "bundled" | "operator" | "claude" | "agents" | "codex" | "openclaw";
-
-export type SkillInfo = {
-  name: string;
-  path: string;
-  description: string;
-  source: SkillSource;
-  trust: SkillTrust;
-  provenance?: {
-    registry?: string;
-    owner?: string;
-    version?: string;
-    sha256?: string;
-  };
-};
+export { SKILL_FILE, skillIsExecutableByDefault };
+export type { SkillInfo, SkillSource, SkillTrust };
 
 type RootSpec = {
   path: string;
@@ -28,9 +14,16 @@ type RootSpec = {
   trust: SkillTrust;
   priority: number;
   verifyClawHub?: boolean;
+  project?: ProjectRef;
 };
 
-type CatalogOptions = { appDir?: string; homeDir?: string };
+type CatalogOptions = {
+  appDir?: string;
+  homeDir?: string;
+  /** Project directories to scan for per-project skill roots. Defaults to every
+   *  project across every configured container; pass `[]` to catalog global roots only. */
+  projectDirs?: Array<{ dir: string }>;
+};
 
 /**
  * Root priority is a security boundary, not just display order.
@@ -40,6 +33,10 @@ type CatalogOptions = { appDir?: string; homeDir?: string };
  * so installing a same-named OpenClaw/Claude/Codex skill cannot silently replace
  * MSO's own instructions. Bundled third-party skills are verified by their ClawHub
  * SKILL.md hash. Generic discovered roots are visible but untrusted.
+ *
+ * Per-project roots sit BELOW all of these (priority 56–60, see project-skills.ts)
+ * and are addressed by a `<project>/<name>` id, so a project skill can neither
+ * outrank nor collide with an operator or official one.
  */
 export function skillRoots(appDir = process.cwd(), homeDir = os.homedir()): RootSpec[] {
   return [
@@ -110,42 +107,67 @@ async function verifiedBundledSkill(dir: string, md: string): Promise<Pick<Skill
   };
 }
 
-export async function catalogSkills(options: CatalogOptions = {}): Promise<SkillInfo[]> {
-  const appDir = options.appDir ?? process.cwd();
-  const homeDir = options.homeDir ?? os.homedir();
-  const chosen = new Map<string, { skill: SkillInfo; priority: number }>();
+async function scanRoot(spec: RootSpec, budget: { left: number }): Promise<Array<{ skill: SkillInfo; priority: number }>> {
+  const entries = await fs.readdir(spec.path, { withFileTypes: true }).catch(() => []);
+  const found: Array<{ skill: SkillInfo; priority: number }> = [];
+  const limit = spec.project ? PROJECT_SKILL_LIMITS.maxSkillsPerRoot : entries.length;
+  for (const entry of entries.slice().sort((a, b) => a.name.localeCompare(b.name))) {
+    if (found.length >= limit || (spec.project && budget.left <= 0)) break;
+    if (!(await isSkillDir(spec.path, entry))) continue;
+    const dir = path.join(spec.path, entry.name);
+    const file = path.join(dir, SKILL_FILE);
+    const md = await readSkillFile(file);
+    if (!md) continue;
 
-  for (const spec of skillRoots(appDir, homeDir)) {
-    const entries = await fs.readdir(spec.path, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (!(await isSkillDir(spec.path, entry))) continue;
-      const dir = path.join(spec.path, entry.name);
-      const file = path.join(dir, SKILL_FILE);
-      const md = await readSkillFile(file);
-      if (!md) continue;
+    let trust = spec.trust;
+    let provenance: SkillInfo["provenance"];
+    if (spec.verifyClawHub) {
+      const verified = await verifiedBundledSkill(dir, md);
+      trust = verified.trust;
+      provenance = verified.provenance;
+    } else if (spec.project) {
+      // Path alone grants nothing: containment, ownership and SKILL.md shape decide.
+      trust = await projectSkillTrust(dir, spec.project.path);
+      budget.left -= 1;
+    }
 
-      let trust = spec.trust;
-      let provenance: SkillInfo["provenance"];
-      if (spec.verifyClawHub) {
-        const verified = await verifiedBundledSkill(dir, md);
-        trust = verified.trust;
-        provenance = verified.provenance;
-      }
-
-      const candidate: SkillInfo = {
+    found.push({
+      priority: spec.priority,
+      skill: {
+        id: spec.project ? `${spec.project.name}/${entry.name}` : entry.name,
         name: entry.name,
         path: file,
         description: skillDescription(md),
         source: spec.source,
         trust,
+        ...(spec.project ? { project: spec.project } : {}),
         ...(provenance ? { provenance } : {}),
-      };
-      const current = chosen.get(candidate.name);
-      if (!current || spec.priority > current.priority) chosen.set(candidate.name, { skill: candidate, priority: spec.priority });
+      },
+    });
+  }
+  return found;
+}
+
+export async function catalogSkills(options: CatalogOptions = {}): Promise<SkillInfo[]> {
+  const appDir = options.appDir ?? process.cwd();
+  const homeDir = options.homeDir ?? os.homedir();
+  const projectRoots = (await projectSkillRoots(options.projectDirs))
+    .map((root): RootSpec => ({ path: root.path, source: "project", trust: "untrusted", priority: root.priority, project: root.project }));
+  const chosen = new Map<string, { skill: SkillInfo; priority: number }>();
+  const budget = { left: PROJECT_SKILL_LIMITS.maxProjectSkills };
+
+  for (const spec of [...skillRoots(appDir, homeDir), ...projectRoots]) {
+    for (const candidate of await scanRoot(spec, budget)) {
+      const current = chosen.get(candidate.skill.id);
+      if (!current || candidate.priority > current.priority) chosen.set(candidate.skill.id, candidate);
     }
   }
 
-  return [...chosen.values()].map(({ skill }) => skill).sort((a, b) => a.name.localeCompare(b.name));
+  return [...chosen.values()].map(({ skill }) => skill).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export const skillIsExecutableByDefault = (skill: Pick<SkillInfo, "trust">): boolean => skill.trust !== "untrusted";
+/** Resolve a catalog id. Falls back to the bare `name` so pre-id callers and the
+ *  `mso skills read <name>` CLI keep working for global skills. */
+export function findSkill(skills: SkillInfo[], idOrName: string): SkillInfo | undefined {
+  return skills.find((s) => s.id === idOrName) ?? skills.find((s) => s.name === idOrName && !s.project);
+}

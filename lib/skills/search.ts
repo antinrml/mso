@@ -13,6 +13,8 @@ export type SkillSearchHit = {
   kind: "recipe" | "skill" | "tool";
   id: string;
   name: string;
+  /** Set when the hit is a skill that lives inside a project checkout. */
+  project?: { name: string; path: string };
   score: number;
   description: string;
   source?: string;
@@ -31,6 +33,8 @@ export type SkillSearchOptions = {
   toolDocs?: SkillSearchToolDoc[];
   appDir?: string;
   homeDir?: string;
+  /** Forwarded to catalogSkills; `[]` restricts the search to global roots. */
+  projectDirs?: Array<{ dir: string }>;
 };
 
 function skillQuality(skill: SkillInfo): number {
@@ -86,15 +90,16 @@ export async function searchSkillMemory(query: string, options: SkillSearchOptio
     });
   }
 
-  const skills = await catalogSkills({ appDir: options.appDir, homeDir: options.homeDir });
+  const skills = await catalogSkills({ appDir: options.appDir, homeDir: options.homeDir, projectDirs: options.projectDirs });
   for (const skill of skills) {
     if (!options.includeUntrusted && skill.trust === "untrusted") continue;
     const content = skill.trust === "untrusted" ? "" : (await readSkillFile(skill.path))?.slice(0, 18_000) ?? "";
-    const text = `${skill.name}\n${skill.description}\n${content}`;
+    const text = `${skill.id}\n${skill.name}\n${skill.project?.name ?? ""}\n${skill.description}\n${content}`;
     hits.push({
       kind: "skill",
-      id: skill.name,
+      id: skill.id,
       name: skill.name,
+      ...(skill.project ? { project: skill.project } : {}),
       score: Math.max(0, Math.min(1, hybridSemanticScore(q, text) + skillQuality(skill))),
       description: skill.description,
       source: skill.source,

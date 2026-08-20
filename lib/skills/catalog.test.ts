@@ -24,12 +24,16 @@ async function skill(dir: string, name: string, description: string) {
   return { target, md };
 }
 
+// `projectDirs: []` keeps these cases about GLOBAL root precedence. Without it the
+// catalog also walks the real box's project containers, and the assertions would
+// depend on which projects happen to be checked out on the machine running them.
+// Per-project discovery has its own file: project-skills.test.ts.
 describe("skill catalog trust and precedence", () => {
   it("finds official repo skills without ~/.claude symlinks", async () => {
     const app = await temp();
     const home = await temp();
     await skill(path.join(app, "claude-skills"), "mso", "official");
-    const rows = await catalogSkills({ appDir: app, homeDir: home });
+    const rows = await catalogSkills({ appDir: app, homeDir: home, projectDirs: [] });
     expect(rows).toMatchObject([{ name: "mso", source: "mso", trust: "official", description: "official" }]);
   });
 
@@ -38,7 +42,7 @@ describe("skill catalog trust and precedence", () => {
     const home = await temp();
     await skill(path.join(app, "claude-skills"), "mso", "official");
     await skill(path.join(home, ".claude/skills"), "mso", "host override");
-    const [row] = await catalogSkills({ appDir: app, homeDir: home });
+    const [row] = await catalogSkills({ appDir: app, homeDir: home, projectDirs: [] });
     expect(row).toMatchObject({ name: "mso", source: "mso", trust: "official", description: "official" });
   });
 
@@ -47,7 +51,7 @@ describe("skill catalog trust and precedence", () => {
     const home = await temp();
     await skill(path.join(app, "claude-skills"), "mso", "official");
     await skill(path.join(home, ".mso/skills"), "mso", "operator override");
-    const [row] = await catalogSkills({ appDir: app, homeDir: home });
+    const [row] = await catalogSkills({ appDir: app, homeDir: home, projectDirs: [] });
     expect(row).toMatchObject({ name: "mso", source: "operator", trust: "local", description: "operator override" });
   });
 
@@ -58,11 +62,11 @@ describe("skill catalog trust and precedence", () => {
     await mkdir(path.join(target, ".clawhub"), { recursive: true });
     const sha256 = createHash("sha256").update(md).digest("hex");
     await writeFile(path.join(target, ".clawhub/origin.json"), JSON.stringify({ registry: "https://clawhub.ai", ownerHandle: "alice", installedVersion: "1.2.3", skillFile: { sha256 } }));
-    let [row] = await catalogSkills({ appDir: app, homeDir: home });
+    let [row] = await catalogSkills({ appDir: app, homeDir: home, projectDirs: [] });
     expect(row).toMatchObject({ trust: "verified", provenance: { owner: "alice", version: "1.2.3", sha256 } });
 
     await writeFile(path.join(target, "SKILL.md"), md + "tampered\n");
-    [row] = await catalogSkills({ appDir: app, homeDir: home });
+    [row] = await catalogSkills({ appDir: app, homeDir: home, projectDirs: [] });
     expect(row.trust).toBe("untrusted");
   });
 

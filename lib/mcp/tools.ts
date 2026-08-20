@@ -1,24 +1,10 @@
 import { writeFileGuarded, makeDir, remove, move, copy, runCommand } from "@/lib/host";
-import { setCamoufoxEnabled } from "@/lib/camoufox/service";
-import { performManagedAppAction } from "@/lib/managed-apps/manager";
-import { isManagedAppId } from "@/lib/managed-apps/catalog";
-import { MANAGED_APP_ACTIONS, type ManagedAppAction } from "@/lib/managed-apps/types";
-import { type McpTool, str, opt, S, PATH_P, mcpDirect } from "./tool-kit";
+import { type McpTool, str, opt, S, PATH_P } from "./tool-kit";
 import { importOpenAiProvidedFile } from "./openai-file-upload";
-import {
-  generateOpenAiImage,
-  OPENAI_IMAGE_BACKGROUNDS,
-  OPENAI_IMAGE_MODELS,
-  OPENAI_IMAGE_QUALITIES,
-  OPENAI_IMAGE_SIZES,
-  shouldReturnDirectImage,
-  type OpenAiImageBackground,
-  type OpenAiImageModel,
-  type OpenAiImageQuality,
-  type OpenAiImageSize,
-} from "@/lib/image-generation/openai";
 import { READ_TOOLS } from "./tools-read";
+import { DISCOVERY_TOOLS } from "./tools-discovery";
 import { LEARNING_TOOLS } from "./tools-learning";
+import { POWER_TOOLS } from "./tools-power";
 
 // The write and exec tiers. Each carries an `audit` descriptor — the dispatcher,
 // not the tool, writes the trail, because these call lib/host directly and so
@@ -121,73 +107,6 @@ const MUTATE_TOOLS: McpTool[] = [
   },
 
   {
-    name: "apps_power",
-    limit: { key: "managed-app", max: 12, windowMs: 60_000, keyArg: "id" },
-    audit: { action: "managed-app.action" as const, targetArg: "id" },
-    description:
-      "Start, stop, restart or back up a managed application on the VPS. Bounded to the known apps and " +
-      "those four verbs — restarting a daemon should not require handing over a shell, so this sits at " +
-      "write scope rather than exec. Check apps_list or apps_logs first.",
-    scope: "write",
-    annotations: { destructiveHint: true },
-    // The verb list is READ from MANAGED_APP_ACTIONS, never retyped. It was retyped,
-    // and `backup` — a real action with a real route, taken automatically before
-    // every update — was missing from the enum AND from the guard below, so an MCP
-    // client could not take one and was told the tool only did three things.
-    inputSchema: S({
-      id: { type: "string", description: "Managed app id from apps_list." },
-      action: { type: "string", enum: [...MANAGED_APP_ACTIONS], description: MANAGED_APP_ACTIONS.join(" | ") },
-    }, ["id", "action"]),
-    run: (a) => {
-      const id = str(a, "id");
-      const action = str(a, "action");
-      if (!isManagedAppId(id)) throw new Error(`unknown managed application "${id}" — call apps_list for valid ids`);
-      if (!(MANAGED_APP_ACTIONS as readonly string[]).includes(action))
-        throw new Error(`action must be one of ${MANAGED_APP_ACTIONS.join(", ")}`);
-      // `{ app }`, matching POST /api/v1/managed-apps/[id]. Same capability, same
-      // envelope — a client that learned the shape from the CLI or the route must
-      // not have to learn a second one here.
-      return performManagedAppAction(id, action as ManagedAppAction).then((app) => ({ app }));
-    },
-  },
-  {
-    name: "image_generate",
-    limit: { key: "image.generate", max: 5, windowMs: 60_000 },
-    audit: { action: "image.generate" as const, targetArg: "project" },
-    description:
-      "Generate exactly one genuinely new raster image through the official OpenAI Images API. " +
-      "The provider response is saved as a lossless PNG sandbox master under OS_IMAGE_OUTPUT_ROOT and accompanied by prompt SHA-256, byte SHA-256, dimensions, alpha status, provider/model/request id, and a provenance sidecar. " +
-      "This is a billed external operation and requires an OpenAI API key configured in MSO Settings → AI or OPENAI_API_KEY.",
-    scope: "exec",
-    annotations: { destructiveHint: true, openWorldHint: true },
-    inputSchema: S({
-      prompt: { type: "string", description: "Complete image-generation prompt. It is sent to OpenAI but never stored in MCP activity or workflow memory." },
-      project: { type: "string", description: "Safe project slug used only to organize the sandbox output directory. Default general." },
-      filename_stem: { type: "string", description: "Safe filename stem. A timestamp and random run id are always added." },
-      model: { type: "string", enum: [...OPENAI_IMAGE_MODELS], description: "OpenAI image model. Default OS_IMAGE_MODEL or gpt-image-2. Transparent requests default to gpt-image-1.5." },
-      size: { type: "string", enum: [...OPENAI_IMAGE_SIZES], description: "Requested output size. Default 1024x1024." },
-      quality: { type: "string", enum: [...OPENAI_IMAGE_QUALITIES], description: "Provider quality. Default high." },
-      background: { type: "string", enum: [...OPENAI_IMAGE_BACKGROUNDS], description: "auto, opaque, or transparent. gpt-image-2 does not support transparent output." },
-    }, ["prompt"]),
-    run: async (a) => {
-      const result = await generateOpenAiImage({
-        prompt: str(a, "prompt"),
-        project: opt(a, "project"),
-        filenameStem: opt(a, "filename_stem"),
-        model: opt(a, "model") as OpenAiImageModel | undefined,
-        size: opt(a, "size") as OpenAiImageSize | undefined,
-        quality: opt(a, "quality") as OpenAiImageQuality | undefined,
-        background: opt(a, "background") as OpenAiImageBackground | undefined,
-      });
-      const content: Array<{ type: "image"; data: string; mimeType: string } | { type: "text"; text: string }> = [];
-      if (shouldReturnDirectImage(result.data.byteLength)) {
-        content.push({ type: "image", data: result.data.toString("base64"), mimeType: "image/png" });
-      }
-      content.push({ type: "text", text: JSON.stringify(result.summary, null, 2) });
-      return mcpDirect(content);
-    },
-  },
-  {
     name: "exec_run",
     limit: { key: "exec", max: 60, windowMs: 60_000 },
     audit: {
@@ -216,21 +135,6 @@ const MUTATE_TOOLS: McpTool[] = [
     }, ["command"]),
     run: (a) => runCommand(str(a, "command"), opt(a, "cwd")),
   },
-  {
-    name: "browser_power",
-    limit: { key: "camoufox", max: 12, windowMs: 60_000 },
-    audit: { action: "camoufox.power" as const, targetArg: "on" },
-    description:
-      "Start or stop the Camoufox browser session on the VPS. Starting boots a real Firefox on a headless " +
-      "X display; the session self-terminates after 2h. Stop it when done — it holds a live logged-in profile.",
-    scope: "exec",
-    annotations: { destructiveHint: true },
-    inputSchema: S({ on: { type: "boolean", description: "true = start, false = stop." } }, ["on"]),
-    run: async (a) => {
-      const s = await setCamoufoxEnabled(a.on === true);
-      return { installed: s.installed, running: s.running, autostart: s.enabled };
-    },
-  },
 ];
 
 const WORKFLOW_CONTEXT_EXEMPT = new Set(["skills_search", "workflow_start", "workflow_cancel", "workflow_finish"]);
@@ -249,6 +153,6 @@ const withWorkflowContext = (tool: McpTool): McpTool => WORKFLOW_CONTEXT_EXEMPT.
   },
 });
 
-export const TOOLS: McpTool[] = [...READ_TOOLS, ...LEARNING_TOOLS, ...MUTATE_TOOLS].map(withWorkflowContext);
+export const TOOLS: McpTool[] = [...READ_TOOLS, ...DISCOVERY_TOOLS, ...LEARNING_TOOLS, ...MUTATE_TOOLS, ...POWER_TOOLS].map(withWorkflowContext);
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 export type { McpTool } from "./tool-kit";

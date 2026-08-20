@@ -59,16 +59,19 @@ Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`. The highe
 
 | Scope | Tools |
 |---|---|
-| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `skills_search` `image_generation_status` `screen_capture` `browser_status` |
-| `write` | + `workflow_start` `workflow_cancel` `workflow_finish` `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
-| `exec` | + `image_generate` `exec_run` `browser_power` |
+| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `projects_list` `skills_list` `skills_read` `skills_search` `screen_capture` `browser_status` |
+| `write` | + `workflow_start` `workflow_cancel` `workflow_finish` `fs_write` `fs_upload_file` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
+| `exec` | + `exec_run` `browser_power` |
 
 Alfa — the in-app assistant — has the same host capabilities under dot.case names,
 and `lib/mcp/parity.test.ts` fails if one surface gains a tool the other lacks
 without a written reason. `skills_search` maps to Alfa's `skills.search`.
-`screen_capture`, `image_generation_status`, `image_generate`, `workflow_start`, `workflow_cancel` and `workflow_finish` are explicitly MCP-only:
-the external connector needs visual proof and an actor-scoped task boundary, while
-Alfa already runs inside the rendered shell and owns an in-app run boundary. The
+`screen_capture`, `projects_list`, `fs_upload_file`, `workflow_start`, `workflow_cancel` and
+`workflow_finish` are explicitly MCP-only: the external connector needs visual proof,
+an explicit project enumeration and an actor-scoped task boundary, while Alfa already
+runs inside the rendered shell, has the Files window and owns an in-app run boundary.
+`skills_list` and `skills_read` now exist on BOTH surfaces — capability discovery is
+global by design, and withholding it from the connector was scoping nobody chose. The
 two catalogs stay separate on purpose (different transport and guard) but may not
 drift by accident.
 
@@ -87,17 +90,76 @@ restarting a daemon does not require handing one over either.
 `tools/list` is filtered by the token's scope, and `tools/call` re-checks it — a
 client that calls a tool it was never shown still gets refused.
 
+**The scope ladder is the ONLY thing that narrows the catalog.** An `exec` token sees
+and can call every public tool; `read` and `write` are strict prefixes of it. There is
+no per-project, per-agent, per-workflow or per-client tool filter, and there must not
+be one — which tools EXIST is not a security control here, the ladder plus `lib/host`'s
+path jail and command filter are. Every operational tool carries an OPTIONAL
+`workflow_id`: it correlates steps, it never gates a capability. `lib/mcp/global-tools.test.ts`
+pins all of this, including that a token's visible list matches its callable set exactly.
+
 ## Toolset version, hash and action refresh
 
 The catalog has a stable server version plus a schema-derived toolset signature. It is returned by public `GET /mcp`, MCP `initialize`, scoped `tools/list`, and the authenticated Settings → MCP endpoint. The signature changes when a name, description, input schema, scope, annotation or per-operation limit changes—not only when the tool count changes.
 
 Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
 
-Current catalog: **24 tools**. `image_generation_status` and `image_generate` are the new public names in this release.
+Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.0` / toolset
+`2026.08.20.3`. `projects_list`, `skills_list` and `skills_read` are the new public
+names in this release; `image_generation_status` and `image_generate` were removed
+(see the migration note below).
 
 ## Safe text inspection and overwrite
 
 `fs_read` returns `content`, UTF-8 byte count and SHA-256. For an existing file, pass that digest as `fs_write.expected_sha256`; the write is refused if another process changed the file since inspection. Omitting it preserves create/legacy overwrite behaviour. Workflow memory stores the path, never the content or digest.
+
+## Global project and skill discovery
+
+MSO drives **all** of the owner's projects, not the one it happens to live in.
+
+`projects_list` enumerates project directories across every configured project
+container — each `OS_FS_READ_ROOTS` entry plus its `projects/` subdirectory, deduped by
+realpath, in configured order. It returns name, absolute path, container root, package
+name/version and Git branch/head read straight off `.git` with no subprocess. Hidden
+directories, symlinks and credential paths are excluded, results are paginated
+(default 50, max 200), and the scan is bounded (12 containers, 400 entries per
+container, 400 projects). The filesystem root `/` is never treated as a container.
+
+`resolveProjectHint` — behind `workflow_start`'s `project` and `fs_search` — searches
+those same containers, deterministically and exact-before-fuzzy: an absolute/`~` path
+wins outright, then an exact directory name or known alias probed container by
+container, then one bounded scan scoring exact package names above substrings. An exact
+name in the second container beats a substring hit in the first.
+
+`skills_list` merges the global roots with the **per-project** roots of every project:
+`.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills`, `.codex/skills`.
+Each row carries the exact catalog id, trust, source and its project.
+
+**Ids, so nothing shadows anything.** A global skill is addressed by bare name; a
+project skill is `<project>/<name>`. Two projects may both ship `deploy`, and neither
+can displace an operator (`~/.mso/skills`) or official (MSO repo) skill of the same
+name. Within one project, `.mso/skills` outranks the agent-tool roots. Precedence is
+fully deterministic.
+
+**Project trust is earned, never assumed from the path.** A project skill becomes
+`local` only when all three hold: the skill directory realpaths back *inside* its
+project (a `.claude/skills -> /tmp/attacker` symlink is discovered, not followed); the
+directory and its `SKILL.md` are owned by the uid MSO runs as; and `SKILL.md` is a
+regular file, not a symlink. Otherwise it is cataloged `untrusted`. The generic HOME
+agent roots (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, OpenClaw) keep
+their existing untrusted behaviour — this promotion is for project roots only.
+
+`skills_read` takes the **exact catalog id** and nothing else — no fuzzy resolution, so
+`widget-deploy` will not silently return `widget/widget-deploy`. It returns instructions
+for `official`, hash-`verified`, operator-`local` and ownership-verified project skills.
+An `untrusted` skill returns metadata plus an explicit refusal: review the file, then
+move it into `~/.mso/skills` to promote it. The reader still opens only a realpath'd file
+named exactly `SKILL.md`. Content is capped at 24,000 characters; the project scan is
+bounded to 60 projects, 100 skills per root and 300 project skills per call.
+
+`workflow_start` and `skills_search` search this unified catalog, and every skill hit
+carries its `project` when it has one — so a workflow named against project A still
+finds the relevant skill in project B rather than relearning it.
 
 ## Semantic skill search and learned workflows
 
@@ -188,26 +250,24 @@ is limited to five downloads, sends `Cache-Control: no-store`, and is deleted af
 expiry/exhaustion. This provides visual progress without turning a read token into a
 general browser or public-file-hosting primitive.
 
-## Provider-backed image generation
+## Removed: provider-backed image generation
 
-`image_generation_status` is read-only and reports whether an OpenAI API key is
-available without returning it. `image_generate` is exec-scope because it spends
-provider credits, sends the prompt off-box, and writes binary bytes. Each call is
-exactly one official OpenAI Images API request and produces:
+`image_generation_status` and `image_generate` were removed on 2026-08-20, along with
+`lib/image-generation/`, the `OS_IMAGE_MODEL` / `OS_IMAGE_OUTPUT_ROOT` knobs and the
+Codex provider-side `image_generation` built-in. **A GPT client already carries its own
+image generation**, and offering a second tool for the same job made the model choose
+between them — usually wrong, and the MSO one billed a separate API key. Nothing
+replaces it: ask the client to generate the image with its own capability.
 
-- a lossless PNG master under `OS_IMAGE_OUTPUT_ROOT` (default `~/generated-images`);
-- a prompt SHA-256 and byte SHA-256;
-- actual provider model and `x-request-id` as the generation run identifier;
-- width, height and alpha status parsed from the returned PNG;
-- a 0600 provenance JSON sidecar that does not contain the raw prompt;
-- a temporary authenticated preview when the image is at most 10 MiB.
+Importing the result is unchanged and deliberately preserved: **`fs_upload_file`** takes
+one ChatGPT conversation/generated file through `openai/fileParams`, downloads the
+temporary OpenAI URL immediately (HTTPS only, `*.oaiusercontent.com` or an OpenAI
+regional `oaisdmnt*.blob.core.windows.net` storage account, redirects re-validated),
+checks type and size, writes inside `OS_FS_WRITE_ROOTS`, and returns bytes plus SHA-256.
 
-Configure provider OpenAI in Settings → AI or set `OPENAI_API_KEY`. A ChatGPT
-subscription/OAuth login is separate from API billing and is not silently reused.
-Transparent requests automatically use `gpt-image-1.5` unless another compatible
-model is explicitly selected; `gpt-image-2` is refused for transparent output.
-Repository candidates are never written automatically—the generated PNG remains a
-sandbox master until a project-specific validator/post-process promotes it.
+`OS_CODEX_BUILTIN_TOOLS` still exists and still takes an allowlisted list, but its
+default is now EMPTY and `image_generation` is no longer an accepted value — naming it
+is dropped, not honoured.
 
 ## What this does and does not protect
 
@@ -266,7 +326,7 @@ mso mcp activity 100
 State-changing calls also land in the append-only security trail
 `~/.mso/audit.log`, with `actor=mcp:<id>` matching Settings → MCP and
 `mso mcp list`. The audit records `fs.write`, `fs.mkdir`, `fs.move`, `fs.copy`,
-`fs.delete`, `exec.run`, `managed-app.action`, `camoufox.power`,
+`fs.delete`, `fs.upload`, `exec.run`, `managed-app.action`, `camoufox.power`,
 `workflow.start`, `workflow.cancel`, `workflow.finish`, and `mcp.denied`. It is intentionally quieter
 than the activity stream so security-relevant lines are not buried by reads.
 
@@ -322,7 +382,8 @@ also carries the **per-operation** limit its route already applies, on the SAME
 bucket key — MCP and the browser share one allowance rather than getting one each.
 `exec_run` 60/min, fs writes 120/min, fs copy/delete 60/min, `apps_power` and
 `browser_power` 12/min per app. MCP-native expensive/stateful operations are
-stricter: `screen_capture` 10/min, `image_generate` 5/min, and workflow-memory writes 30/min.
+stricter: `screen_capture` 10/min, `projects_list` and `skills_list` 30/min,
+`skills_read` 60/min, and workflow-memory writes 30/min.
 
 ## Layout
 
@@ -331,15 +392,20 @@ lib/mcp/pkce.ts           S256 verify, base64url, hashing, redirect_uri rules
 lib/mcp/scope.ts          the read/write/exec ladder + the env kill switch
 lib/mcp/store.ts          ~/.mso/mcp.json — clients, codes, tokens (hashed)
 lib/mcp/tool-kit.ts       McpTool, direct image content and run context
-lib/mcp/tools-read.ts     bounded reads + skills_search + screen_capture
-lib/mcp/tools-learning.ts one-call bootstrap + start / cancel / finish
-lib/mcp/toolset.ts        server/toolset version, schema hash and scoped manifest
-lib/mcp/tools.ts          write/exec tools and the assembled catalog
+lib/mcp/tools-read.ts      bounded reads + skills_search + screen_capture
+lib/mcp/tools-discovery.ts projects_list / skills_list / skills_read — global discovery
+lib/mcp/tools-learning.ts  one-call bootstrap + start / cancel / finish
+lib/mcp/tools-power.ts     apps_power + browser_power
+lib/mcp/toolset.ts         server/toolset version, schema hash and scoped manifest
+lib/mcp/tools.ts           fs write tier and the assembled catalog
 lib/mcp/activity.ts       workflow-correlated live activity
 lib/mcp/dispatch.ts       JSON-RPC, scope checks, metadata, activity + recipe capture
-lib/host/projects.ts      bounded project resolution, aliases and repo context
+lib/host/projects.ts       project resolution across every container, plus aliases
+lib/host/project-roots.ts  every configured project container + bounded enumeration
+lib/host/project-meta.ts   symlink-refusing package.json / .git readers
 lib/host/guarded-write.ts optimistic SHA-256 file overwrite guard
-lib/skills/catalog.ts     trusted SKILL.md roots and provenance
+lib/skills/catalog.ts      global + per-project SKILL.md roots, ids and provenance
+lib/skills/project-skills.ts per-project roots and their earned-trust checks
 lib/skills/semantic.ts    local hybrid embedding/search primitives
 lib/skills/search.ts      unified skill/tool/recipe ranking
 lib/skills/memory.ts      migrated multi-run exact-id workflow and recipe store

@@ -55,7 +55,7 @@
 #   config *             BYOK provider + model: show | set | rm
 #   prefs *              UI preferences: show | set
 #   models *             Model catalog: list | test
-#   skills *             Skill memory: list | read <name> | search <query>
+#   skills *             Skills across every project: list | read <id> | search <query>
 #   changelog            What shipped, newest first (same text Settings → About shows)
 #   mcp *                MCP tokens + live activity: list | activity [n] | revoke <id> | revoke all
 #   oauth <prov> *       Provider sign-in (device code): start | poll
@@ -247,7 +247,7 @@ U_memory="memory list|add <text>|rm <id>"
 U_config="config show|set <json>|rm <provider>"
 U_prefs="prefs show|set <json>"
 U_models="models list|test"
-U_skills="skills list|read <name>|search <query…>"
+U_skills="skills list|read <id>|search <query…>"
 U_mcp="mcp list|activity [n]|revoke <id>|revoke all"
 U_oauth="oauth <provider> start|poll   e.g. mso oauth openai start"
 U_audit="audit [n] [prefix]   e.g. mso audit 20 exec."

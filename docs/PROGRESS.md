@@ -8,7 +8,76 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
-## 2026-08-20 — provider-backed MCP image generation (DONE)
+## 2026-08-20 — global project/skill discovery, and image generation removed (DONE)
+
+**Capabilities are global now, and the docs say so.** Two invisible scopings shipped
+together and were both wrong for the same reason: MSO answered "what projects exist"
+and "what skills exist" from `~/projects` and the global skill roots alone. An owner
+who configured three read roots got one of them, and an agent working in project X
+could not see X's own `SKILL.md`. Nobody decided either; they were defaults nobody
+revisited. A capability that silently covers a subset of what the owner configured is
+worse than one that refuses.
+
+Three new `read` MCP tools. `projects_list` enumerates project directories across
+every configured container — each `OS_FS_READ_ROOTS` entry plus its `projects/` child,
+deduped by realpath, in configured order — with name, path, container root, package
+name/version and Git branch/head read straight off `.git` with no subprocess. Hidden
+dirs, symlinks and credential paths are excluded; the scan is bounded (12 containers,
+400 entries each, 400 projects) and paginated (default 50, max 200). `/` is never a
+container. `resolveProjectHint` searches the same containers, exact-before-fuzzy: an
+absolute/`~` path wins outright, then an exact name or alias probed container by
+container, then one bounded scan scoring exact package names above substrings — so an
+exact name in the second container beats a substring hit in the first.
+
+`skills_list` and `skills_read` merge the global roots with the **per-project** roots
+of every project: `.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills`,
+`.codex/skills`. Skills are now addressed by a catalog **id**: a global skill by bare
+name, a project skill as `<project>/<name>`. Two projects may both ship `deploy` and
+neither can displace an operator or official skill — the collision is impossible rather
+than resolved. `skills_read` takes the exact id and does not fuzzy-resolve into a
+project namespace. Project trust is EARNED, not inherited from the path: `local` only
+after realpath containment inside the project, ownership by MSO's uid, and a regular
+non-symlink `SKILL.md`. Everything else stays `untrusted` — metadata visible,
+instructions withheld until the operator reviews and promotes it into `~/.mso/skills`.
+The generic HOME agent roots keep their untrusted behaviour unchanged. `workflow_start`
+and `skills_search` search the unified catalog and each skill hit carries its project.
+Bounds: 60 projects, 100 skills per root, 300 project skills, 24,000 characters per read.
+
+`skills_list`/`skills_read` therefore exist on BOTH surfaces now, and their old
+`ALFA_ONLY` parity exemption ("stays off a bearer-reached surface") is gone. That was
+the right call for a fuzzy name-resolving reader; it is not for one that takes an exact
+catalog id, returns instructions only for trusted tiers, and still opens nothing but a
+realpath'd file named `SKILL.md`.
+
+**The global-tools invariant is now pinned, not just described.** Alfa already sent
+every tool on every turn; MCP already showed an `exec` token everything. Neither had a
+test that would fail if someone added a per-project filter. `lib/mcp/global-tools.test.ts`
+and a new block in `registry.test.ts` hold both: the exec catalog equals `TOOLS` exactly,
+`read`/`write` are strict prefixes by tier and nothing else, `workflow_id` is optional on
+every operational tool, `HOST_AI_TOOLS` is the same whole-catalog object every turn, and
+`registry.ts` exports nothing that could narrow it. The `read`/`write` opt-down and the
+`exec` consent default are unchanged and covered — the ladder is the security boundary;
+which tools exist is not.
+
+**Image generation is removed end-to-end.** `image_generation_status`, `image_generate`,
+`lib/image-generation/`, `OS_IMAGE_MODEL`, `OS_IMAGE_OUTPUT_ROOT`, the `image.generate`
+audit action and workflow-memory entries, and the Codex provider-side `image_generation`
+built-in are all gone. A GPT client already carries its own image generation; offering a
+second tool for the same job made the model choose between them, usually wrong, and the
+MSO one billed a separate API key. `OS_CODEX_BUILTIN_TOOLS` now defaults to EMPTY and no
+longer accepts `image_generation` — naming it explicitly is dropped, not honoured, and a
+test pins that. **`fs_upload_file` is deliberately preserved**, regional ChatGPT file
+import and `openai/fileParams` binding intact: generating elsewhere and importing here is
+the whole remaining flow. No tool description tells a client to prefer a native or
+provider image tool, and a test greps for that wording.
+
+`lib/mcp/tools.ts` shed `apps_power`/`browser_power` into `tools-power.ts` and the new
+tools live in `tools-discovery.ts`, so every file is back under the 200-line ceiling.
+`lib/host/project-meta.ts` and `project-roots.ts` split the symlink-refusing readers from
+the container enumeration. The MCP server/toolset advance to `1.5.0` / `2026.08.20.3`,
+with **26 tools** (14 read, 10 write, 2 exec).
+
+## 2026-08-20 — provider-backed MCP image generation (SUPERSEDED — removed same day)
 
 MCP now exposes `image_generation_status` (read) and `image_generate` (exec).
 Generation uses the official OpenAI Images API rather than the prior procedural
@@ -21,7 +90,7 @@ workflow memory. The output root is write-jailed (`OS_IMAGE_OUTPUT_ROOT`, defaul
 authenticated/expiring, and image calls are limited to 5/min. The MCP server/toolset
 advance to `1.4.0` / `2026.08.20.1`, with **24 tools**.
 
-## 2026-08-20 — image generation and full-access defaults (DONE)
+## 2026-08-20 — image generation and full-access defaults (image half SUPERSEDED)
 
 Fresh MSO installs now expose Codex provider-side `image_generation` when
 `OS_CODEX_BUILTIN_TOOLS` is absent, matching the owner's expected assistant capability.

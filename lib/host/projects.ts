@@ -1,131 +1,72 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { runCommand } from "./exec";
 import { normalizeProjectKey, projectAliasesFor, projectAliasTarget } from "./project-aliases";
+import { boundedGitMeta, fullGitMeta, packageMeta } from "./project-meta";
 import { resolveReadable } from "./paths";
+import { listProjectDirs, projectRoots } from "./project-roots";
 
 export type ProjectResolution = {
   hint: string;
   name: string;
   path: string;
+  root?: string;
   packageName?: string;
   aliases: string[];
   matchedBy: "path" | "name" | "alias" | "package" | "fuzzy";
 };
 
-type PackageMeta = { name?: string; version?: string; scripts: string[] };
-type GitMeta = {
-  available: boolean;
-  branch?: string;
-  clean?: boolean;
-  changes?: string[];
-  head?: { sha: string; subject?: string; date?: string };
-  statusChecked: boolean;
-  error?: string;
-};
-
-async function readRegularText(file: string): Promise<string> {
-  const stat = await fs.lstat(file).catch(() => null);
-  if (!stat?.isFile() || stat.isSymbolicLink()) return "";
-  return fs.readFile(file, "utf8").catch(() => "");
+async function resolvedDir(p: string): Promise<string | null> {
+  const resolved = await resolveReadable(p).catch(() => null);
+  if (!resolved) return null;
+  return (await fs.stat(resolved).catch(() => null))?.isDirectory() ? resolved : null;
 }
 
-async function packageMeta(dir: string): Promise<PackageMeta> {
-  try {
-    const raw = await readRegularText(path.join(dir, "package.json"));
-    if (!raw) return { scripts: [] };
-    const parsed = JSON.parse(raw) as {
-      name?: unknown; version?: unknown; scripts?: unknown;
-    };
-    return {
-      name: typeof parsed.name === "string" ? parsed.name : undefined,
-      version: typeof parsed.version === "string" ? parsed.version : undefined,
-      scripts: parsed.scripts && typeof parsed.scripts === "object" ? Object.keys(parsed.scripts) : [],
-    };
-  } catch {
-    return { scripts: [] };
-  }
+async function resolutionFor(dir: string, hint: string, matchedBy: ProjectResolution["matchedBy"], root?: string): Promise<ProjectResolution> {
+  const name = path.basename(dir);
+  const meta = await packageMeta(dir);
+  return { hint, name, path: dir, ...(root ? { root } : {}), packageName: meta.name, aliases: projectAliasesFor(name), matchedBy };
 }
 
-async function boundedGitMeta(dir: string): Promise<GitMeta> {
-  const gitDir = path.join(dir, ".git");
-  const gitStat = await fs.lstat(gitDir).catch(() => null);
-  if (!gitStat?.isDirectory() || gitStat.isSymbolicLink()) return { available: false, statusChecked: false };
-  const head = await readRegularText(path.join(gitDir, "HEAD"));
-  if (!head) return { available: false, statusChecked: false };
-  const candidateRef = head.trim().startsWith("ref: ") ? head.trim().slice(5) : undefined;
-  const ref = candidateRef && /^refs\/(?:heads|remotes)\/[a-z0-9._\/-]+$/i.test(candidateRef) && !candidateRef.includes("..")
-    ? candidateRef
-    : undefined;
-  const branch = ref?.replace(/^refs\/heads\//, "");
-  let sha = ref ? (await readRegularText(path.join(gitDir, ref))).trim() : head.trim();
-  if (!sha && ref) {
-    const packed = await readRegularText(path.join(gitDir, "packed-refs"));
-    sha = packed.split("\n").find((line) => line.endsWith(` ${ref}`))?.split(" ")[0] ?? "";
-  }
-  return { available: true, branch, statusChecked: false, ...(sha ? { head: { sha } } : {}) };
-}
-
-async function fullGitMeta(dir: string): Promise<GitMeta> {
-  const marker = "__MSO_HEAD__";
-  const result = await runCommand(`git status --short --branch && printf '\n${marker}\n' && git log -1 --format='%H%n%s%n%aI'`, dir);
-  if (result.code !== 0)
-    return { available: false, statusChecked: true, error: (result.stderr || result.stdout).trim().slice(0, 220) };
-  const [statusPart, headPart = ""] = result.stdout.split(`\n${marker}\n`);
-  const statusLines = statusPart.split("\n").filter(Boolean);
-  const changes = statusLines.slice(1, 81);
-  const [sha = "", subject = "", date = ""] = headPart.trim().split("\n");
-  return {
-    available: true,
-    branch: statusLines[0]?.replace(/^##\s*/, ""),
-    clean: changes.length === 0,
-    changes,
-    statusChecked: true,
-    head: { sha, subject, date },
-  };
-}
-
-export async function resolveProjectHint(hint: string, rootHint = "~/projects"): Promise<ProjectResolution | null> {
+/**
+ * Resolve a project hint across EVERY configured container, not just `~/projects`.
+ *
+ * Deterministic order, exact before fuzzy: an absolute/`~` path wins outright; then
+ * an exact directory name or known alias, probed container by container in
+ * configured order; then one bounded scan that scores exact package names above
+ * substring matches. Scanning first would let a fuzzy hit in the first container
+ * beat an exact directory in the second, which is the kind of answer nobody can
+ * reproduce.
+ */
+export async function resolveProjectHint(hint: string, rootHint?: string): Promise<ProjectResolution | null> {
   const raw = hint.trim();
   if (!raw) return null;
   const pathHint = raw.startsWith("projects/") ? `~/${raw}` : raw;
   if (/^(?:~\/|\/|\.\.?\/)/.test(pathHint)) {
-    const resolved = await resolveReadable(pathHint).catch(() => null);
-    if (resolved && (await fs.stat(resolved).catch(() => null))?.isDirectory()) {
-      const meta = await packageMeta(resolved);
-      return { hint: raw, name: path.basename(resolved), path: resolved, packageName: meta.name, aliases: projectAliasesFor(path.basename(resolved)), matchedBy: "path" };
-    }
+    const resolved = await resolvedDir(pathHint);
+    if (resolved) return resolutionFor(resolved, raw, "path");
   }
 
-  const root = await resolveReadable(rootHint);
+  const roots = rootHint ? [await resolveReadable(rootHint).catch(() => null)].filter((r): r is string => !!r) : await projectRoots();
   const query = normalizeProjectKey(raw);
   const aliasTarget = projectAliasTarget(raw);
 
   // Known aliases and exact directory names are the common path. Resolve them in
-  // one bounded stat/read instead of scanning and parsing every project package.
+  // one bounded stat per container instead of scanning and parsing every package.
   const directName = aliasTarget ?? (/^[a-z0-9._-]+$/i.test(raw) ? raw : undefined);
   if (directName) {
-    const candidate = await resolveReadable(path.join(root, directName)).catch(() => null);
-    if (candidate && (await fs.stat(candidate).catch(() => null))?.isDirectory()) {
-      const meta = await packageMeta(candidate);
-      const name = path.basename(candidate);
-      return {
-        hint: raw,
-        name,
-        path: candidate,
-        packageName: meta.name,
-        aliases: projectAliasesFor(name),
-        matchedBy: aliasTarget ? "alias" : "name",
-      };
+    for (const root of roots) {
+      const candidate = await resolvedDir(path.join(root, directName));
+      if (candidate) return resolutionFor(candidate, raw, aliasTarget ? "alias" : "name", root);
     }
   }
 
-  const entries = (await fs.readdir(root, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".")).slice(0, 300);
-  const candidates = await Promise.all(entries.map(async (entry) => {
-    const dir = path.join(root, entry.name);
+  const { dirs } = rootHint
+    ? { dirs: (await listProjectDirs()).dirs.filter(({ root }) => roots.includes(root)) }
+    : await listProjectDirs();
+  const candidates = await Promise.all(dirs.map(async ({ root, dir }) => {
+    const name = path.basename(dir);
     const meta = await packageMeta(dir);
-    const nameKey = normalizeProjectKey(entry.name);
+    const nameKey = normalizeProjectKey(name);
     const packageKey = normalizeProjectKey(meta.name ?? "");
     let score = 0;
     let matchedBy: ProjectResolution["matchedBy"] = "fuzzy";
@@ -134,13 +75,14 @@ export async function resolveProjectHint(hint: string, rootHint = "~/projects"):
     else if (packageKey && packageKey === query) { score = 94; matchedBy = "package"; }
     else if (nameKey.includes(query) || query.includes(nameKey)) score = 65;
     else if (packageKey && (packageKey.includes(query) || query.includes(packageKey))) score = 60;
-    return { entry, dir, meta, score, matchedBy };
+    return { name, dir, root, meta, score, matchedBy };
   }));
-  const best = candidates.sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name))[0];
+  // Ties break on name then path, so the same box always answers the same way.
+  const best = candidates.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name) || a.dir.localeCompare(b.dir))[0];
   if (!best || best.score < 60) return null;
   return {
-    hint: raw, name: best.entry.name, path: best.dir, packageName: best.meta.name,
-    aliases: projectAliasesFor(best.entry.name), matchedBy: best.matchedBy,
+    hint: raw, name: best.name, path: best.dir, root: best.root, packageName: best.meta.name,
+    aliases: projectAliasesFor(best.name), matchedBy: best.matchedBy,
   };
 }
 

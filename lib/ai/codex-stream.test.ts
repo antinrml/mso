@@ -197,12 +197,12 @@ describe("reading calls back", () => {
 });
 
 describe("provider-executed built-ins", () => {
-  it("enables image_generation when OS_CODEX_BUILTIN_TOOLS is absent", async () => {
+  it("declares NO provider built-in when OS_CODEX_BUILTIN_TOOLS is absent", async () => {
     vi.unstubAllEnvs();
     delete process.env.OS_CODEX_BUILTIN_TOOLS;
     const sent = capture(sse({ type: "response.completed", response: { output: [] } }));
     await run({ tools: [TOOL] });
-    expect((sent().tools ?? []).map((t) => t.type)).toEqual(["function", "image_generation"]);
+    expect((sent().tools ?? []).map((t) => t.type)).toEqual(["function"]);
   });
 
   it("accepts an explicit empty value to disable every provider built-in", async () => {
@@ -212,10 +212,20 @@ describe("provider-executed built-ins", () => {
   });
 
   it("uses an explicit built-in list by type alone and ignores unknown entries", async () => {
-    vi.stubEnv("OS_CODEX_BUILTIN_TOOLS", "image_generation, not_a_tool");
+    vi.stubEnv("OS_CODEX_BUILTIN_TOOLS", "web_search, not_a_tool");
     const sent = capture(sse({ type: "response.completed", response: { output: [] } }));
     await run({ tools: [TOOL] });
     const tools = sent().tools ?? [];
-    expect(tools.map((t) => t.type)).toEqual(["function", "image_generation"]);
+    expect(tools.map((t) => t.type)).toEqual(["function", "web_search"]);
+  });
+
+  // MSO removed image generation everywhere. A GPT client already has its own, and
+  // a second same-purpose tool is a choice the model gets wrong. The allowlist must
+  // not quietly accept it back through the env knob.
+  it("refuses image_generation even when the operator names it explicitly", async () => {
+    vi.stubEnv("OS_CODEX_BUILTIN_TOOLS", "image_generation");
+    const sent = capture(sse({ type: "response.completed", response: { output: [] } }));
+    await run({ tools: [TOOL] });
+    expect((sent().tools ?? []).map((t) => t.type)).toEqual(["function"]);
   });
 });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { IS_DEMO } from "@/lib/demo";
-import { catalogSkills, readSkillFile, type SkillInfo } from "@/lib/skills/catalog";
+import { catalogSkills, findSkill, readSkillFile, type SkillInfo } from "@/lib/skills/catalog";
 import { listLearnedRecipes } from "@/lib/skills/memory";
 import { searchSkillMemory } from "@/lib/skills/search";
 
@@ -9,8 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const demoSkills: SkillInfo[] = [
-  { name: "camoufox-browse", path: "demo://camoufox-browse", description: "Browser automation playbook for Camoufox.", source: "bundled", trust: "verified" },
-  { name: "vps-alfa", path: "demo://vps-alfa", description: "Patrol and assist VPS terminal panes.", source: "mso", trust: "official" },
+  { id: "camoufox-browse", name: "camoufox-browse", path: "demo://camoufox-browse", description: "Browser automation playbook for Camoufox.", source: "bundled", trust: "verified" },
+  { id: "vps-alfa", name: "vps-alfa", path: "demo://vps-alfa", description: "Patrol and assist VPS terminal panes.", source: "mso", trust: "official" },
 ];
 
 export async function GET(req: NextRequest) {
@@ -24,10 +24,10 @@ export async function GET(req: NextRequest) {
         query,
         hits: demoSkills
           .filter((s) => `${s.name} ${s.description}`.toLowerCase().includes(q))
-          .map((s) => ({ kind: "skill", id: s.name, name: s.name, score: 1, description: s.description, source: s.source, trust: s.trust })),
+          .map((s) => ({ kind: "skill", id: s.id, name: s.name, score: 1, description: s.description, source: s.source, trust: s.trust })),
       });
     }
-    const skill = name ? demoSkills.find((s) => s.name === name) : null;
+    const skill = name ? findSkill(demoSkills, name) : null;
     return skill
       ? NextResponse.json({ skill, content: `# ${skill.name}\n\n${skill.description}\n\nDemo mode only lists this skill; it does not run host automation.` })
       : NextResponse.json({ skills: demoSkills, recipes: [] });
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skills, recipes });
   }
 
-  const skill = skills.find((s) => s.name === name);
+  const skill = findSkill(skills, name);
   if (!skill) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const content = await readSkillFile(skill.path);
   if (content === null) return NextResponse.json({ error: "not_found" }, { status: 404 });

@@ -206,8 +206,10 @@ const SAFE_TOOL_ARGS: Record<string, readonly string[]> = {
   fs_search: ["query", "root"],
   fs_usage: ["path"],
   apps_logs: ["id"],
+  projects_list: ["query", "limit", "offset"],
+  skills_list: ["project", "trust", "limit", "offset"],
+  skills_read: ["name"],
   screen_capture: ["shell", "width", "height"],
-  image_generate: ["project", "filename_stem", "model", "size", "quality", "background"],
   fs_write: ["path"], // content is intentionally impossible to persist
   fs_mkdir: ["path"],
   fs_move: ["from", "to"],
@@ -246,7 +248,7 @@ function enrichBestSteps(best: WorkflowStep[], current: WorkflowStep[]): Workflo
 const MAX_RECIPE_STEPS = 24;
 const IMPORTANT_RECIPE_TOOLS = new Set([
   "fs_write", "fs_mkdir", "fs_move", "fs_copy", "fs_delete",
-  "apps_power", "browser_power", "exec_run", "screen_capture", "image_generate",
+  "apps_power", "browser_power", "exec_run", "screen_capture",
 ]);
 
 /** Keep the recipe replayable without teaching the next run to repeat every
