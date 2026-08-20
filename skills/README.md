@@ -57,8 +57,11 @@ checks the cap against `fstat` before any bytes move.
 
 Every discovery response carries a **scan report**. `truncated:false` means "this is all
 of it"; hitting a cap sets `truncated:true`, names the reason, and includes
-`continuation` — pending roots, per-root cursors and an opaque `cursor` to pass back and
-resume. Do not conclude a skill is absent from a truncated scan.
+`continuation` — pending roots, the exact interrupted position and an opaque `cursor` to
+pass back. Resumption is lossless: each dirent is validated as it streams and the position
+advances only after that entry is fully handled, so a cap or deadline re-reads the entry
+it stopped on instead of skipping it. A partially consumed project is resumed, never
+marked done. Do not conclude a skill is absent from a truncated scan.
 
 ## Contract
 

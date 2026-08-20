@@ -20,28 +20,22 @@
 // Everything the scan omits is REPORTED. `truncated:false` means "this is all of it";
 // hitting a root, entry, project or time cap sets `truncated:true` with a named
 // reason. A silent slice that claims completeness is worse than a refusal.
-import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { isCredentialPath, isUnderRoot, readRootList } from "./paths";
-import { boundedGitMeta, packageMeta } from "./project-meta";
+import { isCredentialPath, isUnderRoot } from "./paths";
+import { PROJECT_LIMITS, shortId, type AuthorizedRoot } from "./project-identity";
+import { allConfiguredRoots, authorizedRoots } from "./project-authorized-roots";
 
-export const PROJECT_LIMITS = {
-  /** Authorized OS_FS_READ_ROOTS entries honoured per call. */
-  maxRoots: 12,
-  /** Directory entries READ from one container before the walk stops. */
-  maxEntriesPerRoot: 400,
-  /** Projects enumerated in total, across all containers. */
-  maxProjects: 400,
-  /** Wall-clock ceiling for one whole enumeration. */
-  maxScanMs: 4000,
-  defaultPageSize: 50,
-  maxPageSize: 200,
-} as const;
+export { allConfiguredRoots, authorizedRoots };
+export { PROJECT_LIMITS, shortId, containerKey } from "./project-identity";
+export type { AuthorizedRoot } from "./project-identity";
 
-export type AuthorizedRoot = { id: string; configured: string; path: string };
+
+
+
 
 export type { ScanCursor, ScanReport } from "./project-scan-types";
+export { configuredRootPaths, overflowRoots } from "./project-authorized-roots";
 
 export type ProjectContainer = {
   /** Short sha256 of the canonical container path. The DERIVED `projects/` child gets
@@ -52,6 +46,9 @@ export type ProjectContainer = {
   authorizedRootId: string;
   authorizedRoot: string;
   derived: boolean;
+  /** (rootIndex, containerIndex) is this container's exact address for a cursor. */
+  rootIndex: number;
+  containerIndex: number;
 };
 
 export type ProjectRow = {
@@ -68,22 +65,7 @@ export type ProjectRow = {
   git?: { branch?: string; head?: string };
 };
 
-/**
- * 128 bits of sha256 over the canonical container path.
- *
- * This was 8 hex characters — 32 bits — and a review found a REAL collision in the
- * fixture space it was tested in: `/tmp/mso-root-50323` and `/tmp/mso-root-125549`
- * both hashed to `51e156ef`. Two colliding roots holding same-named projects would
- * have merged back into one row, re-creating the exact bug root-qualified ids exist to
- * fix. 32 hex characters make that computationally unreachable — and, belt and braces,
- * nothing DEDUPES on this value: the internal key is the full canonical path (see
- * `containerKey`), so even a collision cannot merge two containers.
- */
-export const shortId = (real: string) => createHash("sha256").update(real).digest("hex").slice(0, 32);
 
-/** The internal identity. Always the full canonical path — never the hash — so
- *  dedupe/precedence can never be decided by a truncated digest. */
-export const containerKey = (real: string) => real;
 
 const currentUid = (): number | undefined => (typeof process.getuid === "function" ? process.getuid() : undefined);
 
@@ -101,48 +83,6 @@ export async function ownedByUs(target: string): Promise<boolean> {
  * Following a symlinked CONFIGURED root is intended — its realpath simply becomes the
  * authorized real root, and everything else is measured against that.
  */
-export async function authorizedRoots(): Promise<AuthorizedRoot[]> {
-  const out: AuthorizedRoot[] = [];
-  const seen = new Set<string>();
-  for (const configured of readRootList()) {
-    if (out.length >= PROJECT_LIMITS.maxRoots) break;
-    const real = await fs.realpath(configured).catch(() => null);
-    if (!real || real === "/" || seen.has(real)) continue;
-    if (!(await fs.stat(real).catch(() => null))?.isDirectory()) continue;
-    if (isCredentialPath(real)) continue;
-    seen.add(real);
-    out.push({ id: shortId(real), configured, path: real });
-  }
-  return out;
-}
-
-/**
- * EVERY configured root, canonicalized, with NO cap.
- *
- * `authorizedRoots()` caps at `maxRoots` because a SCAN has to be bounded. Authorization
- * is a different question: a root the owner configured is inside the jail whether or not
- * this call had budget to walk it. Using the capped list as the jail predicate is what
- * made an explicitly named `rootHint` unresolvable once 12 other roots were configured.
- */
-export async function configuredRootPaths(): Promise<string[]> {
-  const out: string[] = [];
-  for (const configured of readRootList()) {
-    const real = await fs.realpath(configured).catch(() => null);
-    if (!real || real === "/" || out.includes(real)) continue;
-    if (!(await fs.stat(real).catch(() => null))?.isDirectory()) continue;
-    if (isCredentialPath(real)) continue;
-    out.push(real);
-  }
-  return out;
-}
-
-/** Roots configured but NOT honoured, so the caller can say so rather than imply the
- *  configuration was fully covered. */
-export async function overflowRoots(): Promise<Array<{ path: string; reason: string }>> {
-  const honoured = new Set((await authorizedRoots()).map((r) => r.configured));
-  return readRootList().filter((c) => !honoured.has(c)).map((path) => ({ path, reason: "maxRoots-or-unreadable" }));
-}
-
 /** `<root>/projects`, only when it is a real, non-symlink directory contained in that
  *  same authorized root. */
 async function derivedContainerPath(root: AuthorizedRoot): Promise<string | null> {
@@ -156,17 +96,41 @@ async function derivedContainerPath(root: AuthorizedRoot): Promise<string | null
 
 /** Every container, deterministically: configured root order, each root followed by
  *  its derived `projects/` child, deduped by canonical path. */
-export async function projectContainers(): Promise<ProjectContainer[]> {
+export async function projectContainers(startIndex = 0): Promise<ProjectContainer[]> {
   const out: ProjectContainer[] = [];
   const seen = new Set<string>();
-  for (const root of await authorizedRoots()) {
+  for (const root of await authorizedRoots(startIndex)) {
+    let containerIndex = 0;
     for (const [candidate, derived] of [[root.path, false], [await derivedContainerPath(root), true]] as const) {
-      if (!candidate || seen.has(candidate)) continue;
+      if (!candidate || seen.has(candidate)) { containerIndex += 1; continue; }
       seen.add(candidate);
-      out.push({ id: shortId(candidate), path: candidate, authorizedRootId: root.id, authorizedRoot: root.path, derived });
+      out.push({
+        id: shortId(candidate), path: candidate, authorizedRootId: root.id, authorizedRoot: root.path,
+        derived, rootIndex: root.index, containerIndex,
+      });
+      containerIndex += 1;
     }
   }
   return out;
+}
+
+/** Resolve a 32-hex rootId to its container, across EVERY configured root — not just the
+ *  scan-capped window. An exact id must address the same project on every call. */
+export async function containerById(rootId: string): Promise<ProjectContainer | null> {
+  if (!/^[a-f0-9]{32}$/.test(rootId)) return null;
+  for (const root of await allConfiguredRoots()) {
+    let containerIndex = 0;
+    for (const [candidate, derived] of [[root.path, false], [await derivedContainerPath(root), true]] as const) {
+      if (candidate && shortId(candidate) === rootId) {
+        return {
+          id: rootId, path: candidate, authorizedRootId: root.id, authorizedRoot: root.path,
+          derived, rootIndex: root.index, containerIndex,
+        };
+      }
+      containerIndex += 1;
+    }
+  }
+  return null;
 }
 
 /** Back-compat view: just the container paths. */
@@ -179,6 +143,9 @@ export async function projectRoots(): Promise<string[]> {
  *  when the global container list is already at its cap. Same id derivation, same
  *  containment rules — only the discovery path differs. */
 export function containerFor(realDir: string): ProjectContainer {
-  return { id: shortId(realDir), path: realDir, authorizedRootId: shortId(realDir), authorizedRoot: realDir, derived: false };
+  return {
+    id: shortId(realDir), path: realDir, authorizedRootId: shortId(realDir), authorizedRoot: realDir,
+    derived: false, rootIndex: 0, containerIndex: 0,
+  };
 }
 

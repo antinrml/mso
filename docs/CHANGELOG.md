@@ -14,6 +14,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Fixed**
 
+- `mcp` lossless scan continuation and exact-id project resolution
 - `mcp` one project validator, dirent budgets, resumable caps
 - `mcp` contain, bound and uniquely identify project discovery
 - `mcp` make ChatGPT file imports region agnostic

@@ -1,6 +1,7 @@
 import os from "os";
 import path from "path";
 import { scanRoot, type RootSpec } from "./catalog-scan";
+import { decodeSkillCursor, encodeSkillCursor } from "./catalog-cursor";
 import {
   SKILL_FILE, SKILL_SCAN_LIMITS, skillIsExecutableByDefault,
   type ProjectRef, type SkillInfo, type SkillScanCursor, type SkillScanReport, type SkillSource, type SkillTrust,
@@ -9,6 +10,7 @@ import { discoveredProjects, projectSkillRoots } from "./project-skills";
 
 export { SKILL_FILE, SKILL_SCAN_LIMITS, skillIsExecutableByDefault };
 export { readSkillFile, skillDescription } from "./catalog-scan";
+export { decodeSkillCursor, encodeSkillCursor } from "./catalog-cursor";
 export type { ProjectRef, SkillInfo, SkillScanCursor, SkillScanReport, SkillSource, SkillTrust };
 
 type CatalogOptions = {
@@ -20,25 +22,6 @@ type CatalogOptions = {
   /** A `scan.continuation.cursor` from a truncated build, to resume it. */
   cursor?: string;
 };
-
-export function encodeSkillCursor(cursor: SkillScanCursor): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
-}
-
-export function decodeSkillCursor(raw: string | undefined): SkillScanCursor | undefined {
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as SkillScanCursor;
-    if (!parsed || typeof parsed !== "object") return undefined;
-    return {
-      roots: Array.isArray(parsed.roots) ? parsed.roots.filter((r) => typeof r?.root === "string") : [],
-      skipRoots: Array.isArray(parsed.skipRoots) ? parsed.skipRoots.filter((r) => typeof r === "string") : [],
-      projectOffset: Number.isFinite(parsed.projectOffset) ? Math.max(0, Math.floor(parsed.projectOffset)) : 0,
-    };
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * Root priority is a security boundary, not just display order.
@@ -75,9 +58,6 @@ export async function catalogSkillsDetailed(options: CatalogOptions = {}): Promi
   const homeDir = options.homeDir ?? os.homedir();
   const deadlineAt = Date.now() + SKILL_SCAN_LIMITS.maxScanMs;
   const cursor = decodeSkillCursor(options.cursor);
-  const resumeRoots = new Map((cursor?.roots ?? []).map((r) => [r.root, r.entriesConsumed]));
-  const skipRoots = new Set(cursor?.skipRoots ?? []);
-  const projectOffset = cursor?.projectOffset ?? 0;
   const reasons: string[] = [];
 
   let projects = options.projects;
@@ -86,78 +66,90 @@ export async function catalogSkillsDetailed(options: CatalogOptions = {}): Promi
     projects = discovered.projects;
     reasons.push(...discovered.truncationReasons);
   }
+  // `projectOffset` counts projects FULLY consumed by earlier pages; the partially
+  // consumed one is re-listed and resumed at its exact dirent position.
+  const projectOffset = Math.min(cursor?.projectOffset ?? 0, projects.length);
   const remaining = projects.slice(projectOffset);
   const { roots: projectRoots, truncated: projectsCapped } = await projectSkillRoots(remaining);
   if (projectsCapped) reasons.push("maxProjects");
 
+  const globalSpecs = skillRoots(appDir, homeDir);
   const specs: RootSpec[] = [
-    ...skillRoots(appDir, homeDir),
+    ...globalSpecs,
     ...projectRoots.map((root): RootSpec => ({
       path: root.path, source: "project", trust: "untrusted", priority: root.priority, project: root.project,
     })),
   ];
+  const doneRoots = new Set(cursor?.doneRoots ?? []);
 
   const chosen = new Map<string, { skill: SkillInfo; priority: number }>();
-  const cursors: SkillScanCursor["roots"] = [];
+  const completedRoots: string[] = [];
   const pendingRoots: string[] = [];
-  const doneRoots: string[] = [];
-  const consumedProjects = new Set<string>();
+  const consumedProjects: string[] = [];
   let projectSkills = 0;
+  let resume: SkillScanCursor["resume"];
   let stoppedAt = -1;
 
   for (const [index, spec] of specs.entries()) {
-    if (skipRoots.has(spec.path)) { doneRoots.push(spec.path); continue; }
-    if (Date.now() > deadlineAt) { reasons.push("deadline"); stoppedAt = index; break; }
-    if (spec.project && projectSkills >= SKILL_SCAN_LIMITS.maxProjectSkills) {
-      reasons.push("maxProjectSkills");
+    if (doneRoots.has(spec.path)) { completedRoots.push(spec.path); continue; }
+    const skipEntries = cursor?.resume?.root === spec.path ? cursor.resume.entriesConsumed : 0;
+    const budget = spec.project ? SKILL_SCAN_LIMITS.maxProjectSkills - projectSkills : Number.POSITIVE_INFINITY;
+
+    if (Date.now() > deadlineAt) {
+      reasons.push("deadline");
+      resume = { root: spec.path, entriesConsumed: skipEntries };
       stoppedAt = index;
       break;
     }
-    const { found, hitCap, entriesVisited } = await scanRoot(spec, deadlineAt, resumeRoots.get(spec.path) ?? 0);
-    if (hitCap) {
-      reasons.push(`maxEntriesPerRoot:${spec.path}`);
-      cursors.push({ root: spec.path, entriesConsumed: entriesVisited });
-    } else {
-      doneRoots.push(spec.path);
+    if (spec.project && budget <= 0) {
+      reasons.push("maxProjectSkills");
+      resume = { root: spec.path, entriesConsumed: skipEntries };
+      stoppedAt = index;
+      break;
     }
-    let overflowed = false;
+
+    const { found, stop, consumed } = await scanRoot(spec, deadlineAt, skipEntries, budget);
     for (const candidate of found) {
-      // The overall cap is checked INSIDE the loop. Checking it only before scanRoot
-      // let one root carry the total from just under 300 to nearly 500.
-      if (spec.project && projectSkills >= SKILL_SCAN_LIMITS.maxProjectSkills) {
-        reasons.push("maxProjectSkills");
-        overflowed = true;
-        break;
-      }
       if (spec.project) projectSkills += 1;
       const current = chosen.get(candidate.skill.id);
       if (!current || candidate.priority > current.priority) chosen.set(candidate.skill.id, candidate);
     }
-    if (spec.project) consumedProjects.add(spec.project.id);
-    if (overflowed) { stoppedAt = index; break; }
+
+    if (stop) {
+      reasons.push(stop === "budget" ? "maxProjectSkills" : stop === "deadline" ? "deadline" : `maxEntriesPerRoot:${spec.path}`);
+      // The exact dirent this root stopped on — never "the whole root is done".
+      resume = { root: spec.path, entriesConsumed: consumed };
+      stoppedAt = index;
+      break;
+    }
+    completedRoots.push(spec.path);
+    // A project counts as consumed only once EVERY one of its roots finished cleanly.
+    if (spec.project && specs.slice(index + 1).every((later) => later.project?.id !== spec.project!.id)) {
+      consumedProjects.push(spec.project.id);
+    }
   }
 
   if (stoppedAt >= 0) pendingRoots.push(...specs.slice(stoppedAt).map((r) => r.path));
   const truncationReasons = [...new Set(reasons)];
-  const pendingProjects = Math.max(0, projects.length - projectOffset - consumedProjects.size);
+  const pendingProjects = Math.max(0, projects.length - projectOffset - consumedProjects.length);
   return {
     skills: [...chosen.values()].map(({ skill }) => skill).sort((a, b) => a.id.localeCompare(b.id)),
     scan: {
       truncated: truncationReasons.length > 0,
       truncationReasons,
       scannedRoots: specs.length,
-      scannedProjects: consumedProjects.size,
+      scannedProjects: consumedProjects.length,
       ...(truncationReasons.length ? {
         continuation: {
           pendingRoots: [...new Set(pendingRoots)],
-          cursors,
+          cursors: resume ? [resume] : [],
           pendingProjects,
           cursorSemantics: "readdir-position" as const,
-          note: "Pass `cursor` back to resume. Positions are readdir order and are valid while the directories are unchanged.",
+          note: "Pass `cursor` back to resume at the exact dirent the scan stopped on. Positions are readdir stream order and are valid while the directories are unchanged.",
           cursor: encodeSkillCursor({
-            roots: cursors,
-            skipRoots: [...new Set(doneRoots)],
-            projectOffset: projectOffset + consumedProjects.size,
+            doneRoots: completedRoots,
+            projectOffset: projectOffset + consumedProjects.length,
+            ...(resume ? { resume } : {}),
           }),
         },
       } : {}),

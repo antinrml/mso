@@ -2,9 +2,9 @@ import { createHash } from "crypto";
 import type { Scope } from "./scope";
 import type { McpTool } from "./tool-kit";
 
-export const MCP_SERVER_VERSION = "1.5.2";
-export const MCP_TOOLSET_VERSION = "2026.08.20.5";
-export const MCP_TOOLSET_CHANGED_AT = "2026-08-20T16:00:00Z";
+export const MCP_SERVER_VERSION = "1.5.3";
+export const MCP_TOOLSET_VERSION = "2026.08.20.6";
+export const MCP_TOOLSET_CHANGED_AT = "2026-08-20T16:40:00Z";
 
 export type McpToolsetInfo = {
   serverVersion: string;

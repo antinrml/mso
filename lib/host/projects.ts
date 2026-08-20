@@ -4,7 +4,7 @@ import { normalizeProjectKey, projectAliasesFor, projectAliasTarget } from "./pr
 import { boundedGitMeta, fullGitMeta, packageMeta } from "./project-meta";
 import { homeDir, isUnderRoot } from "./paths";
 import { validateProjectChild, validateProjectDescendant, validateRootHint } from "./project-candidate";
-import { configuredRootPaths, containerFor, listProjectDirsIn, projectContainers, type ProjectContainer } from "./project-roots";
+import { configuredRootPaths, containerById, containerFor, listProjectDirsIn, projectContainers, type ProjectContainer } from "./project-roots";
 
 export type ProjectResolution = {
   hint: string;
@@ -16,7 +16,7 @@ export type ProjectResolution = {
   root: string;
   packageName?: string;
   aliases: string[];
-  matchedBy: "path" | "name" | "alias" | "package" | "fuzzy";
+  matchedBy: "id" | "path" | "name" | "alias" | "package" | "fuzzy";
 };
 
 async function resolutionFor(container: ProjectContainer, dir: string, hint: string, matchedBy: ProjectResolution["matchedBy"]): Promise<ProjectResolution> {
@@ -47,13 +47,14 @@ function expandHome(p: string): string {
 async function containersFor(rootHint?: string): Promise<ProjectContainer[]> {
   if (!rootHint) return projectContainers();
   const absolute = expandHome(rootHint);
-  const validated = await validateRootHint(absolute);
-  if (!validated.ok) return [];
   // Checked against EVERY configured root, not the scan-capped subset: naming a root
   // must never widen the jail, but the jail must not shrink just because 12 other roots
-  // are configured ahead of it.
-  const authorized = await configuredRootPaths();
-  if (!authorized.some((root) => isUnderRoot(validated.path, root))) return [];
+  // are configured ahead of it. The owning root is also what the hidden-component check
+  // is measured against.
+  const owner = (await configuredRootPaths()).find((root) => isUnderRoot(absolute, root));
+  if (!owner) return [];
+  const validated = await validateRootHint(absolute, owner);
+  if (!validated.ok) return [];
   return [containerFor(validated.path)];
 }
 
@@ -71,6 +72,19 @@ export async function resolveProjectHint(hint: string, rootHint?: string): Promi
   if (!raw) return null;
   const containers = await containersFor(rootHint);
   if (!containers.length) return null;
+
+  // EXACT `<32-hex-rootId>/<project-name>` first — the id projects_list advertises and
+  // workflow_start is told to pass. It must never fall through to fuzzy matching: with
+  // two same-named projects that returned the WRONG one, which is the entire failure the
+  // root-qualified id exists to prevent.
+  const exactId = /^([a-f0-9]{32})\/(.+)$/.exec(raw);
+  if (exactId) {
+    const container = await containerById(exactId[1]);
+    if (!container) return null;
+    if (rootHint && !containers.some((c) => c.path === container.path)) return null;
+    const candidate = await validateProjectChild(container, exactId[2]);
+    return candidate.ok ? resolutionFor(container, candidate.path, raw, "id") : null;
+  }
 
   const pathHint = raw.startsWith("projects/") ? `~/${raw}` : raw;
   if (/^(?:~\/|\/|\.\.?\/)/.test(pathHint)) {

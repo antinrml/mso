@@ -70,72 +70,77 @@ async function verifiedBundledSkill(dir: string, md: string): Promise<Pick<Skill
   };
 }
 
-/** Bounded `opendir` walk of ONE skill root — global roots included, which previously
- *  had no entry budget at all. Names are capped before anything is stat'd or read. */
-async function skillDirNames(root: string, deadlineAt: number, skipEntries = 0): Promise<{ names: string[]; hitCap: boolean; entriesVisited: number }> {
-  const names: string[] = [];
-  let hitCap = false;
-  let entriesVisited = skipEntries;
+/**
+ * ONE streaming pass over a skill root.
+ *
+ * The previous version read every dirent name, sorted them, then validated — so a
+ * deadline that expired during validation left `entriesVisited` pointing past names
+ * nothing had looked at, and continuation skipped them silently. Now each dirent is
+ * fully processed before the position advances, and every cap is checked BEFORE the
+ * entry is touched, so stopping never consumes it.
+ *
+ * `budget` is how many more skills the whole catalog may still accept, which is how the
+ * overall `maxProjectSkills` ceiling is enforced mid-root rather than only between roots.
+ */
+export async function scanRoot(
+  spec: RootSpec,
+  deadlineAt: number,
+  skipEntries = 0,
+  budget = Number.POSITIVE_INFINITY,
+): Promise<{ found: Array<{ skill: SkillInfo; priority: number }>; stop?: "maxEntriesPerRoot" | "deadline" | "budget"; consumed: number }> {
+  const found: Array<{ skill: SkillInfo; priority: number }> = [];
+  let consumed = skipEntries;
   let seen = 0;
-  const handle = await fs.opendir(root).catch(() => null);
-  if (!handle) return { names, hitCap, entriesVisited };
+  let processed = 0;
+  let stop: "maxEntriesPerRoot" | "deadline" | "budget" | undefined;
+  const handle = await fs.opendir(spec.path).catch(() => null);
+  if (!handle) return { found, consumed };
   try {
     for await (const entry of handle) {
       seen += 1;
       if (seen <= skipEntries) continue;
-      // EVERY dirent costs budget, accepted or not. Counting only directories meant a
-      // root holding a million regular files still required a million iterations before
-      // the advertised entry cap was reached.
-      if (entriesVisited - skipEntries >= SKILL_SCAN_LIMITS.maxEntriesPerRoot || Date.now() > deadlineAt) { hitCap = true; break; }
-      entriesVisited += 1;
-      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-      names.push(entry.name);
+      // EVERY dirent costs budget, accepted or not — and every stop check happens before
+      // the entry is processed, so `consumed` never runs ahead of the work.
+      if (processed >= SKILL_SCAN_LIMITS.maxEntriesPerRoot) { stop = "maxEntriesPerRoot"; break; }
+      if (Date.now() > deadlineAt) { stop = "deadline"; break; }
+      if (found.length >= budget) { stop = "budget"; break; }
+      processed += 1;
+
+      if (entry.isDirectory() || entry.isSymbolicLink()) {
+        const dir = path.join(spec.path, entry.name);
+        if ((await fs.stat(dir).catch(() => null))?.isDirectory()) {
+          const md = await readSkillFile(path.join(dir, SKILL_FILE));
+          if (md !== null) {
+            let trust = spec.trust;
+            let provenance: SkillInfo["provenance"];
+            if (spec.verifyClawHub) {
+              const verified = await verifiedBundledSkill(dir, md);
+              trust = verified.trust;
+              provenance = verified.provenance;
+            } else if (spec.project) {
+              // Path alone grants nothing: containment, ownership and SKILL.md shape decide.
+              trust = await projectSkillTrust(dir, spec.project.path);
+            }
+            found.push({
+              priority: spec.priority,
+              skill: {
+                id: spec.project ? `${spec.project.id}/${entry.name}` : entry.name,
+                name: entry.name,
+                path: path.join(dir, SKILL_FILE),
+                description: skillDescription(md),
+                source: spec.source,
+                trust,
+                ...(spec.project ? { project: spec.project } : {}),
+                ...(provenance ? { provenance } : {}),
+              },
+            });
+          }
+        }
+      }
+      consumed = seen; // ONLY now — the entry is fully handled.
     }
   } catch {
-    // A root that vanishes mid-walk yields what we already have.
+    // A root that vanishes mid-walk yields what we already fully processed.
   }
-  return { names: names.sort((a, b) => a.localeCompare(b)), hitCap, entriesVisited };
+  return { found, stop, consumed };
 }
-
-export async function scanRoot(spec: RootSpec, deadlineAt: number, skipEntries = 0): Promise<{ found: Array<{ skill: SkillInfo; priority: number }>; hitCap: boolean; entriesVisited: number }> {
-  const { names, hitCap: dirCap, entriesVisited } = await skillDirNames(spec.path, deadlineAt, skipEntries);
-  let hitCap = dirCap;
-  const found: Array<{ skill: SkillInfo; priority: number }> = [];
-  for (const name of names) {
-    // The deadline is enforced THROUGH the per-skill stat/read work too, not only in
-    // the dirent loop, which is where a slow filesystem actually spends its time.
-    if (Date.now() > deadlineAt) { hitCap = true; break; }
-    const dir = path.join(spec.path, name);
-    if (!(await fs.stat(dir).catch(() => null))?.isDirectory()) continue;
-    const file = path.join(dir, SKILL_FILE);
-    const md = await readSkillFile(file);
-    if (md === null) continue;
-
-    let trust = spec.trust;
-    let provenance: SkillInfo["provenance"];
-    if (spec.verifyClawHub) {
-      const verified = await verifiedBundledSkill(dir, md);
-      trust = verified.trust;
-      provenance = verified.provenance;
-    } else if (spec.project) {
-      // Path alone grants nothing: containment, ownership and SKILL.md shape decide.
-      trust = await projectSkillTrust(dir, spec.project.path);
-    }
-
-    found.push({
-      priority: spec.priority,
-      skill: {
-        id: spec.project ? `${spec.project.id}/${name}` : name,
-        name,
-        path: file,
-        description: skillDescription(md),
-        source: spec.source,
-        trust,
-        ...(spec.project ? { project: spec.project } : {}),
-        ...(provenance ? { provenance } : {}),
-      },
-    });
-  }
-  return { found, hitCap, entriesVisited };
-}
-

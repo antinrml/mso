@@ -8,6 +8,60 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-20 — lossless continuation and exact-id project resolution (DONE)
+
+The final fail-closed review found six remaining items. Five were continuation bugs of the
+same species — a cursor that *described* where a scan stopped instead of *being* a position
+you could resume from.
+
+**Hidden `rootHint` still resolved.** `validateRootHint` checked the final entry for
+symlink, shape, uid and credentials but never for a dot-prefixed component, so supplying
+`<authorized-root>/.hidden` as the root resolved a project underneath it by exact name
+while enumeration refused the same tree. The hidden check is now measured *relative to the
+authorized root*: the root's own path may contain dot components (a checkout under
+`~/.claude/worktrees` does), but nothing below it may.
+
+**`maxRoots` could not advance, ever.** `listProjectDirs()` rebuilt the same capped
+`projectContainers()` on every call, so a 13th configured root stayed pending no matter how
+many times a client followed the cursor. Root identity is now an index into the *uncapped*
+configured list, `authorizedRoots(startIndex)` slides that window forward, and the
+continuation carries the index of the first root the scan could not honour.
+
+**`maxProjects` and `maxProjectSkills` lost entries.** Both derived a readdir position from
+sorted accepted rows and a global result count — arithmetic that cannot be truthful, and
+which emitted `entriesConsumed=400` for a root holding 250 dirents. Both walks are now a
+single streaming pass: each dirent is validated as it arrives, every cap is checked
+*before* the entry is touched, and the recorded position advances *only after* the entry is
+fully handled. The skill cursor separately records roots that finished cleanly, projects
+whose every root finished cleanly, and the exact position inside the one interrupted root —
+a partially consumed project is re-listed and resumed rather than marked done.
+
+**Deadlines skipped unprocessed entries.** Both scanners read every name, sorted, then
+validated; a deadline expiring during validation left the position past names nothing had
+looked at. Same streaming fix — the cursor cannot outrun the work.
+
+**Exact project ids were unusable through `workflow_start`.** `resolveProjectHint` had no
+root-qualified-id branch, so `<rootId>/<name>` fell through to fuzzy matching and, with two
+same-named projects, returned the *wrong* one. An exact `<32-hex>/<name>` is now parsed and
+resolved before alias, package or fuzzy; the rootId maps to exactly one container across
+every configured root; an unknown rootId is refused rather than guessed.
+
+The colliding pair from the previous review (`/tmp/mso-root-50323` and
+`/tmp/mso-root-125549`, both `51e156ef` at 8 hex) is now an end-to-end regression:
+`projects_list`, `skills_list`, `skills_read`, `skills_search` and `workflow_start` each
+return the **second** project when handed the second id. Continuation reproducers drain
+13 roots, 2×250 projects, a 437-entry root and a 150+160-skill pair to completion and
+assert no row is dropped or repeated. Note that there are deliberately two paginations —
+`hasMore`/`nextOffset` within one scan, `scan.continuation.cursor` across scans — and the
+docs now say so, because conflating them looks exactly like data loss.
+
+The positive suites are unchanged and green: all-agents-all-tools, the exec/read/write
+ladder, image generation removed everywhere, `fs_upload_file` with regional ChatGPT import,
+and auth/OAuth untouched. `project-identity.ts`, `project-authorized-roots.ts` and
+`catalog-cursor.ts` split the work so every file stays under 200 lines and the value-cycle
+count stays at zero. The MCP server/toolset advance to `1.5.3` / `2026.08.20.6`; the catalog
+stays at **26 tools** (14 read, 10 write, 2 exec).
+
 ## 2026-08-20 — one validator, dirent-counted budgets, resumable caps (DONE)
 
 A second fail-closed re-review of the discovery hardening found six things still open.

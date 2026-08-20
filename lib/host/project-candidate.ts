@@ -73,10 +73,21 @@ export async function validateProjectDescendant(container: ProjectContainer, tar
   return { ok: true, path: parent };
 }
 
-/** The same rules applied to a caller-supplied ROOT directory, before it is trusted as
- *  a container. A symlinked or hidden `rootHint` is refused rather than canonicalized
- *  into something the caller never named. */
-export async function validateRootHint(absolute: string): Promise<CandidateResult> {
+/**
+ * The same rules applied to a caller-supplied ROOT directory, before it is trusted as a
+ * container. A symlinked or hidden `rootHint` is refused rather than canonicalized into
+ * something the caller never named.
+ *
+ * `authorizedRoot` is required for the hidden check, and the relative calculation is the
+ * whole point: the authorized root's OWN path may legitimately contain dot components
+ * (a checkout under `~/.claude/worktrees`, say), but nothing BELOW it may. Checking only
+ * the final component let `<authorized-root>/.hidden/widget` resolve by exact name while
+ * enumeration refused the same directory.
+ */
+export async function validateRootHint(absolute: string, authorizedRoot: string): Promise<CandidateResult> {
+  if (!isUnderRoot(absolute, authorizedRoot)) return { ok: false, reason: "escape" };
+  const relative = path.relative(authorizedRoot, absolute);
+  if (relative && relative.split(path.sep).some((segment) => segment.startsWith("."))) return { ok: false, reason: "hidden" };
   const stat = await fs.lstat(absolute).catch(() => null);
   if (!stat) return { ok: false, reason: "missing" };
   if (stat.isSymbolicLink()) return { ok: false, reason: "symlink" };

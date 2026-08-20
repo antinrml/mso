@@ -104,8 +104,8 @@ The catalog has a stable server version plus a schema-derived toolset signature.
 
 Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
 
-Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.2` / toolset
-`2026.08.20.5`. `projects_list`, `skills_list` and `skills_read` are the new public
+Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.3` / toolset
+`2026.08.20.6`. `projects_list`, `skills_list` and `skills_read` are the new public
 names in this release; `image_generation_status` and `image_generate` were removed
 (see the migration note below).
 
@@ -138,11 +138,19 @@ never reaches the `package.json` or `.git` readers at all. A path hint is valida
 component by component from the container down, because canonicalizing first and checking
 afterwards is exactly what let a symlinked intermediate through.
 
-A caller-supplied `rootHint` gets the same treatment: a symlinked or hidden root is
-refused rather than canonicalized into something the caller never named. It is authorized
-against *every* configured read root rather than the scan-capped subset — naming a root
-never widens the jail, but the jail must not shrink because twelve other roots were
-configured ahead of it.
+A caller-supplied `rootHint` gets the same treatment: a symlinked root is refused rather
+than canonicalized into something the caller never named, and **any** dot-prefixed
+component below the authorized root is refused — measured relative to that root, so a
+checkout legitimately living under `~/.claude/worktrees` still works while nothing may
+hide beneath it. It is authorized against *every* configured read root rather than the
+scan-capped subset: naming a root never widens the jail, but the jail must not shrink
+because twelve other roots were configured ahead of it.
+
+**An exact `<rootId>/<project-name>` is resolved first**, before alias, package or fuzzy
+matching. The `rootId` maps to exactly one container across every configured root, the
+project name is then checked by the shared validator, and an unknown `rootId` is refused
+outright. Falling through to fuzzy matching is what made two same-named projects
+unaddressable: asking for the second one's id returned the first.
 
 ### Bounds, and telling the truth about them
 
@@ -168,13 +176,28 @@ so an oversized `package.json`, `SKILL.md` or `packed-refs` costs one stat, not 
 and a count of entries rejected by the containment/ownership checks. **Do not conclude a
 project or skill is absent from a truncated scan** — the tool descriptions say so too.
 
-**Every cap is resumable.** A truncated report carries `scan.continuation` with the
-containers still pending, a per-container cursor, and an opaque `cursor` string to pass
-back as the `cursor` argument to `projects_list` / `skills_list`. Cursors are positional
-in readdir order (`cursorSemantics: "readdir-position"`) and are valid while the
-directories are unchanged — making them name-ordered would require visiting every dirent
-to find the next N names, which is the unbounded walk the entry cap exists to prevent.
-Ordinary paging *within* one scan uses `offset`/`limit` with `hasMore`/`nextOffset`.
+**Every cap is losslessly resumable.** Both walks are a single streaming pass: each dirent
+is validated as it arrives and the recorded position advances **only after** that entry is
+fully processed, so a cap or deadline that trips mid-entry re-reads it rather than skipping
+it. A truncated report carries `scan.continuation` with the pending roots and an opaque
+`cursor` to pass back.
+
+The project position is `(rootIndex, containerIndex, entriesConsumed)`, where `rootIndex`
+indexes the **uncapped** configured-root list — that offset is what lets `maxRoots` advance
+at all; without it every call rebuilt the same capped prefix and a 13th configured root was
+unreachable forever. The skill cursor records the roots that finished *cleanly*, the
+projects whose every root finished cleanly, and the exact dirent position inside the one
+root that was interrupted; a partially consumed project is re-listed and resumed, never
+marked done.
+
+Cursors are raw readdir stream positions (`cursorSemantics: "readdir-stream-position"`)
+and are valid while the directories are unchanged — name-ordered cursors would require
+visiting every dirent to find the next N names, which is the unbounded walk the entry cap
+exists to prevent. Rows inside a returned page are sorted for presentation; *which* rows
+land in a truncated page is stream order.
+
+There are deliberately **two** paginations and a client needs both: `hasMore`/`nextOffset`
+walks the rows of one scan, `scan.continuation.cursor` resumes the scan itself past a cap.
 
 ### Ids, so nothing shadows anything
 
@@ -184,7 +207,10 @@ of sha256 over the canonical container path. It was 32 bits, and a review found 
 collision — `/tmp/mso-root-50323` and `/tmp/mso-root-125549` both hashed to `51e156ef` —
 which would have merged two roots' same-named projects back into one row. Belt and
 braces, nothing dedupes on the hash: the internal key is the full canonical path, so even
-a collision cannot merge two containers. That makes ids **globally unique**: two configured roots may each hold a
+a collision cannot merge two containers. That exact pair is an end-to-end regression
+(`lib/mcp/collision-e2e.test.ts`) asserting that `projects_list`, `skills_list`,
+`skills_read`, `skills_search` and `workflow_start` each return the **second** project
+when handed the second id. That makes ids **globally unique**: two configured roots may each hold a
 `widget` shipping `deploy`, and both stay visible, readable and searchable. The derived
 `projects/` container gets its own `rootId` for the same reason, so `~/widget` and
 `~/projects/widget` cannot collide either. Within one project, `.mso/skills` outranks the

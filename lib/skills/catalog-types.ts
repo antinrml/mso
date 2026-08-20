@@ -50,11 +50,13 @@ export type SkillInfo = {
  *  walk's cursor: name-ordered resume would require visiting every dirent, which is the
  *  unbounded walk the entry cap exists to prevent. */
 export type SkillScanCursor = {
-  roots: Array<{ root: string; entriesConsumed: number }>;
-  /** Roots fully covered by the previous page; skipped on resume. */
-  skipRoots: string[];
-  /** Projects already consumed, so a maxProjects/maxProjectSkills cap can be continued. */
+  /** Roots that finished CLEANLY; skipped on resume. */
+  doneRoots: string[];
+  /** Projects every one of whose roots finished cleanly. A partially consumed project is
+   *  deliberately NOT counted here — it is re-listed and resumed at `resume`. */
   projectOffset: number;
+  /** The exact dirent position inside the one root that was interrupted. */
+  resume?: { root: string; entriesConsumed: number };
 };
 
 /** What a catalog build could NOT cover. Mirrors lib/host's ScanReport so the two

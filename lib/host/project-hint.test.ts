@@ -19,6 +19,9 @@ await fs.mkdir(path.join(named, "orchard"), { recursive: true });
 await fs.writeFile(path.join(named, "orchard", "package.json"), JSON.stringify({ name: "@farm/orchard" }));
 await fs.mkdir(path.join(named, "greenhouse-annex"), { recursive: true });
 await fs.mkdir(path.join(named, ".hidden-proj"), { recursive: true });
+// A real project sitting inside a HIDDEN directory. Supplying that hidden directory as
+// the rootHint used to resolve it by exact name, while enumeration refused the same tree.
+await fs.mkdir(path.join(named, ".hidden-root", "widget"), { recursive: true });
 await fs.mkdir(outside, { recursive: true });
 await fs.mkdir(path.join(outside, "elsewhere"), { recursive: true });
 await fs.symlink(path.join(outside, "elsewhere"), path.join(named, "linked-proj"));
@@ -87,6 +90,12 @@ describe("the exact-name probe rejects what enumeration excludes", () => {
 
   it("refuses a hidden directory even by exact name", async () => {
     await expect(resolveProjectHint(".hidden-proj", named)).resolves.toBeNull();
+  });
+
+  it("refuses a rootHint that is itself inside a HIDDEN directory", async () => {
+    // The hidden check is measured relative to the authorized root, so a legitimately
+    // dot-bearing authorized root still works while nothing below it may hide.
+    await expect(resolveProjectHint("widget", path.join(named, ".hidden-root"))).resolves.toBeNull();
   });
 
   it("refuses a name that resolves outside the root it was probed in", async () => {
