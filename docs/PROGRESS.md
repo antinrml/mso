@@ -8,6 +8,69 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-20 — discovery containment, honest bounds and unique ids (DONE)
+
+A fail-closed review of the discovery release found three things worth blocking on, and
+all three came from the same habit: treating "we checked the happy path" as containment.
+
+**A symlinked `projects/` escaped the read jail.** `<root>/projects` was accepted on a
+plain `realpath`, so with `OS_FS_READ_ROOTS=/safe` and `/safe/projects -> /outside`, the
+enumerator walked `/outside` and project-skill discovery could mark same-uid skills there
+`local` — instructions handed to a model from outside the jail entirely. Each configured
+root is now canonicalized ONCE into an authorized root; a derived container must be a
+REAL non-symlink directory whose realpath stays inside that same root. A symlinked
+`projects/` is refused even when its target is currently legal, because accepting it is a
+TOCTOU bet. Every project candidate is re-checked too: non-hidden, non-symlink, realpath
+still inside its exact container AND an authorized root, and owned by MSO's uid — checked
+BEFORE any metadata read, so a directory another user controls never reaches the readers.
+
+**The advertised limits bounded nothing.** `readdir` materialized a whole container
+before slicing, global skill roots had no entry budget at all, and `package.json`,
+`SKILL.md` and `packed-refs` were read in full and sliced afterwards — so one read-scope
+`projects_list` on an attacker-influenced tree was a memory-exhaustion primitive. Both
+walks now use `opendir` and stop at the cap, global skill roots got the budget they were
+missing, and every metadata read goes through one `O_NOFOLLOW` reader that checks the cap
+against `fstat` before any bytes move. Each walk also carries a 4-second wall clock.
+
+**Truncation lied.** `projectRoots()` returned early after 12 roots and each container was
+silently sliced to 400 entries, yet only the separate 400-project condition set
+`truncated`. A caller could be told the scan was complete while configured containers were
+never opened. Every discovery response now carries a scan report: `truncated:false` means
+"this is all of it", and any cap sets `truncated:true` with a named reason
+(`maxRoots`, `maxEntriesPerRoot:<path>`, `maxProjects`, `maxProjectSkills`, `deadline`)
+plus `scannedRoots`, `skippedRoots` and a count of rejected entries. `workflow_start`
+carries `discovery.complete` and adds a `[Discovery] partial scan` trace line, and the
+tool descriptions tell the client not to conclude something is absent from a truncated
+scan.
+
+**Ids were not unique.** A project skill was `<project>/<name>`, deduped by that string,
+so two configured roots each holding a `widget` collapsed into one row and a whole
+project's skills were unreachable. Identity is now root-qualified: a project is
+`<rootId>/<name>` and its skills `<rootId>/<project>/<name>`, where `rootId` is a short
+sha256 of the canonical container path. The derived `projects/` container gets its own id
+for the same reason, so `~/widget` and `~/projects/widget` no longer collide. `skills_read`
+takes the exact id and REFUSES an ambiguous bare name with the candidate list rather than
+returning one project's instructions under another's name; `skills_list`'s project filter
+accepts an exact projectId, a path or a bare name, reporting `ambiguousProjects` when a
+bare name spans roots.
+
+**`rootHint` was half-wired.** Exact names probed the named root, but package and fuzzy
+resolution walked the global capped list and filtered — so a readable root absent from
+that list could never match by package or fuzzily. All three strategies now run inside the
+named root, and a path hint may not leave it. The exact-name probe also refuses a symlink
+(target legal or not) and a hidden directory, matching what enumeration excludes.
+
+Regressions cover every one of these: escaping and inside-jail symlinked containers,
+symlinked project entries, 13+ configured roots, 401+ entries in one container, duplicate
+project basenames across roots, oversized `package.json`/`SKILL.md`, uid mismatch,
+`rootHint` package and fuzzy resolution, and truthful truncation. The positive suites are
+unchanged and still green: all-agents-all-tools, the exec/read/write scope ladder, image
+generation removed everywhere, and `fs_upload_file` with regional ChatGPT import.
+`lib/host/project-containers.ts`, `project-roots.ts`, `bounded-read.ts` and
+`lib/skills/catalog-scan.ts` split the work so every file is back under 200 lines. The MCP
+server/toolset advance to `1.5.1` / `2026.08.20.4`; the catalog stays at **26 tools**
+(14 read, 10 write, 2 exec).
+
 ## 2026-08-20 — global project/skill discovery, and image generation removed (DONE)
 
 **Capabilities are global now, and the docs say so.** Two invisible scopings shipped
@@ -74,8 +137,9 @@ provider image tool, and a test greps for that wording.
 `lib/mcp/tools.ts` shed `apps_power`/`browser_power` into `tools-power.ts` and the new
 tools live in `tools-discovery.ts`, so every file is back under the 200-line ceiling.
 `lib/host/project-meta.ts` and `project-roots.ts` split the symlink-refusing readers from
-the container enumeration. The MCP server/toolset advance to `1.5.0` / `2026.08.20.3`,
-with **26 tools** (14 read, 10 write, 2 exec).
+the container enumeration. The MCP server/toolset advanced to `1.5.0` / `2026.08.20.3`,
+with **26 tools** (14 read, 10 write, 2 exec). See the entry above for the containment,
+bounds and id-uniqueness fixes that followed the review of this release.
 
 ## 2026-08-20 — provider-backed MCP image generation (SUPERSEDED — removed same day)
 

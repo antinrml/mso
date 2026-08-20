@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
 import { catalogSkills } from "./catalog";
-import { PROJECT_SKILL_DIRS, projectSkillTrust } from "./project-skills";
+import { PROJECT_SKILL_DIRS, projectRefFor, projectSkillTrust } from "./project-skills";
 
 const temps: string[] = [];
 async function temp() {
@@ -22,9 +22,14 @@ async function skill(root: string, name: string, description: string) {
   return dir;
 }
 
-/** Catalog with an explicit project list, so the box's real checkouts never leak in. */
+/** Catalog with an explicit project list, so the box's real checkouts never leak in.
+ *  Refs are built the way the catalog builds them, so ids are never hand-rolled. */
 const catalog = (app: string, home: string, dirs: string[]) =>
-  catalogSkills({ appDir: app, homeDir: home, projectDirs: dirs.map((dir) => ({ dir })) });
+  catalogSkills({ appDir: app, homeDir: home, projects: dirs.map((dir) => projectRefFor(dir, path.dirname(dir))) });
+
+/** The root-qualified id the catalog assigns `<project>/<skill>`. Computed, never
+ *  typed by hand — the whole point is that it depends on the container path. */
+const idFor = (dir: string, skillName: string) => `${projectRefFor(dir, path.dirname(dir)).id}/${skillName}`;
 
 describe("per-project skill discovery", () => {
   it("catalogs skills from every supported project root, in every project", async () => {
@@ -37,7 +42,8 @@ describe("per-project skill discovery", () => {
     await skill(path.join(two, ".codex/skills"), "audit", "project two audit");
 
     const rows = await catalog(app, home, [one, two]);
-    expect(rows.map((r) => `${r.id}:${r.trust}`)).toEqual(["one/ship:local", "two/audit:local"]);
+    expect(rows.map((r) => `${r.id}:${r.trust}`).sort()).toEqual(
+      [`${idFor(one, "ship")}:local`, `${idFor(two, "audit")}:local`].sort());
     expect(rows[0]).toMatchObject({ name: "ship", source: "project", project: { name: "one", path: one } });
   });
 
@@ -51,8 +57,8 @@ describe("per-project skill discovery", () => {
     await skill(path.join(two, ".claude/skills"), "deploy", "two deploy");
 
     const rows = await catalog(app, home, [one, two]);
-    expect(rows.map((r) => r.id)).toEqual(["one/deploy", "two/deploy"]);
-    expect(rows.map((r) => r.description)).toEqual(["one deploy", "two deploy"]);
+    expect(rows.map((r) => r.id).sort()).toEqual([idFor(one, "deploy"), idFor(two, "deploy")].sort());
+    expect(rows.map((r) => r.description).sort()).toEqual(["one deploy", "two deploy"]);
   });
 
   it("never lets a project skill shadow an operator or official skill of the same name", async () => {
@@ -69,7 +75,7 @@ describe("per-project skill discovery", () => {
     expect(rows.find((r) => r.id === "mso")).toMatchObject({ source: "mso", trust: "official", description: "official" });
     expect(rows.find((r) => r.id === "ops")).toMatchObject({ source: "operator", trust: "local", description: "operator" });
     // The project copies remain visible, but only under their own namespaced ids.
-    expect(rows.map((r) => r.id).sort()).toEqual(["mso", "one/mso", "one/ops", "ops"]);
+    expect(rows.map((r) => r.id).sort()).toEqual(["mso", "ops", idFor(proj, "mso"), idFor(proj, "ops")].sort());
   });
 
   it("ranks the explicit .mso/skills root above the agent-tool roots within one project", async () => {
@@ -81,7 +87,7 @@ describe("per-project skill discovery", () => {
     await skill(path.join(proj, ".mso/skills"), "release", "explicit mso copy");
 
     const rows = await catalog(app, home, [proj]);
-    expect(rows).toEqual([expect.objectContaining({ id: "one/release", description: "explicit mso copy" })]);
+    expect(rows).toEqual([expect.objectContaining({ id: idFor(proj, "release"), description: "explicit mso copy" })]);
   });
 
   it("lists every documented project skill root", () => {
@@ -100,7 +106,7 @@ describe("project skill trust is earned, not assumed", () => {
 
     await expect(projectSkillTrust(evil, proj)).resolves.toBe("untrusted");
     const rows = await catalog(await temp(), await temp(), [proj]);
-    expect(rows).toEqual([expect.objectContaining({ id: "one/escape", trust: "untrusted", source: "project" })]);
+    expect(rows).toEqual([expect.objectContaining({ id: idFor(proj, "escape"), trust: "untrusted", source: "project" })]);
   });
 
   it("refuses a SKILL.md that is a symlink rather than a regular file", async () => {

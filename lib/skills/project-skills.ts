@@ -15,10 +15,11 @@
 // Anything else is cataloged as `untrusted`: visible for inspection, instructions
 // withheld. The generic HOME agent roots (~/.claude/skills, …) keep their existing
 // untrusted behaviour — this promotion is for project-scoped roots only.
+import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { listProjectDirs } from "@/lib/host/project-roots";
-import { SKILL_FILE, type SkillTrust } from "./catalog-types";
+import { SKILL_FILE, SKILL_SCAN_LIMITS, type ProjectRef, type SkillTrust } from "./catalog-types";
 
 /** Where a project may keep skills. `.mso/skills` is the explicit MSO root — the
  *  per-project counterpart of `~/.mso/skills` — and therefore ranks above the
@@ -31,16 +32,6 @@ export const PROJECT_SKILL_DIRS = [
   ".codex/skills",
 ] as const;
 
-export const PROJECT_SKILL_LIMITS = {
-  /** Projects scanned for skills per catalog call. */
-  maxProjects: 60,
-  /** Skill directories taken from one project root. */
-  maxSkillsPerRoot: 100,
-  /** Project skills cataloged in total. */
-  maxProjectSkills: 300,
-} as const;
-
-export type ProjectRef = { name: string; path: string };
 export type ProjectSkillRoot = { path: string; project: ProjectRef; priority: number };
 
 function currentUid(): number | undefined {
@@ -59,6 +50,14 @@ function contains(parent: string, child: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+/** The same short-hash identity `lib/host/project-roots` assigns a container, so a
+ *  skill's `project.rootId` and a `projects_list` row's `rootId` are the same value. */
+export function projectRefFor(dir: string, containerPath: string): ProjectRef {
+  const rootId = createHash("sha256").update(containerPath).digest("hex").slice(0, 8);
+  const name = path.basename(dir);
+  return { id: `${rootId}/${name}`, name, path: dir, rootId };
+}
+
 /**
  * The trust decision for ONE project skill directory. Exported so the catalog and
  * its tests exercise the same three checks rather than a reimplementation.
@@ -74,24 +73,32 @@ export async function projectSkillTrust(skillDir: string, projectPath: string): 
   return "local";
 }
 
+/** Every project on the box, already containment- and ownership-checked by
+ *  `listProjectDirs`, as catalog-facing refs plus that walk's truncation report. */
+export async function discoveredProjects(): Promise<{ projects: ProjectRef[]; truncationReasons: string[] }> {
+  const { dirs, scan } = await listProjectDirs();
+  return {
+    projects: dirs.map(({ container, dir }) => projectRefFor(dir, container.path)),
+    truncationReasons: scan.truncationReasons.map((reason) => `projects:${reason}`),
+  };
+}
+
 /**
- * Every per-project skill root on the box, in deterministic order: project order
- * from `listProjectDirs()` (configured container order, then name), then
- * `PROJECT_SKILL_DIRS` order. `priority` ranks a project skill BELOW every global
- * root, so a project can never shadow an operator or official skill.
+ * Every per-project skill root, in deterministic order: project order from the
+ * container walk, then `PROJECT_SKILL_DIRS` order. `priority` ranks a project skill
+ * BELOW every global root, so a project can never shadow an operator or official one.
  */
-export async function projectSkillRoots(projectDirs?: Array<{ dir: string }>): Promise<ProjectSkillRoot[]> {
-  const dirs = (projectDirs ?? (await listProjectDirs()).dirs).slice(0, PROJECT_SKILL_LIMITS.maxProjects);
+export async function projectSkillRoots(projects: ProjectRef[]): Promise<{ roots: ProjectSkillRoot[]; truncated: boolean }> {
+  const capped = projects.slice(0, SKILL_SCAN_LIMITS.maxProjects);
   const out: ProjectSkillRoot[] = [];
-  for (const { dir } of dirs) {
-    const project: ProjectRef = { name: path.basename(dir), path: dir };
+  for (const project of capped) {
     for (const [index, sub] of PROJECT_SKILL_DIRS.entries()) {
-      const root = path.join(dir, sub);
-      const stat = await fs.lstat(root).catch(() => null);
-      if (!stat?.isDirectory() && !stat?.isSymbolicLink()) continue;
+      const root = path.join(project.path, sub);
+      // A symlinked skill root is still LISTED (projectSkillTrust downgrades it to
+      // untrusted); what must not happen is it silently becoming `local`.
       if (!(await fs.stat(root).catch(() => null))?.isDirectory()) continue;
       out.push({ path: root, project, priority: 60 - index });
     }
   }
-  return out;
+  return { roots: out, truncated: projects.length > capped.length };
 }

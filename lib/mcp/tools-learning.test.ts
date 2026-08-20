@@ -30,7 +30,12 @@ process.env.OS_FS_READ_ROOTS = dir;
 process.env.OS_FS_WRITE_ROOTS = dir;
 process.env.OS_SKILL_MEMORY_STORE = path.join(dir, "memory.json");
 const { resetSkillMemoryCache } = await import("@/lib/skills/memory");
+const { projectRefFor } = await import("@/lib/skills/project-skills");
 const { LEARNING_TOOLS } = await import("./tools-learning");
+
+/** The root-qualified id the catalog assigns, computed the same way it does. */
+const siblingSkillId = async () =>
+  `${projectRefFor(sibling, await fs.realpath(dir)).id}/orchard-harvest`;
 
 describe("workflow_start bootstrap", () => {
   beforeEach(async () => {
@@ -96,10 +101,22 @@ describe("workflow_start bootstrap", () => {
     };
     expect(result.search.hits).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        kind: "skill", id: "orchard/orchard-harvest", name: "orchard-harvest",
-        trust: "local", project: { name: "orchard", path: sibling },
+        kind: "skill", id: await siblingSkillId(), name: "orchard-harvest",
+        trust: "local", project: expect.objectContaining({ name: "orchard", path: sibling }),
       }),
     ]));
+  });
+
+  it("tells the client when the discovery scan was incomplete", async () => {
+    const start = LEARNING_TOOLS.find((tool) => tool.name === "workflow_start")!;
+    const result = await start.run({ intent: "check discovery completeness", project }, {
+      actor: "mcp:discovery", scope: "write" as const,
+    }) as { bootstrap: { discovery: { complete: boolean; catalog: { truncated: boolean; truncationReasons: string[] } }; trace: string[] } };
+    // This fixture fits well inside every cap, so the honest answer is "complete" —
+    // and the trace carries no partial-scan warning.
+    expect(result.bootstrap.discovery.complete).toBe(true);
+    expect(result.bootstrap.discovery.catalog.truncated).toBe(false);
+    expect(result.bootstrap.trace.some((line) => line.startsWith("[Discovery]"))).toBe(false);
   });
 
   it("supports parallel conversations and exposes explicit cancel/finish ids", async () => {

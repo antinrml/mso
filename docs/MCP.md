@@ -104,8 +104,8 @@ The catalog has a stable server version plus a schema-derived toolset signature.
 
 Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
 
-Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.0` / toolset
-`2026.08.20.3`. `projects_list`, `skills_list` and `skills_read` are the new public
+Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.1` / toolset
+`2026.08.20.4`. `projects_list`, `skills_list` and `skills_read` are the new public
 names in this release; `image_generation_status` and `image_generate` were removed
 (see the migration note below).
 
@@ -117,49 +117,78 @@ names in this release; `image_generation_status` and `image_generate` were remov
 
 MSO drives **all** of the owner's projects, not the one it happens to live in.
 
-`projects_list` enumerates project directories across every configured project
-container — each `OS_FS_READ_ROOTS` entry plus its `projects/` subdirectory, deduped by
-realpath, in configured order. It returns name, absolute path, container root, package
-name/version and Git branch/head read straight off `.git` with no subprocess. Hidden
-directories, symlinks and credential paths are excluded, results are paginated
-(default 50, max 200), and the scan is bounded (12 containers, 400 entries per
-container, 400 projects). The filesystem root `/` is never treated as a container.
+### Which directories count, and why a symlink never does
+
+Each `OS_FS_READ_ROOTS` entry is canonicalized ONCE into an **authorized root**. A
+container — a directory that holds projects — is an authorized root, plus its
+`projects/` child *only when* that child is a real, non-symlink directory whose
+realpath stays inside that same root. A symlinked `projects/` is refused outright, even
+when it currently points somewhere legal: accepting it is a TOCTOU bet, because the link
+can be repointed between the check and the walk. `/` is never a container — "/" as a read
+root means browse-anywhere, not "every top-level system directory is a project".
+
+Every project candidate must then be a real, non-hidden, non-symlink directory whose
+realpath is still inside its exact container *and* inside an authorized root, owned by
+the uid MSO runs as. Ownership is checked **before** any metadata read, so a directory
+another user controls never reaches the `package.json` or `.git` readers at all.
+
+### Bounds, and telling the truth about them
+
+Every scan is bounded: 12 containers, 400 entries read per container, 400 projects,
+60 projects scanned for skills, 200 entries per skill root, 300 project skills, and a
+4-second wall clock on each of the two walks. Directory iteration uses `opendir` and
+stops at the cap rather than materializing the whole listing first. Every metadata read
+goes through one byte-capped, `O_NOFOLLOW` reader (`lib/host/bounded-read.ts`): the cap
+is checked against `fstat` *before* any bytes move, so an oversized `package.json`,
+`SKILL.md` or `packed-refs` costs one stat, not its size.
+
+`projects_list`, `skills_list`, `skills_search` and `workflow_start` all return a
+**scan report**. `truncated:false` means "this is all of it"; hitting any cap sets
+`truncated:true` and names the reason (`maxRoots`, `maxEntriesPerRoot:<path>`,
+`maxProjects`, `maxProjectSkills`, `deadline`), alongside `scannedRoots`, `skippedRoots`
+and a count of entries rejected by the containment/ownership checks. **Do not conclude a
+project or skill is absent from a truncated scan** — the tool descriptions say so too.
+
+### Ids, so nothing shadows anything
+
+A global skill is addressed by bare name. A project is `<rootId>/<name>` and a project
+skill is `<rootId>/<project>/<name>`, where `rootId` is a short sha256 of the canonical
+container path. That makes ids **globally unique**: two configured roots may each hold a
+`widget` shipping `deploy`, and both stay visible, readable and searchable. The derived
+`projects/` container gets its own `rootId` for the same reason, so `~/widget` and
+`~/projects/widget` cannot collide either. Within one project, `.mso/skills` outranks the
+agent-tool roots; every project root ranks below every global root, so an operator or
+official skill can never be displaced.
+
+`skills_read` takes the exact id. A bare name is accepted only when it is unambiguous —
+when several projects ship it, the call is **refused** and lists the exact ids rather
+than handing back another project's instructions under the name you asked for.
+`skills_list`'s `project` filter accepts an exact `projectId`, an absolute path, or a
+bare name; a bare name matching several roots keeps them all and reports the candidates
+in `ambiguousProjects`.
 
 `resolveProjectHint` — behind `workflow_start`'s `project` and `fs_search` — searches
-those same containers, deterministically and exact-before-fuzzy: an absolute/`~` path
-wins outright, then an exact directory name or known alias probed container by
-container, then one bounded scan scoring exact package names above substrings. An exact
-name in the second container beats a substring hit in the first.
+the same containers, deterministically and exact-before-fuzzy: an absolute/`~` path wins
+outright, then an exact directory name or known alias probed container by container,
+then one bounded scan scoring exact package names above substrings. The exact-name probe
+refuses exactly what enumeration refuses — a symlinked entry (whether or not its target
+is legal) and a hidden directory. An explicit `rootHint` runs **every** strategy inside
+that root, including package and fuzzy matching, even when the global container list is
+already at its cap; a path hint may not leave it.
 
-`skills_list` merges the global roots with the **per-project** roots of every project:
+### Project skill trust is earned, never assumed
+
+`skills_list` merges the global roots with the per-project roots of every project:
 `.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills`, `.codex/skills`.
-Each row carries the exact catalog id, trust, source and its project.
+A project skill becomes `local` only when all three hold: the skill directory realpaths
+back *inside* its project; the directory and its `SKILL.md` are owned by MSO's uid; and
+`SKILL.md` is a regular file, not a symlink. Otherwise it is cataloged `untrusted` —
+metadata visible, instructions withheld until the operator reviews it and moves it into
+`~/.mso/skills`. The generic HOME agent roots keep their existing untrusted behaviour.
 
-**Ids, so nothing shadows anything.** A global skill is addressed by bare name; a
-project skill is `<project>/<name>`. Two projects may both ship `deploy`, and neither
-can displace an operator (`~/.mso/skills`) or official (MSO repo) skill of the same
-name. Within one project, `.mso/skills` outranks the agent-tool roots. Precedence is
-fully deterministic.
-
-**Project trust is earned, never assumed from the path.** A project skill becomes
-`local` only when all three hold: the skill directory realpaths back *inside* its
-project (a `.claude/skills -> /tmp/attacker` symlink is discovered, not followed); the
-directory and its `SKILL.md` are owned by the uid MSO runs as; and `SKILL.md` is a
-regular file, not a symlink. Otherwise it is cataloged `untrusted`. The generic HOME
-agent roots (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, OpenClaw) keep
-their existing untrusted behaviour — this promotion is for project roots only.
-
-`skills_read` takes the **exact catalog id** and nothing else — no fuzzy resolution, so
-`widget-deploy` will not silently return `widget/widget-deploy`. It returns instructions
-for `official`, hash-`verified`, operator-`local` and ownership-verified project skills.
-An `untrusted` skill returns metadata plus an explicit refusal: review the file, then
-move it into `~/.mso/skills` to promote it. The reader still opens only a realpath'd file
-named exactly `SKILL.md`. Content is capped at 24,000 characters; the project scan is
-bounded to 60 projects, 100 skills per root and 300 project skills per call.
-
-`workflow_start` and `skills_search` search this unified catalog, and every skill hit
-carries its `project` when it has one — so a workflow named against project A still
-finds the relevant skill in project B rather than relearning it.
+`workflow_start` and `skills_search` search this unified catalog; every skill hit carries
+its `project`, and the bootstrap carries a `discovery.complete` flag plus a
+`[Discovery] partial scan` trace line when the catalog was truncated.
 
 ## Semantic skill search and learned workflows
 

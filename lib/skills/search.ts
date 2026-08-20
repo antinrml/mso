@@ -1,4 +1,4 @@
-import { catalogSkills, readSkillFile, type SkillInfo } from "./catalog";
+import { catalogSkillsDetailed, readSkillFile, type ProjectRef, type SkillInfo, type SkillScanReport } from "./catalog";
 import { listLearnedRecipes, type LearnedRecipe } from "./memory";
 import { embedSkillText, hybridSemanticScore, SKILL_EMBEDDING_VERSION } from "./semantic";
 
@@ -14,7 +14,7 @@ export type SkillSearchHit = {
   id: string;
   name: string;
   /** Set when the hit is a skill that lives inside a project checkout. */
-  project?: { name: string; path: string };
+  project?: ProjectRef;
   score: number;
   description: string;
   source?: string;
@@ -34,7 +34,7 @@ export type SkillSearchOptions = {
   appDir?: string;
   homeDir?: string;
   /** Forwarded to catalogSkills; `[]` restricts the search to global roots. */
-  projectDirs?: Array<{ dir: string }>;
+  projects?: ProjectRef[];
 };
 
 function skillQuality(skill: SkillInfo): number {
@@ -54,6 +54,9 @@ export async function searchSkillMemory(query: string, options: SkillSearchOptio
   engine: string;
   query: string;
   hits: SkillSearchHit[];
+  /** What the underlying catalog build could NOT cover. A search over a truncated
+   *  catalog is a search over part of the box, and the caller has to be able to say so. */
+  catalog: SkillScanReport;
   recommendedRecipe?: SkillSearchHit;
 }> {
   const q = query.trim();
@@ -90,7 +93,7 @@ export async function searchSkillMemory(query: string, options: SkillSearchOptio
     });
   }
 
-  const skills = await catalogSkills({ appDir: options.appDir, homeDir: options.homeDir, projectDirs: options.projectDirs });
+  const { skills, scan } = await catalogSkillsDetailed({ appDir: options.appDir, homeDir: options.homeDir, projects: options.projects });
   for (const skill of skills) {
     if (!options.includeUntrusted && skill.trust === "untrusted") continue;
     const content = skill.trust === "untrusted" ? "" : (await readSkillFile(skill.path))?.slice(0, 18_000) ?? "";
@@ -131,6 +134,7 @@ export async function searchSkillMemory(query: string, options: SkillSearchOptio
     engine: SKILL_EMBEDDING_VERSION,
     query: q,
     hits: sorted,
+    catalog: scan,
     recommendedRecipe: sorted.find((h) => h.kind === "recipe" && h.score >= 0.22),
   };
 }

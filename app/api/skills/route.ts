@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { IS_DEMO } from "@/lib/demo";
-import { catalogSkills, findSkill, readSkillFile, type SkillInfo } from "@/lib/skills/catalog";
+import { catalogSkillsDetailed, resolveSkill, readSkillFile, type SkillInfo } from "@/lib/skills/catalog";
 import { listLearnedRecipes } from "@/lib/skills/memory";
 import { searchSkillMemory } from "@/lib/skills/search";
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
           .map((s) => ({ kind: "skill", id: s.id, name: s.name, score: 1, description: s.description, source: s.source, trust: s.trust })),
       });
     }
-    const skill = name ? findSkill(demoSkills, name) : null;
+    const skill = name ? resolveSkill(demoSkills, name).skill : null;
     return skill
       ? NextResponse.json({ skill, content: `# ${skill.name}\n\n${skill.description}\n\nDemo mode only lists this skill; it does not run host automation.` })
       : NextResponse.json({ skills: demoSkills, recipes: [] });
@@ -43,16 +43,19 @@ export async function GET(req: NextRequest) {
     }));
   }
 
-  const skills = await catalogSkills();
+  const { skills, scan } = await catalogSkillsDetailed();
   if (!name) {
     const recipes = (await listLearnedRecipes()).map((r) => ({
       id: r.id, intent: r.intent, project: r.project, summary: r.summary, attempts: r.attempts,
       successes: r.successes, failures: r.failures, fastestDurationMs: r.fastestDurationMs, updatedAt: r.updatedAt,
     }));
-    return NextResponse.json({ skills, recipes });
+    return NextResponse.json({ skills, recipes, scan });
   }
 
-  const skill = findSkill(skills, name);
+  const { skill, ambiguous } = resolveSkill(skills, name);
+  // A bare name matching several projects is not a 404 and must not be a guess:
+  // returning one project's instructions under another's name is the whole bug.
+  if (ambiguous) return NextResponse.json({ error: "ambiguous", candidates: ambiguous }, { status: 409 });
   if (!skill) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const content = await readSkillFile(skill.path);
   if (content === null) return NextResponse.json({ error: "not_found" }, { status: 404 });

@@ -69,8 +69,13 @@ export const SKILL_TOOLS: HostTool[] = [
       const name = String(a.name ?? "").trim();
       if (!name) return "missing skill name";
       const r = await fetch(`/api/skills?name=${encodeURIComponent(name)}`, { cache: "no-store" });
+      const d = (await r.json().catch(() => ({}))) as {
+        content?: string; truncated?: boolean; error?: string; candidates?: string[];
+        skill?: { trust?: string; source?: string };
+      };
+      if (d.error === "ambiguous")
+        return `"${name}" matches several projects. Call skills.read again with one exact id: ${(d.candidates ?? []).join(", ")}`;
       if (!r.ok) return `couldn't read skill ${name}`;
-      const d = (await r.json()) as { content?: string; truncated?: boolean; skill?: { trust?: string; source?: string } };
       if (d.skill?.trust === "untrusted") {
         return `refused to load untrusted skill instructions (source=${d.skill.source ?? "unknown"}). Inspect the SKILL.md as a file and explicitly move/copy it into ~/.mso/skills after review if you want MSO to trust it.`;
       }

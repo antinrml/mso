@@ -8,6 +8,7 @@
 // one turns a bounded read into an arbitrary one.
 import { promises as fs } from "fs";
 import path from "path";
+import { BOUNDED_READ, readBoundedRegularFile } from "./bounded-read";
 import { runCommand } from "./exec";
 
 export type PackageMeta = { name?: string; version?: string; scripts: string[] };
@@ -21,15 +22,16 @@ export type GitMeta = {
   error?: string;
 };
 
-export async function readRegularText(file: string): Promise<string> {
-  const stat = await fs.lstat(file).catch(() => null);
-  if (!stat?.isFile() || stat.isSymbolicLink()) return "";
-  return fs.readFile(file, "utf8").catch(() => "");
+/** Every read here is capped BEFORE any bytes move — see bounded-read.ts. An
+ *  oversized or symlinked artifact yields "" (no metadata), never a partial parse
+ *  and never an unbounded allocation. */
+export async function readRegularText(file: string, maxBytes = BOUNDED_READ.packageJson): Promise<string> {
+  return (await readBoundedRegularFile(file, maxBytes)) ?? "";
 }
 
 export async function packageMeta(dir: string): Promise<PackageMeta> {
   try {
-    const raw = await readRegularText(path.join(dir, "package.json"));
+    const raw = await readRegularText(path.join(dir, "package.json"), BOUNDED_READ.packageJson);
     if (!raw) return { scripts: [] };
     const parsed = JSON.parse(raw) as { name?: unknown; version?: unknown; scripts?: unknown };
     return {
@@ -49,16 +51,16 @@ export async function boundedGitMeta(dir: string): Promise<GitMeta> {
   const gitDir = path.join(dir, ".git");
   const gitStat = await fs.lstat(gitDir).catch(() => null);
   if (!gitStat?.isDirectory() || gitStat.isSymbolicLink()) return { available: false, statusChecked: false };
-  const head = await readRegularText(path.join(gitDir, "HEAD"));
+  const head = await readRegularText(path.join(gitDir, "HEAD"), BOUNDED_READ.gitHead);
   if (!head) return { available: false, statusChecked: false };
   const candidateRef = head.trim().startsWith("ref: ") ? head.trim().slice(5) : undefined;
   const ref = candidateRef && /^refs\/(?:heads|remotes)\/[a-z0-9._\/-]+$/i.test(candidateRef) && !candidateRef.includes("..")
     ? candidateRef
     : undefined;
   const branch = ref?.replace(/^refs\/heads\//, "");
-  let sha = ref ? (await readRegularText(path.join(gitDir, ref))).trim() : head.trim();
+  let sha = ref ? (await readRegularText(path.join(gitDir, ref), BOUNDED_READ.gitRef)).trim() : head.trim();
   if (!sha && ref) {
-    const packed = await readRegularText(path.join(gitDir, "packed-refs"));
+    const packed = await readRegularText(path.join(gitDir, "packed-refs"), BOUNDED_READ.packedRefs);
     sha = packed.split("\n").find((line) => line.endsWith(` ${ref}`))?.split(" ")[0] ?? "";
   }
   return { available: true, branch, statusChecked: false, ...(sha ? { head: { sha } } : {}) };

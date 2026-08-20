@@ -16,11 +16,18 @@ The assistant lists/loads only `official`, `verified`, and `local` instructions 
 
 ## Ids: a project skill cannot shadow anything
 
-A global skill is addressed by its bare **name**. A project skill is `<project>/<name>`.
-So two projects may both ship `deploy`, and neither can displace the operator or
-official skill of the same name — the collision is impossible rather than resolved.
-`skills_read` / `skills.read` accept the **exact id only**; they do not fuzzy-resolve
-`deploy` into `widget/deploy`.
+A global skill is addressed by its bare **name**. A project is `<rootId>/<name>` and a
+project skill is `<rootId>/<project>/<name>`, where `rootId` is a short sha256 of the
+canonical container path. That makes ids **globally unique**, which the bare
+`<project>/<name>` form was not: two *different configured roots* may each hold a
+`widget` shipping `deploy`, and both stay visible, readable and searchable instead of
+one silently winning. The derived `projects/` container gets its own `rootId` for the
+same reason, so `~/widget` and `~/projects/widget` cannot collide either.
+
+`skills_read` / `skills.read` take the **exact id**. A bare name is accepted only when
+it is unambiguous; when several projects ship it the call is **refused** and lists the
+exact ids, because returning one project's instructions under another's name is exactly
+the failure this id scheme exists to prevent.
 
 ## Project skills earn `local` trust; they do not inherit it
 
@@ -35,8 +42,16 @@ only when all three hold:
 Anything else is cataloged `untrusted`. The generic HOME agent roots keep their existing
 untrusted behaviour; this promotion applies to project-scoped roots only.
 
-Scans are bounded: 60 projects, 100 skills per root, 300 project skills and 24,000
-characters of instructions per read.
+Scans are bounded and say so. Caps: 12 containers, 400 entries per container, 400
+projects, 60 projects scanned for skills, 200 entries per skill root, 300 project
+skills, a 256 KiB `SKILL.md`, and a 4-second wall clock per walk. Directory iteration
+uses `opendir` and stops at the cap rather than reading the whole listing first, and
+every file read goes through one byte-capped `O_NOFOLLOW` reader that checks the cap
+against `fstat` before any bytes move.
+
+Every discovery response carries a **scan report**. `truncated:false` means "this is all
+of it"; hitting a cap sets `truncated:true` and names the reason. Do not conclude a skill
+is absent from a truncated scan.
 
 ## Contract
 

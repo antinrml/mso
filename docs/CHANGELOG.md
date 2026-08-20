@@ -14,6 +14,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Fixed**
 
+- `mcp` contain, bound and uniquely identify project discovery
 - `mcp` make ChatGPT file imports region agnostic
 - `mcp` allow ChatGPT India South Central file storage
 - `mcp` allow ChatGPT New Zealand file storage

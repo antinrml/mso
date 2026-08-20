@@ -89,11 +89,14 @@ The model reaches trusted skills through the `skills.list`, `skills.search` and 
 every configured project container (each `OS_FS_READ_ROOTS` entry and its `projects/`
 child), from `.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills` and
 `.codex/skills`. A global skill's id is its bare name; a project skill's is
-`<project>/<name>`, so two projects may ship the same name and neither can shadow an
-operator or official skill. A project skill earns `local` trust only after realpath
-containment inside its project, ownership by MSO's uid, and a regular non-symlink
-`SKILL.md`; the generic HOME agent roots stay untrusted. `skills.read` takes the exact
-id. See [`docs/MCP.md`](../../../docs/MCP.md) and [`skills/README.md`](../../../skills/README.md).
+`<rootId>/<project>/<name>`, where `rootId` is a short hash of the canonical container
+path — so two projects with the same basename in *different* configured roots stay
+distinct, and neither can shadow an operator or official skill. A project skill earns
+`local` trust only after realpath containment inside its project, ownership by MSO's uid,
+and a regular non-symlink `SKILL.md`; the generic HOME agent roots stay untrusted.
+`skills.read` takes the exact id and refuses an ambiguous bare name rather than guessing.
+Every response carries a scan report, so a truncated catalog is never presented as
+complete. See [`docs/MCP.md`](../../../docs/MCP.md) and [`skills/README.md`](../../../skills/README.md).
 
 ## Agent
 
@@ -176,9 +179,11 @@ re-discovers them as bugs.
    nothing renders it. (`instructions` IS rendered, as the card body in the library
    grid; it just never reaches the model.)
 2. **`/api/skills` is uncached**, `force-dynamic`, and now walks the global roots PLUS
-   every project's skill roots on each call. Bounded (60 projects, 100 skills per root,
-   300 project skills), but a wide box pays for it every time; a TTL cache is the
-   obvious next step and was deliberately not added with the discovery change.
+   every project's skill roots on each call. Every cap is enforced and reported
+   (12 containers, 400 entries each, 60 projects, 200 entries per skill root, 300
+   project skills, 4 s per walk), so the worst case is bounded — but a wide box pays it
+   every time. A TTL cache is the obvious next step and was deliberately not added with
+   the discovery change.
 3. **The `Skill` → `Playbook` rename has not happened.** The code and the UI still
    say "Skill" for the localStorage type.
 
