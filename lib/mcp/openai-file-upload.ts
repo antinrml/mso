@@ -27,25 +27,35 @@ function trustedDownloadUrl(raw: string): URL {
   try { url = new URL(raw); } catch { throw new HostError("file.download_url is invalid"); }
   if (url.protocol !== "https:") throw new HostError("file.download_url must use HTTPS");
   const host = url.hostname.toLowerCase();
-  const exactOpenAiHosts = new Set([
-    "files.oaiusercontent.com",
-    // ChatGPT-generated conversation files in the Southeast Asia storage region.
-    // Keep this exact: accepting arbitrary *.blob.core.windows.net would turn the
-    // bridge into a server-side fetch primitive.
-    "oaisdmntprseasia.blob.core.windows.net",
-    // ChatGPT-generated conversation files observed from the Australia East region.
-    // Exact account only; never allow arbitrary Azure Blob hosts.
-    "oaisdmntpraustraliaeast.blob.core.windows.net",
-    // ChatGPT-generated conversation files observed from the New Zealand North region.
-    // Exact account only; arbitrary Azure Blob accounts remain rejected.
-    "oaisdmntprnznorth.blob.core.windows.net",
-    // ChatGPT native image generation, India South Central.
-    "oaisdmntprindiasocentral.blob.core.windows.net",
-  ]);
-  if (!exactOpenAiHosts.has(host) && !host.endsWith(".oaiusercontent.com")) {
+
+  // ChatGPT temporary files are served either from oaiusercontent.com or from
+  // OpenAI-owned Azure Storage accounts whose globally unique account name uses
+  // the stable `oaisdmntpr<region>` prefix. Match that account family rather than
+  // enumerating regions, but never accept arbitrary *.blob.core.windows.net hosts.
+  // Azure storage account names are globally unique, so an unrelated tenant cannot
+  // create another account with the same full account name.
+  const openAiAzureBlobHost = /^oaisdmntpr[a-z0-9]{2,40}\.blob\.core\.windows\.net$/;
+  const openAiContentHost = host === "files.oaiusercontent.com" || host.endsWith(".oaiusercontent.com");
+  if (!openAiContentHost && !openAiAzureBlobHost.test(host)) {
     throw new HostError(`file.download_url host is not allowed: ${host}`);
   }
   return url;
+}
+
+async function fetchTrustedFile(initialUrl: URL): Promise<Response> {
+  let url = initialUrl;
+  for (let hop = 0; hop <= 3; hop += 1) {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(60_000),
+      headers: { accept: "image/png,image/webp,image/jpeg,application/octet-stream" },
+    });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get("location");
+    if (!location) throw new HostError("OpenAI file redirect was missing a location");
+    url = trustedDownloadUrl(new URL(location, url).toString());
+  }
+  throw new HostError("OpenAI file download exceeded the redirect limit");
 }
 
 function safeFilename(input: string | undefined, fallback: string): string {
@@ -76,11 +86,7 @@ export async function importOpenAiProvidedFile(opts: {
     throw new HostError("file exceeds the 20 MiB MCP import limit");
   }
 
-  const response = await fetch(url, {
-    redirect: "follow",
-    signal: AbortSignal.timeout(60_000),
-    headers: { accept: "image/png,image/webp,image/jpeg,application/octet-stream" },
-  });
+  const response = await fetchTrustedFile(url);
   if (!response.ok) throw new HostError(`OpenAI file download failed (${response.status})`);
   const declared = Number(response.headers.get("content-length") || 0);
   if (declared > MAX_FILE_BYTES) throw new HostError("file exceeds the 20 MiB MCP import limit");

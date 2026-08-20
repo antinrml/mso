@@ -18,78 +18,65 @@ beforeEach(() => {
 });
 
 describe("ChatGPT file host allowlist", () => {
-  it("accepts the observed OpenAI Southeast Asia blob host", async () => {
-    const result = await importOpenAiProvidedFile({
-      file: {
-        download_url: "https://oaisdmntprseasia.blob.core.windows.net/container/file.png?sig=redacted",
-        file_id: "file_test",
-        mime_type: "image/png",
-        file_name: "file.png",
-        size: 4,
-      },
-      dest: "/home/antinrml/generated-images",
-      filename: "file.png",
-    });
+  const importUrl = async (download_url: string, file_id = "file_test") => importOpenAiProvidedFile({
+    file: {
+      download_url,
+      file_id,
+      mime_type: "image/png",
+      file_name: "file.png",
+      size: 4,
+    },
+    dest: "/home/antinrml/generated-images",
+    filename: "file.png",
+  });
+
+  it.each([
+    "oaisdmntprseasia.blob.core.windows.net",
+    "oaisdmntpraustraliaeast.blob.core.windows.net",
+    "oaisdmntprnznorth.blob.core.windows.net",
+    "oaisdmntprindiasocentral.blob.core.windows.net",
+    "oaisdmntprfuture123.blob.core.windows.net",
+  ])("accepts OpenAI regional Azure storage account %s", async (host) => {
+    const result = await importUrl(`https://${host}/container/file.png?sig=redacted`);
     expect(result.bytes).toBe(4);
     expect(uploadInto).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts the observed OpenAI Australia East blob host", async () => {
-    const result = await importOpenAiProvidedFile({
-      file: {
-        download_url: "https://oaisdmntpraustraliaeast.blob.core.windows.net/container/file.png?sig=redacted",
-        file_id: "file_test_au",
-        mime_type: "image/png",
-        file_name: "file-au.png",
-        size: 4,
-      },
-      dest: "/home/antinrml/generated-images",
-      filename: "file-au.png",
-    });
-    expect(result.bytes).toBe(4);
-    expect(uploadInto).toHaveBeenCalledTimes(1);
+  it.each([
+    "attacker.blob.core.windows.net",
+    "oaisdmntpr.blob.core.windows.net",
+    "oaisdmntpr-seasia.blob.core.windows.net",
+    "evil.oaisdmntprseasia.blob.core.windows.net",
+    "oaisdmntprseasia.blob.core.windows.net.evil.example",
+  ])("rejects non-OpenAI/lookalike Azure host %s", async (host) => {
+    await expect(importUrl(`https://${host}/container/file.png`)).rejects.toThrow("host is not allowed");
+    expect(uploadInto).not.toHaveBeenCalled();
   });
 
-  it("accepts the observed OpenAI New Zealand North blob host", async () => {
-    const result = await importOpenAiProvidedFile({
-      file: {
-        download_url: "https://oaisdmntprnznorth.blob.core.windows.net/container/file.png?sig=redacted",
-        file_id: "file_test_nz",
-        mime_type: "image/png",
-        file_name: "file-nz.png",
-        size: 4,
-      },
-      dest: "/home/antinrml/generated-images",
-      filename: "file-nz.png",
-    });
-    expect(result.bytes).toBe(4);
-    expect(uploadInto).toHaveBeenCalledTimes(1);
+  it("rejects a redirect from an allowed OpenAI host to an unrelated host", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, {
+      status: 302,
+      headers: { location: "https://attacker.blob.core.windows.net/container/file.png" },
+    })));
+    await expect(importUrl("https://oaisdmntprseasia.blob.core.windows.net/container/file.png"))
+      .rejects.toThrow("host is not allowed: attacker.blob.core.windows.net");
+    expect(uploadInto).not.toHaveBeenCalled();
   });
 
-  it("accepts the observed OpenAI India South Central blob host", async () => {
-    const result = await importOpenAiProvidedFile({
-      file: {
-        download_url: "https://oaisdmntprindiasocentral.blob.core.windows.net/container/file.png?sig=redacted",
-        file_id: "file_test_in",
-        mime_type: "image/png",
-        file_name: "file-in.png",
-        size: 4,
-      },
-      dest: "/home/antinrml/generated-images",
-      filename: "file-in.png",
-    });
+  it("allows redirects only when every hop remains on a trusted OpenAI host", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302,
+        headers: { location: "https://oaisdmntprfuture123.blob.core.windows.net/container/file.png?sig=next" },
+      }))
+      .mockResolvedValueOnce(new Response(Uint8Array.from([137, 80, 78, 71]), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": "4" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await importUrl("https://files.oaiusercontent.com/start/file.png");
     expect(result.bytes).toBe(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(uploadInto).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects an unrelated Azure blob account", async () => {
-    await expect(importOpenAiProvidedFile({
-      file: {
-        download_url: "https://attacker.blob.core.windows.net/container/file.png",
-        file_id: "file_test",
-        mime_type: "image/png",
-      },
-      dest: "/home/antinrml/generated-images",
-    })).rejects.toThrow("host is not allowed: attacker.blob.core.windows.net");
   });
 });
