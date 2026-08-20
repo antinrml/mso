@@ -66,6 +66,22 @@ describe("ChatGPT file host allowlist", () => {
     expect(uploadInto).toHaveBeenCalledTimes(1);
   });
 
+  it("accepts the observed OpenAI India South Central blob host", async () => {
+    const result = await importOpenAiProvidedFile({
+      file: {
+        download_url: "https://oaisdmntprindiasocentral.blob.core.windows.net/container/file.png?sig=redacted",
+        file_id: "file_test_in",
+        mime_type: "image/png",
+        file_name: "file-in.png",
+        size: 4,
+      },
+      dest: "/home/antinrml/generated-images",
+      filename: "file-in.png",
+    });
+    expect(result.bytes).toBe(4);
+    expect(uploadInto).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects an unrelated Azure blob account", async () => {
     await expect(importOpenAiProvidedFile({
       file: {

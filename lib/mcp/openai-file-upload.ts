@@ -39,6 +39,8 @@ function trustedDownloadUrl(raw: string): URL {
     // ChatGPT-generated conversation files observed from the New Zealand North region.
     // Exact account only; arbitrary Azure Blob accounts remain rejected.
     "oaisdmntprnznorth.blob.core.windows.net",
+    // ChatGPT native image generation, India South Central.
+    "oaisdmntprindiasocentral.blob.core.windows.net",
   ]);
   if (!exactOpenAiHosts.has(host) && !host.endsWith(".oaiusercontent.com")) {
     throw new HostError(`file.download_url host is not allowed: ${host}`);
