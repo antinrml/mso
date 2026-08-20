@@ -19,17 +19,23 @@ export type RootSpec = {
 };
 
 /**
- * Skills intentionally live outside OS_FS_READ_ROOTS. Only an exact SKILL.md is
- * readable here: the path is realpath'd and its basename checked, so a link to
- * ~/.ssh/config resolves to basename "config" and is refused, while a link to another
- * SKILL.md stays equivalent to placing one in a skill root (handled by trust policy).
- * The realpath is then opened O_NOFOLLOW under a byte cap — an oversized SKILL.md is
- * skipped rather than loaded, because it is untrusted content.
+ * Skills intentionally live outside OS_FS_READ_ROOTS, so the read itself is the guard.
+ *
+ * The SUPPLIED path is opened, not a canonicalized substitute. The previous version
+ * realpath'd first and then opened the *target* with O_NOFOLLOW, which enforced the
+ * nofollow promise against a path the caller never gave us: a `SKILL.md -> other/SKILL.md`
+ * symlink passed the basename check and was read. Now the final component must itself be
+ * a regular file — `O_NOFOLLOW` fails with ELOOP on any symlink, whatever it points at —
+ * and the byte cap is checked against `fstat` before any bytes move, because an oversized
+ * SKILL.md is untrusted content we decline rather than truncate.
+ *
+ * Parent containment is a SEPARATE concern and belongs to the caller (`scanRoot` for the
+ * root, `projectSkillTrust` for a project): canonicalizing the parent here would drag the
+ * final component through `realpath` again and reopen exactly this hole.
  */
 export async function readSkillFile(file: string): Promise<string | null> {
-  const real = await fs.realpath(file).catch(() => null);
-  if (!real || path.basename(real) !== SKILL_FILE) return null;
-  return readBoundedRegularFile(real, SKILL_SCAN_LIMITS.maxSkillBytes);
+  if (path.basename(file) !== SKILL_FILE) return null;
+  return readBoundedRegularFile(file, SKILL_SCAN_LIMITS.maxSkillBytes);
 }
 
 export function skillDescription(md: string): string {
@@ -66,27 +72,39 @@ async function verifiedBundledSkill(dir: string, md: string): Promise<Pick<Skill
 
 /** Bounded `opendir` walk of ONE skill root — global roots included, which previously
  *  had no entry budget at all. Names are capped before anything is stat'd or read. */
-async function skillDirNames(root: string, deadlineAt: number): Promise<{ names: string[]; hitCap: boolean }> {
+async function skillDirNames(root: string, deadlineAt: number, skipEntries = 0): Promise<{ names: string[]; hitCap: boolean; entriesVisited: number }> {
   const names: string[] = [];
   let hitCap = false;
+  let entriesVisited = skipEntries;
+  let seen = 0;
   const handle = await fs.opendir(root).catch(() => null);
-  if (!handle) return { names, hitCap };
+  if (!handle) return { names, hitCap, entriesVisited };
   try {
     for await (const entry of handle) {
-      if (names.length >= SKILL_SCAN_LIMITS.maxEntriesPerRoot || Date.now() > deadlineAt) { hitCap = true; break; }
+      seen += 1;
+      if (seen <= skipEntries) continue;
+      // EVERY dirent costs budget, accepted or not. Counting only directories meant a
+      // root holding a million regular files still required a million iterations before
+      // the advertised entry cap was reached.
+      if (entriesVisited - skipEntries >= SKILL_SCAN_LIMITS.maxEntriesPerRoot || Date.now() > deadlineAt) { hitCap = true; break; }
+      entriesVisited += 1;
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
       names.push(entry.name);
     }
   } catch {
     // A root that vanishes mid-walk yields what we already have.
   }
-  return { names: names.sort((a, b) => a.localeCompare(b)), hitCap };
+  return { names: names.sort((a, b) => a.localeCompare(b)), hitCap, entriesVisited };
 }
 
-export async function scanRoot(spec: RootSpec, deadlineAt: number): Promise<{ found: Array<{ skill: SkillInfo; priority: number }>; hitCap: boolean }> {
-  const { names, hitCap } = await skillDirNames(spec.path, deadlineAt);
+export async function scanRoot(spec: RootSpec, deadlineAt: number, skipEntries = 0): Promise<{ found: Array<{ skill: SkillInfo; priority: number }>; hitCap: boolean; entriesVisited: number }> {
+  const { names, hitCap: dirCap, entriesVisited } = await skillDirNames(spec.path, deadlineAt, skipEntries);
+  let hitCap = dirCap;
   const found: Array<{ skill: SkillInfo; priority: number }> = [];
   for (const name of names) {
+    // The deadline is enforced THROUGH the per-skill stat/read work too, not only in
+    // the dirent loop, which is where a slow filesystem actually spends its time.
+    if (Date.now() > deadlineAt) { hitCap = true; break; }
     const dir = path.join(spec.path, name);
     if (!(await fs.stat(dir).catch(() => null))?.isDirectory()) continue;
     const file = path.join(dir, SKILL_FILE);
@@ -118,6 +136,6 @@ export async function scanRoot(spec: RootSpec, deadlineAt: number): Promise<{ fo
       },
     });
   }
-  return { found, hitCap };
+  return { found, hitCap, entriesVisited };
 }
 

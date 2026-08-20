@@ -8,6 +8,67 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+## 2026-08-20 — one validator, dirent-counted budgets, resumable caps (DONE)
+
+A second fail-closed re-review of the discovery hardening found six things still open.
+Five of them share a shape: a rule enforced in *one* code path and assumed everywhere
+else.
+
+**UID and symlink rules existed only in the walk.** `listProjectDirs()` rejected a
+project owned by another uid, but `resolveProjectHint`'s exact-name, alias and path
+strategies did not — so `workflow_start` could resolve, and read metadata from, a project
+`projects_list` correctly refused to show. `rootHint` went through `resolveReadable()`,
+which canonicalizes and therefore *follows* a symlinked root, and a path hint accepted
+hidden or symlink-reached directories inside it. There is now ONE validator
+(`lib/host/project-candidate.ts`) and every strategy calls it: hidden component, symlinked
+component (target legal or not), container/authorized-root escape, credential path, uid
+ownership — ownership before any metadata read. A path hint is checked component by
+component from the container down, because canonicalizing first and validating afterwards
+is precisely what let a symlinked intermediate through. `rootHint` is validated the same
+way, and authorized against *every* configured read root rather than the scan-capped
+subset, so naming a root neither widens the jail nor shrinks it.
+
+**`readSkillFile` was nofollow at the wrong path.** It realpath'd the supplied path, saw a
+basename of `SKILL.md`, and opened the *target* with `O_NOFOLLOW` — enforcing the promise
+against a path the caller never gave us. A `SKILL.md -> other/SKILL.md` symlink sailed
+through. The supplied path is now opened directly, so any symlink at that component fails
+with ELOOP; parent containment is a separate check, kept separate so the final component
+is never dragged back through `realpath`. A symlinked `SKILL.md` is no longer an untrusted
+skill — it is not a skill, and it is dropped from the catalog.
+
+**Budgets counted the wrong thing.** Both walks incremented their entry cap only for
+*accepted* entries, so a container holding a million regular files still cost a million
+iterations before the "400 entry" cap was reached — the cap bounded the result, not the
+work. Every dirent now consumes budget, and the deadline is enforced through the
+per-entry `lstat`/`realpath`/metadata work as well as the dirent loop. The overall
+300-project-skill cap moved inside the candidate loop; checking it only before each root
+let one root carry the total from just under 300 to nearly 500.
+
+**Caps were reported but not continuable.** A truncated scan named its reason and stopped.
+Every cap now emits `scan.continuation`: pending roots, per-root cursors, and an opaque
+`cursor` to pass back to `projects_list` / `skills_list` to resume where the walk stopped.
+Cursors are positional in readdir order and say so — name-ordered resume would require
+visiting every dirent, which is the unbounded walk the cap exists to prevent. Ordinary
+paging within one scan gained `hasMore`/`nextOffset`.
+
+**Eight hex characters is not a unique id.** `rootId` was 32 bits of sha256, and a probe
+found a genuine collision: `/tmp/mso-root-50323` and `/tmp/mso-root-125549` both hash to
+`51e156ef`, which would have merged two roots' same-named projects back into one row —
+the exact bug root-qualified ids were introduced to fix. It is 128 bits now, both sides
+share one `shortId` rather than each computing its own, and nothing dedupes on the hash at
+all: the internal key is the full canonical path, so even a collision cannot merge two
+containers. The collision pair is a regression fixture.
+
+Regressions cover each: exact/path/alias uid mismatch, symlinked and hidden `rootHint`
+and path hints, `SKILL.md -> SKILL.md`, a root of non-directory entries exhausting the
+cap, `maxProjectSkills` overshoot, resumable continuation for entry and project caps, and
+the deliberate root-id collision. The positive suites are unchanged and green:
+all-agents-all-tools, the exec/read/write ladder, image generation removed everywhere, and
+`fs_upload_file` with regional ChatGPT import. `project-candidate.ts`, `project-cursor.ts`,
+`project-list.ts` and `project-scan-types.ts` split the work so every file stays under 200
+lines. The MCP server/toolset advance to `1.5.2` / `2026.08.20.5`; the catalog stays at
+**26 tools** (14 read, 10 write, 2 exec).
+
 ## 2026-08-20 — discovery containment, honest bounds and unique ids (DONE)
 
 A fail-closed review of the discovery release found three things worth blocking on, and

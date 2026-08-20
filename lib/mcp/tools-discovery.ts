@@ -28,7 +28,8 @@ export const DISCOVERY_TOOLS: McpTool[] = [
       "Returns a globally unique id (<rootId>/<name>, so two roots may hold a project of the same name), absolute path, its container root, package name/version and bounded Git branch/head read straight off .git with no shell. " +
       "USE THIS FIRST when the user names a project you have not located — it is one call, needs no shell scope, and its id or path is the input to workflow_start. " +
       "Hidden directories, symlinks, credential paths and directories not owned by the MSO user are excluded. " +
-      "ALWAYS check `scan.truncated`: when true the listing is incomplete and `scan.truncationReasons` says which cap was hit — do not report that a project is absent from a truncated scan.",
+      "ALWAYS check `scan.truncated`: when true the listing is incomplete and `scan.truncationReasons` says which cap was hit — do not report that a project is absent from a truncated scan. " +
+      "Every cap is resumable: pass `scan.continuation.cursor` back as `cursor` to continue, and use `nextOffset`/`hasMore` for ordinary paging within one scan.",
     scope: "read",
     annotations: READ_ONLY,
     limit: { key: "projects.list", max: 30, windowMs: 60_000 },
@@ -36,8 +37,13 @@ export const DISCOVERY_TOOLS: McpTool[] = [
       query: { type: "string", description: "Optional case-insensitive substring matched against the directory name." },
       limit: { type: "number", minimum: 1, maximum: PROJECT_LIMITS.maxPageSize, description: `Page size. Default ${PROJECT_LIMITS.defaultPageSize}.` },
       offset: { type: "number", minimum: 0, description: "Page offset into the deterministic container-then-name ordering. Default 0." },
+      cursor: { type: "string", description: "scan.continuation.cursor from a truncated call, to resume the walk where it stopped." },
     }),
-    run: (a) => listProjects({ query: opt(a, "query"), ...page(a, PROJECT_LIMITS.maxPageSize, PROJECT_LIMITS.defaultPageSize) }),
+    run: (a) => listProjects({
+      query: opt(a, "query"),
+      cursor: opt(a, "cursor"),
+      ...page(a, PROJECT_LIMITS.maxPageSize, PROJECT_LIMITS.defaultPageSize),
+    }),
   },
   {
     name: "skills_list",
@@ -46,7 +52,7 @@ export const DISCOVERY_TOOLS: McpTool[] = [
       "(.mso/skills, .claude/skills, .hermes/skills, .agents/skills, .codex/skills) of every project across every configured container. " +
       "Each row carries the exact catalog id to pass to skills_read — a project skill is <rootId>/<project>/<name>, so two projects may ship the same skill name in the same or different roots — plus trust, source and its project. " +
       "Trust is earned, not assumed: a project skill is only `local` after realpath containment, owner uid and a regular non-symlink SKILL.md. " +
-      "Check `scan.truncated` before concluding a skill does not exist.",
+      "Check `scan.truncated` before concluding a skill does not exist; when it is true, pass `scan.continuation.cursor` back as `cursor` to resume the scan.",
     scope: "read",
     annotations: READ_ONLY,
     limit: { key: "skills.list", max: 30, windowMs: 60_000 },
@@ -56,12 +62,13 @@ export const DISCOVERY_TOOLS: McpTool[] = [
       query: { type: "string", description: "Optional case-insensitive substring matched against id and description." },
       limit: { type: "number", minimum: 1, maximum: SKILL_PAGE_MAX, description: "Page size. Default 100." },
       offset: { type: "number", minimum: 0, description: "Page offset into the id-sorted catalog. Default 0." },
+      cursor: { type: "string", description: "scan.continuation.cursor from a truncated call, to resume the catalog build where it stopped." },
     }),
     run: async (a) => {
       const project = opt(a, "project");
       const trust = opt(a, "trust");
       const query = opt(a, "query")?.toLowerCase();
-      const { skills: all, scan } = await catalogSkillsDetailed();
+      const { skills: all, scan } = await catalogSkillsDetailed({ cursor: opt(a, "cursor") });
       const matched = all.filter((skill) => {
         if (project && !(skill.project?.id === project || skill.project?.path === project || skill.project?.name === project)) return false;
         if (trust && skill.trust !== trust) return false;
@@ -76,13 +83,17 @@ export const DISCOVERY_TOOLS: McpTool[] = [
           .filter((row, i, rows) => rows.findIndex((r) => r.projectId === row.projectId) === i)
         : undefined;
       const { limit, offset } = page(a, SKILL_PAGE_MAX, 100);
+      const pageRows = matched.slice(offset, offset + limit);
+      const hasMore = offset + pageRows.length < matched.length;
       return {
         total: matched.length,
         offset,
         limit,
+        hasMore,
+        ...(hasMore ? { nextOffset: offset + pageRows.length } : {}),
         scan,
         ...(ambiguousProjects ? { ambiguousProjects } : {}),
-        skills: matched.slice(offset, offset + limit).map((skill) => ({
+        skills: pageRows.map((skill) => ({
           id: skill.id,
           name: skill.name,
           description: skill.description,

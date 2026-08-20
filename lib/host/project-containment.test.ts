@@ -179,7 +179,8 @@ describe("project ids are globally unique across roots", () => {
     const first = await listProjects();
     const second = await listProjects();
     expect(first.projects[0].id).toBe(second.projects[0].id);
-    expect(first.projects[0].rootId).toMatch(/^[a-f0-9]{8}$/);
+    // 128 bits, not 32. An 8-hex id had a REAL collision in this fixture space.
+    expect(first.projects[0].rootId).toMatch(/^[a-f0-9]{32}$/);
   });
 
   it("still exposes plain container paths through projectRoots()", async () => {

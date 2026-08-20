@@ -50,7 +50,7 @@ describe("project skill ids are globally unique across roots", () => {
     const [row] = await catalogSkills({ appDir: await temp(), homeDir: await temp(), projects: refs(a) });
     expect(row.project).toBeDefined();
     expect(row.id).toBe(`${row.project!.rootId}/${row.project!.name}/${row.name}`);
-    expect(row.project!.rootId).toMatch(/^[a-f0-9]{8}$/);
+    expect(row.project!.rootId).toMatch(/^[a-f0-9]{32}$/);
     expect(row.project!.id).toBe(`${row.project!.rootId}/${row.project!.name}`);
   });
 

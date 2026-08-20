@@ -4,7 +4,7 @@
 
 ## Cross-repo contract
 
-MSO currently exposes **26 tool names** (server `1.5.1`, toolset `2026.08.20.4`). The gateway manifest still maps **15** of them through literal `x-upstream` strings:
+MSO currently exposes **26 tool names** (server `1.5.2`, toolset `2026.08.20.5`). The gateway manifest still maps **15** of them through literal `x-upstream` strings:
 
 ```json
 { "id": "mso.fs.delete", "x-upstream": "fs_delete" }

@@ -89,9 +89,9 @@ The model reaches trusted skills through the `skills.list`, `skills.search` and 
 every configured project container (each `OS_FS_READ_ROOTS` entry and its `projects/`
 child), from `.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills` and
 `.codex/skills`. A global skill's id is its bare name; a project skill's is
-`<rootId>/<project>/<name>`, where `rootId` is a short hash of the canonical container
-path — so two projects with the same basename in *different* configured roots stay
-distinct, and neither can shadow an operator or official skill. A project skill earns
+`<rootId>/<project>/<name>`, where `rootId` is a 128-bit hash of the canonical container
+path (32 bits collided in practice) — so two projects with the same basename in
+*different* configured roots stay distinct, and neither can shadow an operator or official skill. A project skill earns
 `local` trust only after realpath containment inside its project, ownership by MSO's uid,
 and a regular non-symlink `SKILL.md`; the generic HOME agent roots stay untrusted.
 `skills.read` takes the exact id and refuses an ambiguous bare name rather than guessing.

@@ -41,6 +41,8 @@ export const PROJECT_LIMITS = {
 
 export type AuthorizedRoot = { id: string; configured: string; path: string };
 
+export type { ScanCursor, ScanReport } from "./project-scan-types";
+
 export type ProjectContainer = {
   /** Short sha256 of the canonical container path. The DERIVED `projects/` child gets
    *  its own id on purpose: without it `~/widget` and `~/projects/widget` would share
@@ -50,15 +52,6 @@ export type ProjectContainer = {
   authorizedRootId: string;
   authorizedRoot: string;
   derived: boolean;
-};
-
-export type ScanReport = {
-  truncated: boolean;
-  truncationReasons: string[];
-  scannedRoots: string[];
-  skippedRoots: Array<{ path: string; reason: string }>;
-  /** Entries rejected by containment, hidden-name, symlink or ownership checks. */
-  skippedProjects: number;
 };
 
 export type ProjectRow = {
@@ -75,7 +68,22 @@ export type ProjectRow = {
   git?: { branch?: string; head?: string };
 };
 
-export const shortId = (real: string) => createHash("sha256").update(real).digest("hex").slice(0, 8);
+/**
+ * 128 bits of sha256 over the canonical container path.
+ *
+ * This was 8 hex characters — 32 bits — and a review found a REAL collision in the
+ * fixture space it was tested in: `/tmp/mso-root-50323` and `/tmp/mso-root-125549`
+ * both hashed to `51e156ef`. Two colliding roots holding same-named projects would
+ * have merged back into one row, re-creating the exact bug root-qualified ids exist to
+ * fix. 32 hex characters make that computationally unreachable — and, belt and braces,
+ * nothing DEDUPES on this value: the internal key is the full canonical path (see
+ * `containerKey`), so even a collision cannot merge two containers.
+ */
+export const shortId = (real: string) => createHash("sha256").update(real).digest("hex").slice(0, 32);
+
+/** The internal identity. Always the full canonical path — never the hash — so
+ *  dedupe/precedence can never be decided by a truncated digest. */
+export const containerKey = (real: string) => real;
 
 const currentUid = (): number | undefined => (typeof process.getuid === "function" ? process.getuid() : undefined);
 
@@ -104,6 +112,26 @@ export async function authorizedRoots(): Promise<AuthorizedRoot[]> {
     if (isCredentialPath(real)) continue;
     seen.add(real);
     out.push({ id: shortId(real), configured, path: real });
+  }
+  return out;
+}
+
+/**
+ * EVERY configured root, canonicalized, with NO cap.
+ *
+ * `authorizedRoots()` caps at `maxRoots` because a SCAN has to be bounded. Authorization
+ * is a different question: a root the owner configured is inside the jail whether or not
+ * this call had budget to walk it. Using the capped list as the jail predicate is what
+ * made an explicitly named `rootHint` unresolvable once 12 other roots were configured.
+ */
+export async function configuredRootPaths(): Promise<string[]> {
+  const out: string[] = [];
+  for (const configured of readRootList()) {
+    const real = await fs.realpath(configured).catch(() => null);
+    if (!real || real === "/" || out.includes(real)) continue;
+    if (!(await fs.stat(real).catch(() => null))?.isDirectory()) continue;
+    if (isCredentialPath(real)) continue;
+    out.push(real);
   }
   return out;
 }

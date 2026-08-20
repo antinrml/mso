@@ -17,8 +17,10 @@ The assistant lists/loads only `official`, `verified`, and `local` instructions 
 ## Ids: a project skill cannot shadow anything
 
 A global skill is addressed by its bare **name**. A project is `<rootId>/<name>` and a
-project skill is `<rootId>/<project>/<name>`, where `rootId` is a short sha256 of the
-canonical container path. That makes ids **globally unique**, which the bare
+project skill is `<rootId>/<project>/<name>`, where `rootId` is **128 bits** (32 hex
+characters) of sha256 over the canonical container path — it was 32 bits, and a review
+found a real collision between two `/tmp` roots. Nothing dedupes on the hash either: the
+internal key is the full canonical path. That makes ids **globally unique**, which the bare
 `<project>/<name>` form was not: two *different configured roots* may each hold a
 `widget` shipping `deploy`, and both stay visible, readable and searchable instead of
 one silently winning. The derived `projects/` container gets its own `rootId` for the
@@ -37,7 +39,9 @@ only when all three hold:
 1. **Containment** — the skill directory realpaths back inside its project, so a
    `.claude/skills -> /tmp/attacker` symlink is *discovered*, not followed.
 2. **Ownership** — the skill directory and its `SKILL.md` belong to the uid MSO runs as.
-3. **Shape** — `SKILL.md` is a regular file, not a symlink to somewhere else.
+3. **Shape** — `SKILL.md` is a regular file, not a symlink to somewhere else. The reader
+   is `O_NOFOLLOW` at that exact path, so a `SKILL.md -> other/SKILL.md` link is not an
+   untrusted skill, it is not a skill at all and is dropped from the catalog.
 
 Anything else is cataloged `untrusted`. The generic HOME agent roots keep their existing
 untrusted behaviour; this promotion applies to project-scoped roots only.
@@ -45,13 +49,16 @@ untrusted behaviour; this promotion applies to project-scoped roots only.
 Scans are bounded and say so. Caps: 12 containers, 400 entries per container, 400
 projects, 60 projects scanned for skills, 200 entries per skill root, 300 project
 skills, a 256 KiB `SKILL.md`, and a 4-second wall clock per walk. Directory iteration
-uses `opendir` and stops at the cap rather than reading the whole listing first, and
-every file read goes through one byte-capped `O_NOFOLLOW` reader that checks the cap
-against `fstat` before any bytes move.
+uses `opendir` and stops at the cap rather than reading the whole listing first, **every
+dirent counts against the cap whether or not it is accepted**, the deadline is enforced
+through the per-entry stat/read work, the 300-skill total is enforced inside the
+candidate loop, and every file read goes through one byte-capped `O_NOFOLLOW` reader that
+checks the cap against `fstat` before any bytes move.
 
 Every discovery response carries a **scan report**. `truncated:false` means "this is all
-of it"; hitting a cap sets `truncated:true` and names the reason. Do not conclude a skill
-is absent from a truncated scan.
+of it"; hitting a cap sets `truncated:true`, names the reason, and includes
+`continuation` — pending roots, per-root cursors and an opaque `cursor` to pass back and
+resume. Do not conclude a skill is absent from a truncated scan.
 
 ## Contract
 

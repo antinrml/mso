@@ -1,42 +1,57 @@
 // The project WALK: bounded enumeration of the containers project-containers.ts
-// authorized, plus the truthful report of everything it could not cover.
+// authorized, plus the truthful, RESUMABLE report of everything it could not cover.
 //
-// `truncated:false` means "this is all of it". Hitting a root, entry, project or time
-// cap sets `truncated:true` with a named reason, because a silent slice that claims
-// completeness is how a model ends up telling the owner a project does not exist.
+// Three rules earned the hard way:
+//   1. `truncated:false` means "this is all of it". Any cap sets `truncated:true` with
+//      a named reason — a silent slice that claims completeness is how a model ends up
+//      telling the owner a project does not exist.
+//   2. EVERY dirent counts against the entry cap, accepted or not. Counting only the
+//      entries we kept meant a container of a million regular files still cost a
+//      million iterations before the "400 entry" cap was reached.
+//   3. A cap is only honest if it can be continued. Every cap emits a cursor, and
+//      passing it back resumes where the walk stopped.
 import { promises as fs } from "fs";
 import path from "path";
-import { isCredentialPath, isUnderRoot } from "./paths";
-import { boundedGitMeta, packageMeta } from "./project-meta";
+import { validateProjectChild } from "./project-candidate";
+import { decodeCursor, encodeCursor } from "./project-cursor";
 import {
-  authorizedRoots, ownedByUs, overflowRoots, projectContainers,
-  PROJECT_LIMITS, type ProjectContainer, type ProjectRow, type ScanReport,
+  overflowRoots, projectContainers,
+  PROJECT_LIMITS, type ProjectContainer, type ProjectRow, type ScanReport, type ScanCursor,
 } from "./project-containers";
 
 export {
-  authorizedRoots, containerFor, projectContainers, projectRoots, PROJECT_LIMITS,
+  authorizedRoots, configuredRootPaths, containerFor, projectContainers, projectRoots, shortId, PROJECT_LIMITS,
 } from "./project-containers";
-export type { AuthorizedRoot, ProjectContainer, ProjectRow, ScanReport } from "./project-containers";
+export type { AuthorizedRoot, ProjectContainer, ProjectRow, ScanReport, ScanCursor } from "./project-containers";
+export { decodeCursor, encodeCursor } from "./project-cursor";
 
-type Walk = { dirs: string[]; hitEntryCap: boolean; skipped: number };
+type Walk = { dirs: string[]; entriesVisited: number; hitEntryCap: boolean; skipped: number };
 
 /**
- * Bounded `opendir` iteration. Names are collected into an array capped at
- * `maxEntriesPerRoot`, so a container with a million entries costs a bounded walk and
- * a bounded array rather than one `readdir` that materializes the lot before slicing.
+ * Bounded `opendir` iteration. Every dirent yielded increments the budget, so a
+ * container full of rejected entries costs the cap and no more. `skipEntries` resumes a
+ * previously truncated walk at the same readdir position.
  */
-async function walkContainer(container: ProjectContainer, containers: Set<string>, authorized: string[], deadlineAt: number): Promise<Walk> {
+async function walkContainer(container: ProjectContainer, containerPaths: Set<string>, skipEntries: number, deadlineAt: number): Promise<Walk> {
   const names: string[] = [];
+  let entriesVisited = skipEntries;
+  let seen = 0;
   let hitEntryCap = false;
   let skipped = 0;
   const handle = await fs.opendir(container.path).catch(() => null);
-  if (!handle) return { dirs: [], hitEntryCap: false, skipped: 0 };
+  if (!handle) return { dirs: [], entriesVisited, hitEntryCap: false, skipped: 0 };
   try {
     for await (const entry of handle) {
-      if (names.length >= PROJECT_LIMITS.maxEntriesPerRoot || Date.now() > deadlineAt) { hitEntryCap = true; break; }
-      // isDirectory() is false for a symlink, so a link out of the container is
-      // dropped here rather than realpath-checked (and possibly followed) later.
-      if (!entry.isDirectory() || entry.name.startsWith(".")) { if (!entry.isDirectory()) skipped += 1; continue; }
+      seen += 1;
+      if (seen <= skipEntries) continue;
+      // EVERY dirent costs budget — that is the whole point of counting here rather
+      // than after the accept/reject decision.
+      if (entriesVisited - skipEntries >= PROJECT_LIMITS.maxEntriesPerRoot || Date.now() > deadlineAt) {
+        hitEntryCap = true;
+        break;
+      }
+      entriesVisited += 1;
+      if (!entry.isDirectory() || entry.name.startsWith(".")) { skipped += 1; continue; }
       names.push(entry.name);
     }
   } catch {
@@ -46,18 +61,17 @@ async function walkContainer(container: ProjectContainer, containers: Set<string
 
   const dirs: string[] = [];
   for (const name of names) {
-    const full = path.join(container.path, name);
-    if (containers.has(full) || isCredentialPath(full)) { skipped += 1; continue; }
-    const stat = await fs.lstat(full).catch(() => null);
-    if (!stat?.isDirectory() || stat.isSymbolicLink()) { skipped += 1; continue; }
-    // Defence in depth against a swap between opendir and here: the entry must still
-    // canonicalize to itself, inside its exact container AND inside an authorized root.
-    const real = await fs.realpath(full).catch(() => null);
-    if (real !== full || !isUnderRoot(real, container.path) || !authorized.some((a) => isUnderRoot(real, a))) { skipped += 1; continue; }
-    if (!(await ownedByUs(real))) { skipped += 1; continue; }
-    dirs.push(full);
+    // The deadline is enforced THROUGH the metadata work too, not only in the dirent
+    // loop: 400 lstat+realpath+stat triples on a cold or networked filesystem is where
+    // a slow scan actually spends its time.
+    if (Date.now() > deadlineAt) { hitEntryCap = true; break; }
+    // `~/projects` under `~` is a CONTAINER, not a project inside its parent.
+    if (containerPaths.has(path.join(container.path, name))) { skipped += 1; continue; }
+    const candidate = await validateProjectChild(container, name);
+    if (!candidate.ok) { skipped += 1; continue; }
+    dirs.push(candidate.path);
   }
-  return { dirs, hitEntryCap, skipped };
+  return { dirs, entriesVisited, hitEntryCap, skipped };
 }
 
 export type ProjectDirs = {
@@ -68,88 +82,80 @@ export type ProjectDirs = {
 
 /** The one walk. `listProjectDirs()` is this over every discovered container; an
  *  explicit `rootHint` is this over exactly one. */
-export async function listProjectDirsIn(containers: ProjectContainer[], extraAuthorized: string[] = []): Promise<ProjectDirs> {
+export async function listProjectDirsIn(
+  containers: ProjectContainer[],
+  options: { explicit?: boolean; cursor?: ScanCursor } = {},
+): Promise<ProjectDirs> {
   const deadlineAt = Date.now() + PROJECT_LIMITS.maxScanMs;
-  const authorized = [...(await authorizedRoots()).map((r) => r.path), ...extraAuthorized];
-  const paths = new Set(containers.map((c) => c.path));
   const dirs: Array<{ container: ProjectContainer; dir: string }> = [];
   const reasons: string[] = [];
   const scannedRoots: string[] = [];
-  const skippedRoots = extraAuthorized.length ? [] : await overflowRoots();
+  const skippedRoots = options.explicit ? [] : await overflowRoots();
+  const containerPaths = new Set(containers.map((c) => c.path));
+  const resumeRoots = new Map((options.cursor?.roots ?? []).map((r) => [r.root, r.entriesConsumed]));
+  const skipRoots = new Set(options.cursor?.skipRoots ?? []);
+  const cursors: ScanCursor["roots"] = [];
+  const pendingRoots: string[] = [];
   let skippedProjects = 0;
 
-  if (skippedRoots.length) reasons.push("maxRoots");
+  if (skippedRoots.length) { reasons.push("maxRoots"); pendingRoots.push(...skippedRoots.map((r) => r.path)); }
   for (const container of containers) {
+    if (skipRoots.has(container.path)) continue;
     if (Date.now() > deadlineAt) {
       reasons.push("deadline");
       skippedRoots.push({ path: container.path, reason: "deadline" });
+      pendingRoots.push(container.path);
       continue;
     }
-    const walk = await walkContainer(container, paths, authorized, deadlineAt);
+    const walk = await walkContainer(container, containerPaths, resumeRoots.get(container.path) ?? 0, deadlineAt);
     scannedRoots.push(container.path);
     skippedProjects += walk.skipped;
-    if (walk.hitEntryCap) reasons.push(`maxEntriesPerRoot:${container.path}`);
+    if (walk.hitEntryCap) {
+      reasons.push(`maxEntriesPerRoot:${container.path}`);
+      cursors.push({ root: container.path, entriesConsumed: walk.entriesVisited });
+    }
+    let capped = false;
     for (const dir of walk.dirs) {
-      if (dirs.length >= PROJECT_LIMITS.maxProjects) { reasons.push("maxProjects"); break; }
+      if (dirs.length >= PROJECT_LIMITS.maxProjects) { reasons.push("maxProjects"); capped = true; break; }
       dirs.push({ container, dir });
     }
-    if (reasons.includes("maxProjects")) break;
+    if (capped) {
+      // Resume this container from where its accepted entries stopped, and leave the
+      // remaining containers pending rather than pretending they were covered.
+      cursors.push({ root: container.path, entriesConsumed: walk.entriesVisited - walk.dirs.length + dirs.length });
+      pendingRoots.push(...containers.slice(containers.indexOf(container) + 1).map((c) => c.path));
+      break;
+    }
   }
 
   const truncationReasons = [...new Set(reasons)];
+  const done = [...new Set(scannedRoots)].filter((r) => !cursors.some((c) => c.root === r) && !pendingRoots.includes(r));
   return {
     containers,
     dirs,
-    scan: { truncated: truncationReasons.length > 0, truncationReasons, scannedRoots, skippedRoots, skippedProjects },
+    scan: {
+      truncated: truncationReasons.length > 0,
+      truncationReasons,
+      scannedRoots,
+      skippedRoots,
+      skippedProjects,
+      ...(truncationReasons.length ? {
+        continuation: {
+          pendingRoots: [...new Set(pendingRoots)],
+          cursors,
+          cursorSemantics: "readdir-position" as const,
+          note: "Pass `cursor` back to resume. Positions are readdir order and are valid while the directory is unchanged.",
+          cursor: encodeCursor({ roots: cursors, skipRoots: done }),
+        },
+      } : {}),
+    },
   };
 }
 
 /** Every project directory across every container, in container-then-name order. */
-export async function listProjectDirs(): Promise<ProjectDirs> {
-  return listProjectDirsIn(await projectContainers());
+export async function listProjectDirs(cursor?: ScanCursor): Promise<ProjectDirs> {
+  return listProjectDirsIn(await projectContainers(), { cursor });
 }
 
-export type ListProjectsResult = {
-  roots: string[];
-  containers: Array<{ id: string; path: string; derived: boolean; authorizedRoot: string }>;
-  total: number;
-  offset: number;
-  limit: number;
-  scan: ScanReport;
-  projects: ProjectRow[];
-};
-
-/** Bounded, paginated enumeration. Metadata is read only for the returned PAGE —
- *  `total` counts directories, so a wide box does not pay for 400 package reads. */
-export async function listProjects(options: { query?: string; limit?: number; offset?: number } = {}): Promise<ListProjectsResult> {
-  const { containers, dirs, scan } = await listProjectDirs();
-  const query = options.query?.trim().toLowerCase();
-  const matched = query ? dirs.filter(({ dir }) => path.basename(dir).toLowerCase().includes(query)) : dirs;
-  const limit = Math.min(Math.max(Math.round(options.limit ?? PROJECT_LIMITS.defaultPageSize), 1), PROJECT_LIMITS.maxPageSize);
-  const offset = Math.max(Math.round(options.offset ?? 0), 0);
-  const page = matched.slice(offset, offset + limit);
-  const projects = await Promise.all(page.map(async ({ container, dir }) => {
-    const [pkg, git] = await Promise.all([packageMeta(dir), boundedGitMeta(dir)]);
-    const name = path.basename(dir);
-    return {
-      id: `${container.id}/${name}`,
-      name,
-      path: dir,
-      rootId: container.id,
-      root: container.path,
-      authorizedRoot: container.authorizedRoot,
-      ...(pkg.name ? { packageName: pkg.name } : {}),
-      ...(pkg.version ? { packageVersion: pkg.version } : {}),
-      ...(git.available ? { git: { branch: git.branch, head: git.head?.sha?.slice(0, 12) } } : {}),
-    };
-  }));
-  return {
-    roots: containers.map((c) => c.path),
-    containers: containers.map(({ id, path: p, derived, authorizedRoot }) => ({ id, path: p, derived, authorizedRoot })),
-    total: matched.length,
-    offset,
-    limit,
-    scan,
-    projects,
-  };
-}
+export { listProjects } from "./project-list";
+export type { ListProjectsResult } from "./project-list";

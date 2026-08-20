@@ -46,6 +46,17 @@ export type SkillInfo = {
   };
 };
 
+/** A resumable position in a skill scan. Positional in readdir order, like the project
+ *  walk's cursor: name-ordered resume would require visiting every dirent, which is the
+ *  unbounded walk the entry cap exists to prevent. */
+export type SkillScanCursor = {
+  roots: Array<{ root: string; entriesConsumed: number }>;
+  /** Roots fully covered by the previous page; skipped on resume. */
+  skipRoots: string[];
+  /** Projects already consumed, so a maxProjects/maxProjectSkills cap can be continued. */
+  projectOffset: number;
+};
+
 /** What a catalog build could NOT cover. Mirrors lib/host's ScanReport so the two
  *  discovery surfaces report incompleteness the same way. */
 export type SkillScanReport = {
@@ -53,6 +64,16 @@ export type SkillScanReport = {
   truncationReasons: string[];
   scannedRoots: number;
   scannedProjects: number;
+  /** Present ONLY when truncated. A cap the caller cannot resume is data loss with a
+   *  label on it, so every cap emits a way to continue. */
+  continuation?: {
+    pendingRoots: string[];
+    cursors: Array<{ root: string; entriesConsumed: number }>;
+    pendingProjects: number;
+    cursorSemantics: "readdir-position";
+    note: string;
+    cursor: string;
+  };
 };
 
 export const skillIsExecutableByDefault = (skill: Pick<SkillInfo, "trust">): boolean => skill.trust !== "untrusted";

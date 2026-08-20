@@ -104,8 +104,8 @@ The catalog has a stable server version plus a schema-derived toolset signature.
 
 Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
 
-Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.1` / toolset
-`2026.08.20.4`. `projects_list`, `skills_list` and `skills_read` are the new public
+Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.2` / toolset
+`2026.08.20.5`. `projects_list`, `skills_list` and `skills_read` are the new public
 names in this release; `image_generation_status` and `image_generate` were removed
 (see the migration note below).
 
@@ -127,20 +127,39 @@ when it currently points somewhere legal: accepting it is a TOCTOU bet, because 
 can be repointed between the check and the walk. `/` is never a container — "/" as a read
 root means browse-anywhere, not "every top-level system directory is a project".
 
-Every project candidate must then be a real, non-hidden, non-symlink directory whose
-realpath is still inside its exact container *and* inside an authorized root, owned by
-the uid MSO runs as. Ownership is checked **before** any metadata read, so a directory
-another user controls never reaches the `package.json` or `.git` readers at all.
+**One validator decides, everywhere** (`lib/host/project-candidate.ts`). Enumeration and
+*every* `resolveProjectHint` strategy — path, exact name, alias, package, fuzzy — go
+through it, so a hint can never reach something `projects_list` refuses to show. It
+rejects, in order: a hidden component; a symlinked component (target legal or not — a
+link is not a child of this container); an escape from the container or from every
+authorized root; a credential path; and a directory not owned by the uid MSO runs as.
+Ownership is checked **before** any metadata read, so a directory another user controls
+never reaches the `package.json` or `.git` readers at all. A path hint is validated
+component by component from the container down, because canonicalizing first and checking
+afterwards is exactly what let a symlinked intermediate through.
+
+A caller-supplied `rootHint` gets the same treatment: a symlinked or hidden root is
+refused rather than canonicalized into something the caller never named. It is authorized
+against *every* configured read root rather than the scan-capped subset — naming a root
+never widens the jail, but the jail must not shrink because twelve other roots were
+configured ahead of it.
 
 ### Bounds, and telling the truth about them
 
 Every scan is bounded: 12 containers, 400 entries read per container, 400 projects,
 60 projects scanned for skills, 200 entries per skill root, 300 project skills, and a
 4-second wall clock on each of the two walks. Directory iteration uses `opendir` and
-stops at the cap rather than materializing the whole listing first. Every metadata read
-goes through one byte-capped, `O_NOFOLLOW` reader (`lib/host/bounded-read.ts`): the cap
-is checked against `fstat` *before* any bytes move, so an oversized `package.json`,
-`SKILL.md` or `packed-refs` costs one stat, not its size.
+stops at the cap rather than materializing the whole listing first, and **every dirent
+counts against the cap whether or not it is accepted** — counting only the entries we
+kept meant a container of a million regular files still cost a million iterations before
+the "400 entry" cap was reached. The deadline is enforced *through* the per-entry
+`lstat`/`realpath`/metadata work too, which is where a slow or networked filesystem
+actually spends its time. The overall project-skill cap is enforced inside the candidate
+loop, not merely before each root, so one root cannot carry the total past it.
+
+Every metadata read goes through one byte-capped, `O_NOFOLLOW` reader
+(`lib/host/bounded-read.ts`): the cap is checked against `fstat` *before* any bytes move,
+so an oversized `package.json`, `SKILL.md` or `packed-refs` costs one stat, not its size.
 
 `projects_list`, `skills_list`, `skills_search` and `workflow_start` all return a
 **scan report**. `truncated:false` means "this is all of it"; hitting any cap sets
@@ -149,11 +168,23 @@ is checked against `fstat` *before* any bytes move, so an oversized `package.jso
 and a count of entries rejected by the containment/ownership checks. **Do not conclude a
 project or skill is absent from a truncated scan** — the tool descriptions say so too.
 
+**Every cap is resumable.** A truncated report carries `scan.continuation` with the
+containers still pending, a per-container cursor, and an opaque `cursor` string to pass
+back as the `cursor` argument to `projects_list` / `skills_list`. Cursors are positional
+in readdir order (`cursorSemantics: "readdir-position"`) and are valid while the
+directories are unchanged — making them name-ordered would require visiting every dirent
+to find the next N names, which is the unbounded walk the entry cap exists to prevent.
+Ordinary paging *within* one scan uses `offset`/`limit` with `hasMore`/`nextOffset`.
+
 ### Ids, so nothing shadows anything
 
 A global skill is addressed by bare name. A project is `<rootId>/<name>` and a project
-skill is `<rootId>/<project>/<name>`, where `rootId` is a short sha256 of the canonical
-container path. That makes ids **globally unique**: two configured roots may each hold a
+skill is `<rootId>/<project>/<name>`, where `rootId` is **128 bits** (32 hex characters)
+of sha256 over the canonical container path. It was 32 bits, and a review found a real
+collision — `/tmp/mso-root-50323` and `/tmp/mso-root-125549` both hashed to `51e156ef` —
+which would have merged two roots' same-named projects back into one row. Belt and
+braces, nothing dedupes on the hash: the internal key is the full canonical path, so even
+a collision cannot merge two containers. That makes ids **globally unique**: two configured roots may each hold a
 `widget` shipping `deploy`, and both stay visible, readable and searchable. The derived
 `projects/` container gets its own `rootId` for the same reason, so `~/widget` and
 `~/projects/widget` cannot collide either. Within one project, `.mso/skills` outranks the
@@ -185,6 +216,14 @@ back *inside* its project; the directory and its `SKILL.md` are owned by MSO's u
 `SKILL.md` is a regular file, not a symlink. Otherwise it is cataloged `untrusted` —
 metadata visible, instructions withheld until the operator reviews it and moves it into
 `~/.mso/skills`. The generic HOME agent roots keep their existing untrusted behaviour.
+
+The `SKILL.md` reader is `O_NOFOLLOW` **at the supplied path**, not at a canonicalized
+substitute. It previously realpath'd first and opened the *target*, so a
+`SKILL.md -> other/SKILL.md` symlink passed the basename check and was read — the nofollow
+promise enforced against a path the caller never gave. A symlinked `SKILL.md` is now not a
+skill at all: it is dropped from the catalog rather than listed as untrusted. Parent
+containment is validated separately, precisely so the final component is never dragged
+through `realpath` again.
 
 `workflow_start` and `skills_search` search this unified catalog; every skill hit carries
 its `project`, and the bootstrap carries a `discovery.complete` flag plus a

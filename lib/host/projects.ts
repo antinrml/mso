@@ -2,8 +2,9 @@ import { promises as fs } from "fs";
 import path from "path";
 import { normalizeProjectKey, projectAliasesFor, projectAliasTarget } from "./project-aliases";
 import { boundedGitMeta, fullGitMeta, packageMeta } from "./project-meta";
-import { isUnderRoot, resolveReadable } from "./paths";
-import { containerFor, listProjectDirsIn, projectContainers, type ProjectContainer } from "./project-roots";
+import { homeDir, isUnderRoot } from "./paths";
+import { validateProjectChild, validateProjectDescendant, validateRootHint } from "./project-candidate";
+import { configuredRootPaths, containerFor, listProjectDirsIn, projectContainers, type ProjectContainer } from "./project-roots";
 
 export type ProjectResolution = {
   hint: string;
@@ -27,32 +28,33 @@ async function resolutionFor(container: ProjectContainer, dir: string, hint: str
   };
 }
 
-/**
- * The exact-name / alias probe. It must refuse exactly what `projects_list` refuses,
- * or a hint quietly reaches a hidden directory or walks a symlink that enumeration
- * would never have shown — resolving through `resolveReadable` alone only proves the
- * TARGET is inside a read root, not that the ENTRY is a real child of this container.
- */
-async function probeExactChild(container: ProjectContainer, name: string): Promise<string | null> {
-  if (!name || name.startsWith(".") || name.includes("/") || name.includes("\\")) return null;
-  const full = path.join(container.path, name);
-  const stat = await fs.lstat(full).catch(() => null);
-  if (!stat?.isDirectory() || stat.isSymbolicLink()) return null;
-  const real = await fs.realpath(full).catch(() => null);
-  if (real !== full || !isUnderRoot(real, container.path)) return null;
-  // The container itself came from an authorized root (or an explicit, readable
-  // rootHint), so containment there is the jail check.
-  return full;
+function expandHome(p: string): string {
+  const h = homeDir();
+  if (p === "~") return h;
+  if (p.startsWith("~/")) return path.join(h, p.slice(2));
+  return path.resolve(p);
 }
 
-/** The containers a hint may resolve inside. An explicit `rootHint` wins: the caller
- *  named that root, so it is used even when the global container list is at its cap —
- *  it still has to pass `resolveReadable`, so it is inside the read jail either way. */
+/**
+ * The containers a hint may resolve inside. An explicit `rootHint` wins: the caller
+ * named that root, so it is used even when the global container list is at its cap.
+ *
+ * It is validated with the SAME rules as a project entry — a symlinked or hidden
+ * rootHint is refused rather than canonicalized into something the caller never named,
+ * which is what `resolveReadable()` did. It must also still sit inside an authorized
+ * read root, so naming a root never widens the jail.
+ */
 async function containersFor(rootHint?: string): Promise<ProjectContainer[]> {
   if (!rootHint) return projectContainers();
-  const real = await resolveReadable(rootHint).catch(() => null);
-  if (!real || !(await fs.stat(real).catch(() => null))?.isDirectory()) return [];
-  return [containerFor(real)];
+  const absolute = expandHome(rootHint);
+  const validated = await validateRootHint(absolute);
+  if (!validated.ok) return [];
+  // Checked against EVERY configured root, not the scan-capped subset: naming a root
+  // must never widen the jail, but the jail must not shrink just because 12 other roots
+  // are configured ahead of it.
+  const authorized = await configuredRootPaths();
+  if (!authorized.some((root) => isUnderRoot(validated.path, root))) return [];
+  return [containerFor(validated.path)];
 }
 
 /**
@@ -72,13 +74,17 @@ export async function resolveProjectHint(hint: string, rootHint?: string): Promi
 
   const pathHint = raw.startsWith("projects/") ? `~/${raw}` : raw;
   if (/^(?:~\/|\/|\.\.?\/)/.test(pathHint)) {
-    const resolved = await resolveReadable(pathHint).catch(() => null);
-    const isDir = resolved ? (await fs.stat(resolved).catch(() => null))?.isDirectory() === true : false;
-    // With an explicit rootHint a path hint may not leave that root — otherwise
-    // `../elsewhere` would silently escape the root the caller scoped the search to.
-    const owner = isDir ? containers.find((c) => isUnderRoot(resolved!, c.path)) : undefined;
-    if (isDir && (!rootHint || owner)) return resolutionFor(owner ?? containerFor(resolved!), resolved!, raw, "path");
-    if (rootHint && isDir && !owner) return null;
+    // A path hint gets the SAME component-by-component validation an enumerated entry
+    // gets — hidden, symlinked or foreign-uid components are refused at every depth,
+    // rather than canonicalized away by a single resolveReadable() call.
+    const absolute = expandHome(pathHint);
+    for (const container of containers) {
+      if (!isUnderRoot(absolute, container.path)) continue;
+      const candidate = await validateProjectDescendant(container, absolute);
+      if (candidate.ok) return resolutionFor(container, candidate.path, raw, "path");
+      return null; // it belongs to this container and was refused; do not try a wider one
+    }
+    return null;
   }
 
   const query = normalizeProjectKey(raw);
@@ -89,15 +95,14 @@ export async function resolveProjectHint(hint: string, rootHint?: string): Promi
   const directName = aliasTarget ?? (/^[a-z0-9._-]+$/i.test(raw) ? raw : undefined);
   if (directName) {
     for (const container of containers) {
-      const candidate = await probeExactChild(container, directName);
-      if (candidate) return resolutionFor(container, candidate, raw, aliasTarget ? "alias" : "name");
+      const candidate = await validateProjectChild(container, directName);
+      if (candidate.ok) return resolutionFor(container, candidate.path, raw, aliasTarget ? "alias" : "name");
     }
   }
 
-  // Package/fuzzy runs over the SAME containers the exact probe used — including an
-  // explicit rootHint that is absent from the globally capped list. Filtering a global
-  // walk by root was the bug: a named-but-uncapped root could never match here.
-  const { dirs } = await listProjectDirsIn(containers, rootHint ? containers.map((c) => c.path) : []);
+  // Package/fuzzy runs over the SAME containers — and therefore the same validator —
+  // the exact probe used, including an explicit rootHint absent from the capped list.
+  const { dirs } = await listProjectDirsIn(containers, { explicit: Boolean(rootHint) });
   const candidates = await Promise.all(dirs.map(async ({ container, dir }) => {
     const name = path.basename(dir);
     const meta = await packageMeta(dir);

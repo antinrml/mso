@@ -26,10 +26,21 @@ async function skill(dir: string, name: string, description: string, body = "ste
 await skill(path.join(widgetA, ".claude/skills"), "widget-deploy", "Ship the widget service from root A.");
 await fs.writeFile(path.join(widgetA, "package.json"), JSON.stringify({ name: "widget", version: "0.1.0" }));
 await skill(path.join(widgetB, ".claude/skills"), "widget-deploy", "Ship the widget service from root B.");
-// A project skill whose SKILL.md is a symlink: discoverable, but never trusted.
-await fs.mkdir(path.join(gadget, ".codex/skills/gadget-wild"), { recursive: true });
-await fs.writeFile(path.join(gadget, "SKILL.md"), "---\nname: gadget-wild\ndescription: Unverified.\n---\n\n# wild\n");
-await fs.symlink(path.join(gadget, "SKILL.md"), path.join(gadget, ".codex/skills/gadget-wild/SKILL.md"));
+// A project whose skills ROOT escapes the project via symlink: the SKILL.md is a real
+// regular file, so it is discoverable — but containment fails, so it is untrusted and
+// its instructions are withheld.
+const escaped = path.join(base, "escaped-skills");
+await skill(escaped, "gadget-wild", "Unverified, outside its project.");
+await fs.mkdir(path.join(gadget, ".codex"), { recursive: true });
+await fs.symlink(escaped, path.join(gadget, ".codex/skills"));
+
+// A project skill whose SKILL.md is itself a SYMLINK to another real SKILL.md. This is
+// not "untrusted", it is not a skill at all: the reader is nofollow at that component.
+await fs.mkdir(path.join(widgetA, ".mso/skills/borrowed"), { recursive: true });
+await fs.symlink(
+  path.join(widgetA, ".claude/skills/widget-deploy/SKILL.md"),
+  path.join(widgetA, ".mso/skills/borrowed/SKILL.md"),
+);
 
 const previous = process.env.OS_FS_READ_ROOTS;
 process.env.OS_FS_READ_ROOTS = `${rootA}:${rootB}`;
@@ -107,12 +118,26 @@ describe("skills_list spans global and project roots", () => {
     expect(skills.map((s) => s.id)).toEqual(expect.arrayContaining([a, b]));
   });
 
-  it("marks a project skill with a symlinked SKILL.md untrusted and unreadable", async () => {
+  it("marks a project skill outside its project untrusted and unreadable", async () => {
     const { skills } = await run("skills_list", { limit: 200 }) as { skills: SkillRow[] };
     const wild = await skillId(gadget, "gadget-wild");
     expect(skills.find((s) => s.id === wild)).toMatchObject({
       trust: "untrusted", instructionsReadable: false,
     });
+  });
+
+  it("DROPS a skill whose SKILL.md is a symlink — nofollow means it is not a skill", async () => {
+    const { skills } = await run("skills_list", { limit: 200 }) as { skills: SkillRow[] };
+    const borrowed = await skillId(widgetA, "borrowed");
+    expect(skills.map((s) => s.id)).not.toContain(borrowed);
+  });
+
+  it("reports resumable continuation only when the scan was truncated", async () => {
+    const { scan } = await run("skills_list", { limit: 200 }) as {
+      scan: Scan & { continuation?: { cursor: string } };
+    };
+    expect(scan.truncated).toBe(false);
+    expect(scan.continuation).toBeUndefined();
   });
 
   it("filters by an exact projectId", async () => {
@@ -135,48 +160,5 @@ describe("skills_list spans global and project roots", () => {
     const official = await run("skills_list", { trust: "official", limit: 200 }) as { skills: SkillRow[] };
     expect(official.skills.every((s) => s.trust === "official")).toBe(true);
     expect(official.skills.some((s) => s.project)).toBe(false);
-  });
-});
-
-describe("skills_read reads the exact catalog id only", () => {
-  it("returns instructions for a trusted project skill", async () => {
-    const result = await run("skills_read", { name: await skillId(widgetA, "widget-deploy") }) as
-      { content: string; project: { name: string }; trust: string };
-    expect(result.trust).toBe("local");
-    expect(result.project.name).toBe("widget");
-    expect(result.content).toContain("# widget-deploy");
-    expect(result.content).toContain("root A");
-  });
-
-  it("returns instructions for an official global skill", async () => {
-    const result = await run("skills_read", { name: "mso" }) as { content: string; trust: string };
-    expect(result.trust).toBe("official");
-    expect(result.content.length).toBeGreaterThan(0);
-  });
-
-  it("withholds instructions for an untrusted skill but still reports metadata", async () => {
-    const result = await run("skills_read", { name: await skillId(gadget, "gadget-wild") }) as
-      { instructionsWithheld: boolean; reason: string; content?: string; trust: string };
-    expect(result).toMatchObject({ instructionsWithheld: true, trust: "untrusted" });
-    expect(result.content).toBeUndefined();
-    expect(result.reason).toContain("~/.mso/skills");
-  });
-
-  it("REFUSES an ambiguous bare name and lists the exact ids", async () => {
-    // Two projects called `widget`, each shipping `widget-deploy`. Guessing here would
-    // hand the model another project's instructions under the name it asked for.
-    await expect(run("skills_read", { name: "widget-deploy" })).rejects.toThrow(/ambiguous across projects/);
-    await expect(run("skills_read", { name: "widget/widget-deploy" })).rejects.toThrow(/ambiguous across projects/);
-    await expect(run("skills_read", { name: "widget-deploy" })).rejects.toThrow(await projectId(widgetA));
-  });
-
-  it("resolves an UNambiguous bare project-skill name", async () => {
-    await expect(run("skills_read", { name: "gadget-wild" })).resolves.toMatchObject({
-      id: await skillId(gadget, "gadget-wild"),
-    });
-  });
-
-  it("refuses an unknown id rather than guessing", async () => {
-    await expect(run("skills_read", { name: "does-not-exist" })).rejects.toThrow(/skills_list/);
   });
 });

@@ -15,10 +15,9 @@
 // Anything else is cataloged as `untrusted`: visible for inspection, instructions
 // withheld. The generic HOME agent roots (~/.claude/skills, …) keep their existing
 // untrusted behaviour — this promotion is for project-scoped roots only.
-import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { listProjectDirs } from "@/lib/host/project-roots";
+import { listProjectDirs, shortId } from "@/lib/host/project-roots";
 import { SKILL_FILE, SKILL_SCAN_LIMITS, type ProjectRef, type SkillTrust } from "./catalog-types";
 
 /** Where a project may keep skills. `.mso/skills` is the explicit MSO root — the
@@ -53,7 +52,9 @@ function contains(parent: string, child: string): boolean {
 /** The same short-hash identity `lib/host/project-roots` assigns a container, so a
  *  skill's `project.rootId` and a `projects_list` row's `rootId` are the same value. */
 export function projectRefFor(dir: string, containerPath: string): ProjectRef {
-  const rootId = createHash("sha256").update(containerPath).digest("hex").slice(0, 8);
+  // The SAME function lib/host uses, not a second copy of the recipe. A local
+  // reimplementation is how the two sides silently drifted to different widths.
+  const rootId = shortId(containerPath);
   const name = path.basename(dir);
   return { id: `${rootId}/${name}`, name, path: dir, rootId };
 }
