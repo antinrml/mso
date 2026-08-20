@@ -1,11 +1,10 @@
 import { writeFileGuarded, makeDir, remove, move, copy, runCommand } from "@/lib/host";
-import { setCamoufoxEnabled } from "@/lib/camoufox/service";
-import { performManagedAppAction } from "@/lib/managed-apps/manager";
-import { isManagedAppId } from "@/lib/managed-apps/catalog";
-import { MANAGED_APP_ACTIONS, type ManagedAppAction } from "@/lib/managed-apps/types";
 import { type McpTool, str, opt, S, PATH_P } from "./tool-kit";
+import { importOpenAiProvidedFile } from "./openai-file-upload";
 import { READ_TOOLS } from "./tools-read";
+import { DISCOVERY_TOOLS } from "./tools-discovery";
 import { LEARNING_TOOLS } from "./tools-learning";
+import { POWER_TOOLS } from "./tools-power";
 
 // The write and exec tiers. Each carries an `audit` descriptor — the dispatcher,
 // not the tool, writes the trail, because these call lib/host directly and so
@@ -31,6 +30,40 @@ const MUTATE_TOOLS: McpTool[] = [
       content: typeof a.content === "string" ? a.content : "",
       expectedSha256: opt(a, "expected_sha256"),
     })) }),
+  },
+  {
+    name: "fs_upload_file",
+    limit: { key: "fs.upload", max: 20, windowMs: 60_000 },
+    audit: { action: "fs.upload" as const, targetArg: "dest" },
+    description:
+      "Import one ChatGPT conversation/generated file into an existing VPS directory. " +
+      "ChatGPT binds the top-level file parameter through openai/fileParams, MSO downloads the temporary OpenAI URL immediately, validates the host/type/size, writes within OS_FS_WRITE_ROOTS, and returns byte count plus SHA-256. Existing same-name files may be replaced.",
+    scope: "write",
+    annotations: { destructiveHint: true, openWorldHint: true },
+    meta: { "openai/fileParams": ["file"] },
+    inputSchema: S({
+      file: {
+        type: "object",
+        description: "ChatGPT-provided file reference. Select or attach exactly one generated/uploaded image.",
+        properties: {
+          download_url: { type: "string" },
+          file_id: { type: "string" },
+          mime_type: { type: "string" },
+          file_name: { type: "string" },
+          name: { type: "string" },
+          size: { type: "number" },
+        },
+        required: ["download_url", "file_id"],
+        additionalProperties: true,
+      },
+      dest: { type: "string", description: "Existing destination directory on the VPS, within OS_FS_WRITE_ROOTS." },
+      filename: { type: "string", description: "Optional safe destination basename; defaults to the ChatGPT filename." },
+    }, ["file", "dest"]),
+    run: async (a) => importOpenAiProvidedFile({
+      file: a.file,
+      dest: str(a, "dest"),
+      filename: opt(a, "filename"),
+    }),
   },
   {
     name: "fs_mkdir",
@@ -74,36 +107,6 @@ const MUTATE_TOOLS: McpTool[] = [
   },
 
   {
-    name: "apps_power",
-    limit: { key: "managed-app", max: 12, windowMs: 60_000, keyArg: "id" },
-    audit: { action: "managed-app.action" as const, targetArg: "id" },
-    description:
-      "Start, stop, restart or back up a managed application on the VPS. Bounded to the known apps and " +
-      "those four verbs — restarting a daemon should not require handing over a shell, so this sits at " +
-      "write scope rather than exec. Check apps_list or apps_logs first.",
-    scope: "write",
-    annotations: { destructiveHint: true },
-    // The verb list is READ from MANAGED_APP_ACTIONS, never retyped. It was retyped,
-    // and `backup` — a real action with a real route, taken automatically before
-    // every update — was missing from the enum AND from the guard below, so an MCP
-    // client could not take one and was told the tool only did three things.
-    inputSchema: S({
-      id: { type: "string", description: "Managed app id from apps_list." },
-      action: { type: "string", enum: [...MANAGED_APP_ACTIONS], description: MANAGED_APP_ACTIONS.join(" | ") },
-    }, ["id", "action"]),
-    run: (a) => {
-      const id = str(a, "id");
-      const action = str(a, "action");
-      if (!isManagedAppId(id)) throw new Error(`unknown managed application "${id}" — call apps_list for valid ids`);
-      if (!(MANAGED_APP_ACTIONS as readonly string[]).includes(action))
-        throw new Error(`action must be one of ${MANAGED_APP_ACTIONS.join(", ")}`);
-      // `{ app }`, matching POST /api/v1/managed-apps/[id]. Same capability, same
-      // envelope — a client that learned the shape from the CLI or the route must
-      // not have to learn a second one here.
-      return performManagedAppAction(id, action as ManagedAppAction).then((app) => ({ app }));
-    },
-  },
-  {
     name: "exec_run",
     limit: { key: "exec", max: 60, windowMs: 60_000 },
     audit: {
@@ -132,21 +135,6 @@ const MUTATE_TOOLS: McpTool[] = [
     }, ["command"]),
     run: (a) => runCommand(str(a, "command"), opt(a, "cwd")),
   },
-  {
-    name: "browser_power",
-    limit: { key: "camoufox", max: 12, windowMs: 60_000 },
-    audit: { action: "camoufox.power" as const, targetArg: "on" },
-    description:
-      "Start or stop the Camoufox browser session on the VPS. Starting boots a real Firefox on a headless " +
-      "X display; the session self-terminates after 2h. Stop it when done — it holds a live logged-in profile.",
-    scope: "exec",
-    annotations: { destructiveHint: true },
-    inputSchema: S({ on: { type: "boolean", description: "true = start, false = stop." } }, ["on"]),
-    run: async (a) => {
-      const s = await setCamoufoxEnabled(a.on === true);
-      return { installed: s.installed, running: s.running, autostart: s.enabled };
-    },
-  },
 ];
 
 const WORKFLOW_CONTEXT_EXEMPT = new Set(["skills_search", "workflow_start", "workflow_cancel", "workflow_finish"]);
@@ -165,6 +153,6 @@ const withWorkflowContext = (tool: McpTool): McpTool => WORKFLOW_CONTEXT_EXEMPT.
   },
 });
 
-export const TOOLS: McpTool[] = [...READ_TOOLS, ...LEARNING_TOOLS, ...MUTATE_TOOLS].map(withWorkflowContext);
+export const TOOLS: McpTool[] = [...READ_TOOLS, ...DISCOVERY_TOOLS, ...LEARNING_TOOLS, ...MUTATE_TOOLS, ...POWER_TOOLS].map(withWorkflowContext);
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 export type { McpTool } from "./tool-kit";

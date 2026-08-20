@@ -4,7 +4,7 @@
 
 ## Cross-repo contract
 
-MSO currently exposes **22 tool names**. The gateway manifest still maps **15** of them through literal `x-upstream` strings:
+MSO currently exposes **26 tool names** (server `1.5.3`, toolset `2026.08.20.6`). The gateway manifest still maps **15** of them through literal `x-upstream` strings:
 
 ```json
 { "id": "mso.fs.delete", "x-upstream": "fs_delete" }
@@ -23,7 +23,9 @@ A consumer CI should compare the upstream names it pins against this runtime man
 
 ## What the gateway exposes
 
-The gateway has not yet synchronized the seven tools added or deliberately withheld from its 15-action manifest:
+**Removed 2026-08-20 — a gateway that pinned either name must drop it:** `image_generation_status` and `image_generate`. MSO no longer generates images on any surface (a GPT client already carries its own; a second tool for the same job made the model choose wrong). Neither name was in the gateway's 15, so nothing breaks there today. `fs_upload_file` is unchanged and remains how a conversation-generated file reaches the VPS.
+
+The gateway has not yet synchronized the tools added or deliberately withheld from its 15-action manifest:
 
 | Not mapped in gateway | Reason/status |
 |---|---|
@@ -34,6 +36,10 @@ The gateway has not yet synchronized the seven tools added or deliberately withh
 | `workflow_start` | added later; starts the actor-scoped task lease |
 | `workflow_cancel` | added later; exact-id recovery for an interrupted run |
 | `workflow_finish` | added later; exact-id verified recipe boundary |
+| `fs_upload_file` | added later; ChatGPT `openai/fileParams` binding the gateway does not model |
+| `projects_list` | added 2026-08-20; enumerates every configured project container |
+| `skills_list` | added 2026-08-20; global + per-project skill catalog with trust |
+| `skills_read` | added 2026-08-20; exact-catalog-id SKILL.md read, trusted tiers only |
 
 `fs_delete` and `apps_power` remain the gateway's highest-risk mapped actions and should keep its human approval policy. The gateway's policy layer supplements, never replaces, MSO's scope checks, path jail, audit trail and per-operation rate limits.
 

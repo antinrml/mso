@@ -59,16 +59,19 @@ Picked per token, on the consent screen, capped by `OS_MCP_MAX_SCOPE`. The highe
 
 | Scope | Tools |
 |---|---|
-| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `skills_search` `screen_capture` `browser_status` |
-| `write` | + `workflow_start` `workflow_cancel` `workflow_finish` `fs_write` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
+| `read` | `fs_list` `fs_read` `fs_search` `fs_usage` `sys_stats` `sys_processes` `apps_list` `apps_logs` `projects_list` `skills_list` `skills_read` `skills_search` `screen_capture` `browser_status` |
+| `write` | + `workflow_start` `workflow_cancel` `workflow_finish` `fs_write` `fs_upload_file` `fs_mkdir` `fs_move` `fs_copy` `fs_delete` `apps_power` |
 | `exec` | + `exec_run` `browser_power` |
 
 Alfa — the in-app assistant — has the same host capabilities under dot.case names,
 and `lib/mcp/parity.test.ts` fails if one surface gains a tool the other lacks
 without a written reason. `skills_search` maps to Alfa's `skills.search`.
-`screen_capture`, `workflow_start`, `workflow_cancel` and `workflow_finish` are explicitly MCP-only:
-the external connector needs visual proof and an actor-scoped task boundary, while
-Alfa already runs inside the rendered shell and owns an in-app run boundary. The
+`screen_capture`, `projects_list`, `fs_upload_file`, `workflow_start`, `workflow_cancel` and
+`workflow_finish` are explicitly MCP-only: the external connector needs visual proof,
+an explicit project enumeration and an actor-scoped task boundary, while Alfa already
+runs inside the rendered shell, has the Files window and owns an in-app run boundary.
+`skills_list` and `skills_read` now exist on BOTH surfaces — capability discovery is
+global by design, and withholding it from the connector was scoping nobody chose. The
 two catalogs stay separate on purpose (different transport and guard) but may not
 drift by accident.
 
@@ -87,17 +90,170 @@ restarting a daemon does not require handing one over either.
 `tools/list` is filtered by the token's scope, and `tools/call` re-checks it — a
 client that calls a tool it was never shown still gets refused.
 
+**The scope ladder is the ONLY thing that narrows the catalog.** An `exec` token sees
+and can call every public tool; `read` and `write` are strict prefixes of it. There is
+no per-project, per-agent, per-workflow or per-client tool filter, and there must not
+be one — which tools EXIST is not a security control here, the ladder plus `lib/host`'s
+path jail and command filter are. Every operational tool carries an OPTIONAL
+`workflow_id`: it correlates steps, it never gates a capability. `lib/mcp/global-tools.test.ts`
+pins all of this, including that a token's visible list matches its callable set exactly.
+
 ## Toolset version, hash and action refresh
 
 The catalog has a stable server version plus a schema-derived toolset signature. It is returned by public `GET /mcp`, MCP `initialize`, scoped `tools/list`, and the authenticated Settings → MCP endpoint. The signature changes when a name, description, input schema, scope, annotation or per-operation limit changes—not only when the tool count changes.
 
 Settings → MCP shows the current version/hash/count and stores a browser-local acknowledgement when the operator marks ChatGPT refreshed. A later signature change becomes an explicit stale-snapshot warning. This does not mutate ChatGPT remotely; it makes the required refresh visible instead of relying on memory.
 
-Current catalog: **22 tools**. `workflow_cancel` is the only new public name in this release.
+Current catalog: **26 tools** (14 read, 10 write, 2 exec), server `1.5.3` / toolset
+`2026.08.20.6`. `projects_list`, `skills_list` and `skills_read` are the new public
+names in this release; `image_generation_status` and `image_generate` were removed
+(see the migration note below).
 
 ## Safe text inspection and overwrite
 
 `fs_read` returns `content`, UTF-8 byte count and SHA-256. For an existing file, pass that digest as `fs_write.expected_sha256`; the write is refused if another process changed the file since inspection. Omitting it preserves create/legacy overwrite behaviour. Workflow memory stores the path, never the content or digest.
+
+## Global project and skill discovery
+
+MSO drives **all** of the owner's projects, not the one it happens to live in.
+
+### Which directories count, and why a symlink never does
+
+Each `OS_FS_READ_ROOTS` entry is canonicalized ONCE into an **authorized root**. A
+container — a directory that holds projects — is an authorized root, plus its
+`projects/` child *only when* that child is a real, non-symlink directory whose
+realpath stays inside that same root. A symlinked `projects/` is refused outright, even
+when it currently points somewhere legal: accepting it is a TOCTOU bet, because the link
+can be repointed between the check and the walk. `/` is never a container — "/" as a read
+root means browse-anywhere, not "every top-level system directory is a project".
+
+**One validator decides, everywhere** (`lib/host/project-candidate.ts`). Enumeration and
+*every* `resolveProjectHint` strategy — path, exact name, alias, package, fuzzy — go
+through it, so a hint can never reach something `projects_list` refuses to show. It
+rejects, in order: a hidden component; a symlinked component (target legal or not — a
+link is not a child of this container); an escape from the container or from every
+authorized root; a credential path; and a directory not owned by the uid MSO runs as.
+Ownership is checked **before** any metadata read, so a directory another user controls
+never reaches the `package.json` or `.git` readers at all. A path hint is validated
+component by component from the container down, because canonicalizing first and checking
+afterwards is exactly what let a symlinked intermediate through.
+
+A caller-supplied `rootHint` gets the same treatment: a symlinked root is refused rather
+than canonicalized into something the caller never named, and **any** dot-prefixed
+component below the authorized root is refused — measured relative to that root, so a
+checkout legitimately living under `~/.claude/worktrees` still works while nothing may
+hide beneath it. It is authorized against *every* configured read root rather than the
+scan-capped subset: naming a root never widens the jail, but the jail must not shrink
+because twelve other roots were configured ahead of it.
+
+**An exact `<rootId>/<project-name>` is resolved first**, before alias, package or fuzzy
+matching. The `rootId` maps to exactly one container across every configured root, the
+project name is then checked by the shared validator, and an unknown `rootId` is refused
+outright. Falling through to fuzzy matching is what made two same-named projects
+unaddressable: asking for the second one's id returned the first.
+
+### Bounds, and telling the truth about them
+
+Every scan is bounded: 12 containers, 400 entries read per container, 400 projects,
+60 projects scanned for skills, 200 entries per skill root, 300 project skills, and a
+4-second wall clock on each of the two walks. Directory iteration uses `opendir` and
+stops at the cap rather than materializing the whole listing first, and **every dirent
+counts against the cap whether or not it is accepted** — counting only the entries we
+kept meant a container of a million regular files still cost a million iterations before
+the "400 entry" cap was reached. The deadline is enforced *through* the per-entry
+`lstat`/`realpath`/metadata work too, which is where a slow or networked filesystem
+actually spends its time. The overall project-skill cap is enforced inside the candidate
+loop, not merely before each root, so one root cannot carry the total past it.
+
+Every metadata read goes through one byte-capped, `O_NOFOLLOW` reader
+(`lib/host/bounded-read.ts`): the cap is checked against `fstat` *before* any bytes move,
+so an oversized `package.json`, `SKILL.md` or `packed-refs` costs one stat, not its size.
+
+`projects_list`, `skills_list`, `skills_search` and `workflow_start` all return a
+**scan report**. `truncated:false` means "this is all of it"; hitting any cap sets
+`truncated:true` and names the reason (`maxRoots`, `maxEntriesPerRoot:<path>`,
+`maxProjects`, `maxProjectSkills`, `deadline`), alongside `scannedRoots`, `skippedRoots`
+and a count of entries rejected by the containment/ownership checks. **Do not conclude a
+project or skill is absent from a truncated scan** — the tool descriptions say so too.
+
+**Every cap is losslessly resumable.** Both walks are a single streaming pass: each dirent
+is validated as it arrives and the recorded position advances **only after** that entry is
+fully processed, so a cap or deadline that trips mid-entry re-reads it rather than skipping
+it. A truncated report carries `scan.continuation` with the pending roots and an opaque
+`cursor` to pass back.
+
+The project position is `(rootIndex, containerIndex, entriesConsumed)`, where `rootIndex`
+indexes the **uncapped** configured-root list — that offset is what lets `maxRoots` advance
+at all; without it every call rebuilt the same capped prefix and a 13th configured root was
+unreachable forever. The skill cursor records the roots that finished *cleanly*, the
+projects whose every root finished cleanly, and the exact dirent position inside the one
+root that was interrupted; a partially consumed project is re-listed and resumed, never
+marked done.
+
+Cursors are raw readdir stream positions (`cursorSemantics: "readdir-stream-position"`)
+and are valid while the directories are unchanged — name-ordered cursors would require
+visiting every dirent to find the next N names, which is the unbounded walk the entry cap
+exists to prevent. Rows inside a returned page are sorted for presentation; *which* rows
+land in a truncated page is stream order.
+
+There are deliberately **two** paginations and a client needs both: `hasMore`/`nextOffset`
+walks the rows of one scan, `scan.continuation.cursor` resumes the scan itself past a cap.
+
+### Ids, so nothing shadows anything
+
+A global skill is addressed by bare name. A project is `<rootId>/<name>` and a project
+skill is `<rootId>/<project>/<name>`, where `rootId` is **128 bits** (32 hex characters)
+of sha256 over the canonical container path. It was 32 bits, and a review found a real
+collision — `/tmp/mso-root-50323` and `/tmp/mso-root-125549` both hashed to `51e156ef` —
+which would have merged two roots' same-named projects back into one row. Belt and
+braces, nothing dedupes on the hash: the internal key is the full canonical path, so even
+a collision cannot merge two containers. That exact pair is an end-to-end regression
+(`lib/mcp/collision-e2e.test.ts`) asserting that `projects_list`, `skills_list`,
+`skills_read`, `skills_search` and `workflow_start` each return the **second** project
+when handed the second id. That makes ids **globally unique**: two configured roots may each hold a
+`widget` shipping `deploy`, and both stay visible, readable and searchable. The derived
+`projects/` container gets its own `rootId` for the same reason, so `~/widget` and
+`~/projects/widget` cannot collide either. Within one project, `.mso/skills` outranks the
+agent-tool roots; every project root ranks below every global root, so an operator or
+official skill can never be displaced.
+
+`skills_read` takes the exact id. A bare name is accepted only when it is unambiguous —
+when several projects ship it, the call is **refused** and lists the exact ids rather
+than handing back another project's instructions under the name you asked for.
+`skills_list`'s `project` filter accepts an exact `projectId`, an absolute path, or a
+bare name; a bare name matching several roots keeps them all and reports the candidates
+in `ambiguousProjects`.
+
+`resolveProjectHint` — behind `workflow_start`'s `project` and `fs_search` — searches
+the same containers, deterministically and exact-before-fuzzy: an absolute/`~` path wins
+outright, then an exact directory name or known alias probed container by container,
+then one bounded scan scoring exact package names above substrings. The exact-name probe
+refuses exactly what enumeration refuses — a symlinked entry (whether or not its target
+is legal) and a hidden directory. An explicit `rootHint` runs **every** strategy inside
+that root, including package and fuzzy matching, even when the global container list is
+already at its cap; a path hint may not leave it.
+
+### Project skill trust is earned, never assumed
+
+`skills_list` merges the global roots with the per-project roots of every project:
+`.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills`, `.codex/skills`.
+A project skill becomes `local` only when all three hold: the skill directory realpaths
+back *inside* its project; the directory and its `SKILL.md` are owned by MSO's uid; and
+`SKILL.md` is a regular file, not a symlink. Otherwise it is cataloged `untrusted` —
+metadata visible, instructions withheld until the operator reviews it and moves it into
+`~/.mso/skills`. The generic HOME agent roots keep their existing untrusted behaviour.
+
+The `SKILL.md` reader is `O_NOFOLLOW` **at the supplied path**, not at a canonicalized
+substitute. It previously realpath'd first and opened the *target*, so a
+`SKILL.md -> other/SKILL.md` symlink passed the basename check and was read — the nofollow
+promise enforced against a path the caller never gave. A symlinked `SKILL.md` is now not a
+skill at all: it is dropped from the catalog rather than listed as untrusted. Parent
+containment is validated separately, precisely so the final component is never dragged
+through `realpath` again.
+
+`workflow_start` and `skills_search` search this unified catalog; every skill hit carries
+its `project`, and the bootstrap carries a `discovery.complete` flag plus a
+`[Discovery] partial scan` trace line when the catalog was truncated.
 
 ## Semantic skill search and learned workflows
 
@@ -188,6 +344,25 @@ is limited to five downloads, sends `Cache-Control: no-store`, and is deleted af
 expiry/exhaustion. This provides visual progress without turning a read token into a
 general browser or public-file-hosting primitive.
 
+## Removed: provider-backed image generation
+
+`image_generation_status` and `image_generate` were removed on 2026-08-20, along with
+`lib/image-generation/`, the `OS_IMAGE_MODEL` / `OS_IMAGE_OUTPUT_ROOT` knobs and the
+Codex provider-side `image_generation` built-in. **A GPT client already carries its own
+image generation**, and offering a second tool for the same job made the model choose
+between them — usually wrong, and the MSO one billed a separate API key. Nothing
+replaces it: ask the client to generate the image with its own capability.
+
+Importing the result is unchanged and deliberately preserved: **`fs_upload_file`** takes
+one ChatGPT conversation/generated file through `openai/fileParams`, downloads the
+temporary OpenAI URL immediately (HTTPS only, `*.oaiusercontent.com` or an OpenAI
+regional `oaisdmnt*.blob.core.windows.net` storage account, redirects re-validated),
+checks type and size, writes inside `OS_FS_WRITE_ROOTS`, and returns bytes plus SHA-256.
+
+`OS_CODEX_BUILTIN_TOOLS` still exists and still takes an allowlisted list, but its
+default is now EMPTY and `image_generation` is no longer an accepted value — naming it
+is dropped, not honoured.
+
 ## What this does and does not protect
 
 Every tool goes through `lib/host`, so the MCP surface inherits the bounds that
@@ -245,7 +420,7 @@ mso mcp activity 100
 State-changing calls also land in the append-only security trail
 `~/.mso/audit.log`, with `actor=mcp:<id>` matching Settings → MCP and
 `mso mcp list`. The audit records `fs.write`, `fs.mkdir`, `fs.move`, `fs.copy`,
-`fs.delete`, `exec.run`, `managed-app.action`, `camoufox.power`,
+`fs.delete`, `fs.upload`, `exec.run`, `managed-app.action`, `camoufox.power`,
 `workflow.start`, `workflow.cancel`, `workflow.finish`, and `mcp.denied`. It is intentionally quieter
 than the activity stream so security-relevant lines are not buried by reads.
 
@@ -301,7 +476,8 @@ also carries the **per-operation** limit its route already applies, on the SAME
 bucket key — MCP and the browser share one allowance rather than getting one each.
 `exec_run` 60/min, fs writes 120/min, fs copy/delete 60/min, `apps_power` and
 `browser_power` 12/min per app. MCP-native expensive/stateful operations are
-stricter: `screen_capture` 10/min and workflow-memory writes 30/min.
+stricter: `screen_capture` 10/min, `projects_list` and `skills_list` 30/min,
+`skills_read` 60/min, and workflow-memory writes 30/min.
 
 ## Layout
 
@@ -310,15 +486,20 @@ lib/mcp/pkce.ts           S256 verify, base64url, hashing, redirect_uri rules
 lib/mcp/scope.ts          the read/write/exec ladder + the env kill switch
 lib/mcp/store.ts          ~/.mso/mcp.json — clients, codes, tokens (hashed)
 lib/mcp/tool-kit.ts       McpTool, direct image content and run context
-lib/mcp/tools-read.ts     bounded reads + skills_search + screen_capture
-lib/mcp/tools-learning.ts one-call bootstrap + start / cancel / finish
-lib/mcp/toolset.ts        server/toolset version, schema hash and scoped manifest
-lib/mcp/tools.ts          write/exec tools and the assembled catalog
+lib/mcp/tools-read.ts      bounded reads + skills_search + screen_capture
+lib/mcp/tools-discovery.ts projects_list / skills_list / skills_read — global discovery
+lib/mcp/tools-learning.ts  one-call bootstrap + start / cancel / finish
+lib/mcp/tools-power.ts     apps_power + browser_power
+lib/mcp/toolset.ts         server/toolset version, schema hash and scoped manifest
+lib/mcp/tools.ts           fs write tier and the assembled catalog
 lib/mcp/activity.ts       workflow-correlated live activity
 lib/mcp/dispatch.ts       JSON-RPC, scope checks, metadata, activity + recipe capture
-lib/host/projects.ts      bounded project resolution, aliases and repo context
+lib/host/projects.ts       project resolution across every container, plus aliases
+lib/host/project-roots.ts  every configured project container + bounded enumeration
+lib/host/project-meta.ts   symlink-refusing package.json / .git readers
 lib/host/guarded-write.ts optimistic SHA-256 file overwrite guard
-lib/skills/catalog.ts     trusted SKILL.md roots and provenance
+lib/skills/catalog.ts      global + per-project SKILL.md roots, ids and provenance
+lib/skills/project-skills.ts per-project roots and their earned-trust checks
 lib/skills/semantic.ts    local hybrid embedding/search primitives
 lib/skills/search.ts      unified skill/tool/recipe ranking
 lib/skills/memory.ts      migrated multi-run exact-id workflow and recipe store

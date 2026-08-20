@@ -4,6 +4,26 @@
 Newest first. `docs/PROGRESS.md` is the source of truth for *why* a change was made;
 this is the *what*, and it is what Settings → About shows as “What's new”.
 
+## 2026-08-20
+
+**Added**
+
+- `mcp` global project/skill discovery, drop image generation
+- `mcp` import ChatGPT generated files
+- `mcp` add provider-backed image generation
+
+**Fixed**
+
+- `mcp` lossless scan continuation and exact-id project resolution
+- `mcp` one project validator, dirent budgets, resumable caps
+- `mcp` contain, bound and uniquely identify project discovery
+- `mcp` make ChatGPT file imports region agnostic
+- `mcp` allow ChatGPT India South Central file storage
+- `mcp` allow ChatGPT New Zealand file storage
+- `mcp` allow ChatGPT Australia file storage
+- `mcp` allow ChatGPT regional file storage
+- `mcp` report rejected file host safely
+
 ## 2026-08-19
 
 **Added**

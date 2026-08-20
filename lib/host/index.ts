@@ -11,6 +11,8 @@ export { runCommand } from "./exec";
 export { sha256Text, utf8Bytes } from "./hash";
 export { writeFileGuarded } from "./guarded-write";
 export { resolveProjectHint, inspectProject } from "./projects";
+export { listProjects, listProjectDirs, projectRoots, PROJECT_LIMITS } from "./project-roots";
+export type { ProjectRow, ListProjectsResult } from "./project-roots";
 export { normalizeProjectKey, projectAliasesFor, projectAliasTarget } from "./project-aliases";
 export type { ProjectResolution } from "./projects";
 export { openPty, attachPty, writePty, resizePty, closePty, hasPty } from "./pty";

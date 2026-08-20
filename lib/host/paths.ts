@@ -115,7 +115,10 @@ export function isAppSecret(real: string): boolean {
   return path.dirname(real) === APP_DIR && base.startsWith(".env") && base !== ".env.example";
 }
 
-function isCredentialPath(real: string): boolean {
+/** Exported for the project/skill enumerators: they walk directory TREES the
+ *  per-path resolvers never see, and must drop a credential directory themselves
+ *  rather than discover it one `resolveReadable` too late. */
+export function isCredentialPath(real: string): boolean {
   const store = path.join(homeDir(), ".mso");
   if (real === store || isUnderRoot(real, store)) return true;
   if (isSensitivePath(real)) return true;

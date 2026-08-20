@@ -22,15 +22,18 @@ import type { OaMsg, OaTool } from "./openai-stream";
 // chat-only shortcut looked reasonable at the time.
 
 /** Provider-EXECUTED tools: declared by type alone, no schema, the provider runs
- *  them and streams the result back. `image_generation` is the one worth having —
- *  it is why "Codex can't do tools" was visibly false to anyone who had used it.
- *  Kept as an allowlist rather than pass-through: an unknown type is a 400. */
+ *  them and streams the result back. Kept as an allowlist rather than pass-through:
+ *  an unknown type is a 400.
+ *
+ *  `image_generation` is deliberately ABSENT. MSO no longer generates images on any
+ *  surface: a GPT client already carries its own image generation, and declaring a
+ *  second one made the model pick between two tools that do the same thing. Adding
+ *  it back means re-adding the capability, not flipping a flag. */
 const BUILTIN_TOOL_TYPES = new Set([
   "web_search",
   "web_search_preview",
   "file_search",
   "code_interpreter",
-  "image_generation",
   "computer_use_preview",
   "local_shell",
 ]);
@@ -39,11 +42,11 @@ type ResponsesTool =
   | { type: "function"; name: string; description: string; strict: boolean; parameters: Record<string, unknown> }
   | { type: string };
 
-/** Provider-run built-ins available to Codex. `image_generation` is enabled when
- *  the variable is absent; an explicit empty `OS_CODEX_BUILTIN_TOOLS=` disables all
- *  built-ins, while a comma/space-separated value replaces the default. */
+/** Provider-run built-ins available to Codex. NONE are enabled by default — the
+ *  owner opts in per deployment with a comma/space-separated `OS_CODEX_BUILTIN_TOOLS`
+ *  drawn from the allowlist above. Unknown entries are dropped rather than sent. */
 function builtinTools(): ResponsesTool[] {
-  return (process.env.OS_CODEX_BUILTIN_TOOLS ?? "image_generation")
+  return (process.env.OS_CODEX_BUILTIN_TOOLS ?? "")
     .split(/[\s,]+/)
     .filter((t) => BUILTIN_TOOL_TYPES.has(t))
     .map((type) => ({ type }));

@@ -39,6 +39,8 @@ export interface McpTool {
   scope: Scope;
   inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
   annotations?: Record<string, boolean>;
+  /** OpenAI Apps SDK metadata, including top-level file parameter binding. */
+  meta?: Record<string, unknown>;
   run: (a: Record<string, unknown>, context: McpRunContext) => Promise<unknown>;
   /** Which audit action this writes, and which argument names the target. Reads
    *  are deliberately unaudited (bounded + high-volume, same rule the /api/v1

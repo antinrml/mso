@@ -1,36 +1,27 @@
-import { createHash } from "crypto";
-import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
+import { scanRoot, type RootSpec } from "./catalog-scan";
+import { decodeSkillCursor, encodeSkillCursor } from "./catalog-cursor";
+import {
+  SKILL_FILE, SKILL_SCAN_LIMITS, skillIsExecutableByDefault,
+  type ProjectRef, type SkillInfo, type SkillScanCursor, type SkillScanReport, type SkillSource, type SkillTrust,
+} from "./catalog-types";
+import { discoveredProjects, projectSkillRoots } from "./project-skills";
 
-export const SKILL_FILE = "SKILL.md";
+export { SKILL_FILE, SKILL_SCAN_LIMITS, skillIsExecutableByDefault };
+export { readSkillFile, skillDescription } from "./catalog-scan";
+export { decodeSkillCursor, encodeSkillCursor } from "./catalog-cursor";
+export type { ProjectRef, SkillInfo, SkillScanCursor, SkillScanReport, SkillSource, SkillTrust };
 
-export type SkillTrust = "official" | "verified" | "local" | "untrusted";
-export type SkillSource = "mso" | "bundled" | "operator" | "claude" | "agents" | "codex" | "openclaw";
-
-export type SkillInfo = {
-  name: string;
-  path: string;
-  description: string;
-  source: SkillSource;
-  trust: SkillTrust;
-  provenance?: {
-    registry?: string;
-    owner?: string;
-    version?: string;
-    sha256?: string;
-  };
+type CatalogOptions = {
+  appDir?: string;
+  homeDir?: string;
+  /** Projects to scan for per-project skill roots. Defaults to every project across
+   *  every configured container; pass `[]` to catalog global roots only. */
+  projects?: ProjectRef[];
+  /** A `scan.continuation.cursor` from a truncated build, to resume it. */
+  cursor?: string;
 };
-
-type RootSpec = {
-  path: string;
-  source: SkillSource;
-  trust: SkillTrust;
-  priority: number;
-  verifyClawHub?: boolean;
-};
-
-type CatalogOptions = { appDir?: string; homeDir?: string };
 
 /**
  * Root priority is a security boundary, not just display order.
@@ -40,6 +31,10 @@ type CatalogOptions = { appDir?: string; homeDir?: string };
  * so installing a same-named OpenClaw/Claude/Codex skill cannot silently replace
  * MSO's own instructions. Bundled third-party skills are verified by their ClawHub
  * SKILL.md hash. Generic discovered roots are visible but untrusted.
+ *
+ * Per-project roots sit BELOW all of these (priority 56–60) and are addressed by a
+ * `<rootId>/<project>/<name>` id, so a project skill can neither outrank nor collide
+ * with an operator or official one — nor with the same-named project in another root.
  */
 export function skillRoots(appDir = process.cwd(), homeDir = os.homedir()): RootSpec[] {
   return [
@@ -54,98 +49,135 @@ export function skillRoots(appDir = process.cwd(), homeDir = os.homedir()): Root
   ];
 }
 
-/**
- * Skills intentionally live outside OS_FS_READ_ROOTS. Only an exact SKILL.md is
- * readable here. A symlink to ~/.ssh/config resolves to basename "config" and is
- * refused. A symlink to another SKILL.md is equivalent to placing a SKILL.md in a
- * skill root and is therefore handled by the trust/source policy above.
- */
-export async function readSkillFile(file: string): Promise<string | null> {
-  const real = await fs.realpath(file).catch(() => null);
-  if (!real || path.basename(real) !== SKILL_FILE) return null;
-  return fs.readFile(real, "utf8").catch(() => null);
-}
+export type SkillCatalog = { skills: SkillInfo[]; scan: SkillScanReport };
 
-async function isSkillDir(root: string, entry: { name: string; isDirectory(): boolean; isSymbolicLink(): boolean }): Promise<boolean> {
-  if (entry.isDirectory()) return true;
-  if (!entry.isSymbolicLink()) return false;
-  return (await fs.stat(path.join(root, entry.name)).catch(() => null))?.isDirectory() ?? false;
-}
+/** The full build, including what it could not cover. Callers that surface
+ *  completeness to a model or an operator must use this, not `catalogSkills`. */
+export async function catalogSkillsDetailed(options: CatalogOptions = {}): Promise<SkillCatalog> {
+  const appDir = options.appDir ?? process.cwd();
+  const homeDir = options.homeDir ?? os.homedir();
+  const deadlineAt = Date.now() + SKILL_SCAN_LIMITS.maxScanMs;
+  const cursor = decodeSkillCursor(options.cursor);
+  const reasons: string[] = [];
 
-export function skillDescription(md: string): string {
-  const yaml = /^---\n([\s\S]*?)\n---/.exec(md)?.[1];
-  const fromYaml = yaml?.match(/^description:\s*(.+)$/m)?.[1]?.replace(/^["']|["']$/g, "").trim();
-  if (fromYaml) return fromYaml;
-  return md.split("\n").find((line) => line.trim() && !line.startsWith("#") && !line.startsWith("---"))?.trim() ?? "";
-}
-
-type ClawHubOrigin = {
-  registry?: string;
-  ownerHandle?: string;
-  installedVersion?: string;
-  skillFile?: { sha256?: string };
-};
-
-async function verifiedBundledSkill(dir: string, md: string): Promise<Pick<SkillInfo, "trust" | "provenance">> {
-  const originPath = path.join(dir, ".clawhub/origin.json");
-  const raw = await fs.readFile(originPath, "utf8").catch(() => "");
-  if (!raw) return { trust: "untrusted" };
-  let origin: ClawHubOrigin;
-  try {
-    origin = JSON.parse(raw) as ClawHubOrigin;
-  } catch {
-    return { trust: "untrusted" };
+  let projects = options.projects;
+  if (!projects) {
+    const discovered = await discoveredProjects();
+    projects = discovered.projects;
+    reasons.push(...discovered.truncationReasons);
   }
-  const expected = origin.skillFile?.sha256?.toLowerCase();
-  const actual = createHash("sha256").update(md).digest("hex");
-  if (!expected || expected !== actual) return { trust: "untrusted" };
+  // `projectOffset` counts projects FULLY consumed by earlier pages; the partially
+  // consumed one is re-listed and resumed at its exact dirent position.
+  const projectOffset = Math.min(cursor?.projectOffset ?? 0, projects.length);
+  const remaining = projects.slice(projectOffset);
+  const { roots: projectRoots, truncated: projectsCapped } = await projectSkillRoots(remaining);
+  if (projectsCapped) reasons.push("maxProjects");
+
+  const globalSpecs = skillRoots(appDir, homeDir);
+  const specs: RootSpec[] = [
+    ...globalSpecs,
+    ...projectRoots.map((root): RootSpec => ({
+      path: root.path, source: "project", trust: "untrusted", priority: root.priority, project: root.project,
+    })),
+  ];
+  const doneRoots = new Set(cursor?.doneRoots ?? []);
+
+  const chosen = new Map<string, { skill: SkillInfo; priority: number }>();
+  const completedRoots: string[] = [];
+  const pendingRoots: string[] = [];
+  const consumedProjects: string[] = [];
+  let projectSkills = 0;
+  let resume: SkillScanCursor["resume"];
+  let stoppedAt = -1;
+
+  for (const [index, spec] of specs.entries()) {
+    if (doneRoots.has(spec.path)) { completedRoots.push(spec.path); continue; }
+    const skipEntries = cursor?.resume?.root === spec.path ? cursor.resume.entriesConsumed : 0;
+    const budget = spec.project ? SKILL_SCAN_LIMITS.maxProjectSkills - projectSkills : Number.POSITIVE_INFINITY;
+
+    if (Date.now() > deadlineAt) {
+      reasons.push("deadline");
+      resume = { root: spec.path, entriesConsumed: skipEntries };
+      stoppedAt = index;
+      break;
+    }
+    if (spec.project && budget <= 0) {
+      reasons.push("maxProjectSkills");
+      resume = { root: spec.path, entriesConsumed: skipEntries };
+      stoppedAt = index;
+      break;
+    }
+
+    const { found, stop, consumed } = await scanRoot(spec, deadlineAt, skipEntries, budget);
+    for (const candidate of found) {
+      if (spec.project) projectSkills += 1;
+      const current = chosen.get(candidate.skill.id);
+      if (!current || candidate.priority > current.priority) chosen.set(candidate.skill.id, candidate);
+    }
+
+    if (stop) {
+      reasons.push(stop === "budget" ? "maxProjectSkills" : stop === "deadline" ? "deadline" : `maxEntriesPerRoot:${spec.path}`);
+      // The exact dirent this root stopped on — never "the whole root is done".
+      resume = { root: spec.path, entriesConsumed: consumed };
+      stoppedAt = index;
+      break;
+    }
+    completedRoots.push(spec.path);
+    // A project counts as consumed only once EVERY one of its roots finished cleanly.
+    if (spec.project && specs.slice(index + 1).every((later) => later.project?.id !== spec.project!.id)) {
+      consumedProjects.push(spec.project.id);
+    }
+  }
+
+  if (stoppedAt >= 0) pendingRoots.push(...specs.slice(stoppedAt).map((r) => r.path));
+  const truncationReasons = [...new Set(reasons)];
+  const pendingProjects = Math.max(0, projects.length - projectOffset - consumedProjects.length);
   return {
-    trust: "verified",
-    provenance: {
-      registry: origin.registry,
-      owner: origin.ownerHandle,
-      version: origin.installedVersion,
-      sha256: actual,
+    skills: [...chosen.values()].map(({ skill }) => skill).sort((a, b) => a.id.localeCompare(b.id)),
+    scan: {
+      truncated: truncationReasons.length > 0,
+      truncationReasons,
+      scannedRoots: specs.length,
+      scannedProjects: consumedProjects.length,
+      ...(truncationReasons.length ? {
+        continuation: {
+          pendingRoots: [...new Set(pendingRoots)],
+          cursors: resume ? [resume] : [],
+          pendingProjects,
+          cursorSemantics: "readdir-position" as const,
+          note: "Pass `cursor` back to resume at the exact dirent the scan stopped on. Positions are readdir stream order and are valid while the directories are unchanged.",
+          cursor: encodeSkillCursor({
+            doneRoots: completedRoots,
+            projectOffset: projectOffset + consumedProjects.length,
+            ...(resume ? { resume } : {}),
+          }),
+        },
+      } : {}),
     },
   };
 }
 
 export async function catalogSkills(options: CatalogOptions = {}): Promise<SkillInfo[]> {
-  const appDir = options.appDir ?? process.cwd();
-  const homeDir = options.homeDir ?? os.homedir();
-  const chosen = new Map<string, { skill: SkillInfo; priority: number }>();
-
-  for (const spec of skillRoots(appDir, homeDir)) {
-    const entries = await fs.readdir(spec.path, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (!(await isSkillDir(spec.path, entry))) continue;
-      const dir = path.join(spec.path, entry.name);
-      const file = path.join(dir, SKILL_FILE);
-      const md = await readSkillFile(file);
-      if (!md) continue;
-
-      let trust = spec.trust;
-      let provenance: SkillInfo["provenance"];
-      if (spec.verifyClawHub) {
-        const verified = await verifiedBundledSkill(dir, md);
-        trust = verified.trust;
-        provenance = verified.provenance;
-      }
-
-      const candidate: SkillInfo = {
-        name: entry.name,
-        path: file,
-        description: skillDescription(md),
-        source: spec.source,
-        trust,
-        ...(provenance ? { provenance } : {}),
-      };
-      const current = chosen.get(candidate.name);
-      if (!current || spec.priority > current.priority) chosen.set(candidate.name, { skill: candidate, priority: spec.priority });
-    }
-  }
-
-  return [...chosen.values()].map(({ skill }) => skill).sort((a, b) => a.name.localeCompare(b.name));
+  return (await catalogSkillsDetailed(options)).skills;
 }
 
-export const skillIsExecutableByDefault = (skill: Pick<SkillInfo, "trust">): boolean => skill.trust !== "untrusted";
+/**
+ * Resolve a catalog id. The exact id always wins. A bare name is a CONVENIENCE, and
+ * only when it is unambiguous: two projects may legitimately ship `deploy`, and
+ * silently picking one would hand a model the wrong instructions. An ambiguous hint
+ * returns the candidate ids instead of a guess.
+ */
+export function resolveSkill(skills: SkillInfo[], idOrName: string): { skill?: SkillInfo; ambiguous?: string[] } {
+  const exact = skills.find((s) => s.id === idOrName);
+  if (exact) return { skill: exact };
+  const loose = skills.filter((s) =>
+    s.name === idOrName || (s.project ? `${s.project.name}/${s.name}` === idOrName : false));
+  if (loose.length === 1) return { skill: loose[0] };
+  if (loose.length > 1) return { ambiguous: loose.map((s) => s.id) };
+  return {};
+}
+
+/** Unambiguous-only lookup, for callers that just want a skill or a 404. */
+export function findSkill(skills: SkillInfo[], idOrName: string): SkillInfo | undefined {
+  return resolveSkill(skills, idOrName).skill;
+}

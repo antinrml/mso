@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { IS_DEMO } from "@/lib/demo";
-import { catalogSkills, readSkillFile, type SkillInfo } from "@/lib/skills/catalog";
+import { catalogSkillsDetailed, resolveSkill, readSkillFile, type SkillInfo } from "@/lib/skills/catalog";
 import { listLearnedRecipes } from "@/lib/skills/memory";
 import { searchSkillMemory } from "@/lib/skills/search";
 
@@ -9,8 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const demoSkills: SkillInfo[] = [
-  { name: "camoufox-browse", path: "demo://camoufox-browse", description: "Browser automation playbook for Camoufox.", source: "bundled", trust: "verified" },
-  { name: "vps-alfa", path: "demo://vps-alfa", description: "Patrol and assist VPS terminal panes.", source: "mso", trust: "official" },
+  { id: "camoufox-browse", name: "camoufox-browse", path: "demo://camoufox-browse", description: "Browser automation playbook for Camoufox.", source: "bundled", trust: "verified" },
+  { id: "vps-alfa", name: "vps-alfa", path: "demo://vps-alfa", description: "Patrol and assist VPS terminal panes.", source: "mso", trust: "official" },
 ];
 
 export async function GET(req: NextRequest) {
@@ -24,10 +24,10 @@ export async function GET(req: NextRequest) {
         query,
         hits: demoSkills
           .filter((s) => `${s.name} ${s.description}`.toLowerCase().includes(q))
-          .map((s) => ({ kind: "skill", id: s.name, name: s.name, score: 1, description: s.description, source: s.source, trust: s.trust })),
+          .map((s) => ({ kind: "skill", id: s.id, name: s.name, score: 1, description: s.description, source: s.source, trust: s.trust })),
       });
     }
-    const skill = name ? demoSkills.find((s) => s.name === name) : null;
+    const skill = name ? resolveSkill(demoSkills, name).skill : null;
     return skill
       ? NextResponse.json({ skill, content: `# ${skill.name}\n\n${skill.description}\n\nDemo mode only lists this skill; it does not run host automation.` })
       : NextResponse.json({ skills: demoSkills, recipes: [] });
@@ -43,16 +43,19 @@ export async function GET(req: NextRequest) {
     }));
   }
 
-  const skills = await catalogSkills();
+  const { skills, scan } = await catalogSkillsDetailed();
   if (!name) {
     const recipes = (await listLearnedRecipes()).map((r) => ({
       id: r.id, intent: r.intent, project: r.project, summary: r.summary, attempts: r.attempts,
       successes: r.successes, failures: r.failures, fastestDurationMs: r.fastestDurationMs, updatedAt: r.updatedAt,
     }));
-    return NextResponse.json({ skills, recipes });
+    return NextResponse.json({ skills, recipes, scan });
   }
 
-  const skill = skills.find((s) => s.name === name);
+  const { skill, ambiguous } = resolveSkill(skills, name);
+  // A bare name matching several projects is not a 404 and must not be a guess:
+  // returning one project's instructions under another's name is the whole bug.
+  if (ambiguous) return NextResponse.json({ error: "ambiguous", candidates: ambiguous }, { status: 409 });
   if (!skill) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const content = await readSkillFile(skill.path);
   if (content === null) return NextResponse.json({ error: "not_found" }, { status: 404 });

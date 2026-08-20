@@ -28,14 +28,14 @@ const capability = (name: string) => name.replace(/[._]/g, ".");
  *  reason. If a reason stops being true, delete the line and add the tool. */
 const ALFA_ONLY: Record<string, string> = {
   "app.open": "openWindow is browser store state; an MCP client has no window to open",
-  "skills.list": "the skill catalog is the assistant's own prompt furniture, not host control",
-  "skills.read": "same — and /api/skills reads outside the fs jail, so it stays off a bearer-reached surface",
   "memory.remember": "writes into the owner's Alfa recall, which an MCP client does not share",
   "memory.forget": "same store; an MCP client has its own memory",
 };
 
 const MCP_ONLY: Record<string, string> = {
   "screen.capture": "external MCP clients need visual proof of the rendered OS; in-shell Alfa already runs inside that browser UI",
+  "projects.list": "an MCP client has no sidebar and no Files window, so it needs an explicit bounded enumeration of every project container; in-shell Alfa reads the same roots through fs.list and the Files app",
+  "fs.upload.file": "external ChatGPT connectors need openai/fileParams to move conversation-generated files onto the VPS; in-shell Alfa already has direct host filesystem access",
   "workflow.start": "the external connector needs an actor-scoped task boundary; Alfa already owns an in-app conversation/run boundary",
   "workflow.cancel": "same actor-scoped boundary; external runs need explicit recovery from an interrupted task",
   "workflow.finish": "same actor-scoped learning loop; Alfa recipes can use the session route later without weakening MCP scope semantics",
@@ -92,13 +92,18 @@ describe("MCP rate limits mirror the routes", () => {
     // stricter, never laxer.
     const ROUTE_LIMITS: Record<string, number> = {
       "fs.write": 120, "fs.mkdir": 120, "fs.move": 120, "fs.copy": 60,
-      "fs.delete": 60, "exec": 60, "managed-app": 12, "camoufox": 12,
+      "fs.delete": 60, "fs.upload": 20, "exec": 60, "managed-app": 12, "camoufox": 12,
     };
     const MCP_NATIVE_LIMITS: Record<string, number> = {
       // screen_capture has no HTTP route by design; it exists only for connected
       // MCP clients and is expensive enough to deserve a much smaller bucket.
       "screen.capture": 10,
       "workflow.memory": 30,
+      // Global discovery reads: no HTTP route mirrors them, and each one walks
+      // every configured container, so they get their own small buckets.
+      "projects.list": 30,
+      "skills.list": 30,
+      "skills.read": 60,
     };
     for (const t of TOOLS) {
       if (!t.limit) continue;

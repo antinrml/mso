@@ -23,7 +23,7 @@ export const LEARNING_TOOLS: McpTool[] = [
     audit: { action: "workflow.start" as const, targetArg: "project" },
     inputSchema: S({
       intent: { type: "string", description: "The user's task in one complete sentence." },
-      project: { type: "string", description: "Optional project/workspace or alias, e.g. os-vps, mso, projects/mso." },
+      project: { type: "string", description: "Optional project id from projects_list, absolute path, name or alias (e.g. os-vps, mso, projects/mso)." },
       constraints: { type: "string", description: "Optional important constraints, such as no downtime or WebP only." },
     }, ["intent"]),
     run: async (a, context) => {
@@ -44,6 +44,13 @@ export const LEARNING_TOOLS: McpTool[] = [
         ? await inspectProject(project, { includeGitStatus: context.scope === "exec" }).catch(() => undefined)
         : undefined;
       const toolset = toolsetInfo(tools, context.scope);
+      // Discovery incompleteness travels WITH the bootstrap. A model told "here is the
+      // project and the trusted skills" will not re-check whether the scan covered the
+      // whole box; if it did not, it has to be told in the same breath.
+      const discovery = {
+        catalog: search.catalog,
+        complete: !search.catalog.truncated,
+      };
       const started = await startWorkflow({
         actor: context.actor,
         intent,
@@ -60,9 +67,11 @@ export const LEARNING_TOOLS: McpTool[] = [
           toolset,
           project: project ?? (projectHint ? { hint: projectHint, matchedBy: "unresolved" } : undefined),
           repository,
+          discovery,
           trace: [
             `[MSO] connected · ${context.scope} scope · ${toolset.toolCount} tools · ${toolset.version}/${toolset.hash}`,
             project ? `[Project] ${project.hint} → ${project.path} (${project.matchedBy})` : `[Project] ${projectHint ?? "not specified"}`,
+            ...(discovery.complete ? [] : [`[Discovery] partial scan — ${search.catalog.truncationReasons.join(", ")}; do not conclude something is absent`]),
             "[Plan] inspect → change → test/build when needed → verify → workflow_finish",
           ],
           policy: {

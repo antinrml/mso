@@ -11,6 +11,11 @@ export function findHostTool(name: string): HostTool | undefined {
 }
 
 // Anthropic `tools` array derived from the catalog (sent to /api/assistant).
+//
+// EVERY tool, on EVERY turn, for EVERY agent. There is no per-agent, per-playbook or
+// per-project filter here and there must not be one: see CONTRACT.md "tool scoping is
+// deleted, not repaired". The guard is the per-call approval card plus lib/host's
+// path jail, not a shortened list the user cannot see. registry.test.ts pins this.
 export const HOST_AI_TOOLS: AiTool[] = HOST_TOOLS.map((t) => ({
   name: t.name,
   description: t.description,
@@ -26,7 +31,7 @@ export const HOST_SYSTEM = [
   "READ tools (fs.*, sys.*, apps.list, skills.*, memory.*) run immediately.",
   "Use memory.remember to save lasting facts or preferences the user shares, and memory.forget to remove or correct them when asked — not one-off task details.",
   "WRITE tools (fs.write, fs.mkdir, fs.move, fs.copy, fs.delete) and exec.run require the user to APPROVE each call, and may be DENIED.",
-  "Specialized local skills such as camoufox can be discovered with skills.list/skills.read; execute their shell steps only through approved exec.run calls.",
+  "Skills across ALL of the owner's projects — not just the current one — are discoverable with skills.list/skills.search/skills.read; execute their shell steps only through approved exec.run calls.",
   "If a call is denied, do NOT retry the same call — explain, or propose an alternative and ask.",
   "Read/inspect before you mutate. Prefer one dependent call at a time. Confirm concisely when done; no meta-commentary.",
 ].join(" ");

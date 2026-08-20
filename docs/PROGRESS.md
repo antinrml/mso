@@ -8,7 +8,268 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
-## 2026-08-20 — image generation and full-access defaults (DONE)
+## 2026-08-20 — lossless continuation and exact-id project resolution (DONE)
+
+The final fail-closed review found six remaining items. Five were continuation bugs of the
+same species — a cursor that *described* where a scan stopped instead of *being* a position
+you could resume from.
+
+**Hidden `rootHint` still resolved.** `validateRootHint` checked the final entry for
+symlink, shape, uid and credentials but never for a dot-prefixed component, so supplying
+`<authorized-root>/.hidden` as the root resolved a project underneath it by exact name
+while enumeration refused the same tree. The hidden check is now measured *relative to the
+authorized root*: the root's own path may contain dot components (a checkout under
+`~/.claude/worktrees` does), but nothing below it may.
+
+**`maxRoots` could not advance, ever.** `listProjectDirs()` rebuilt the same capped
+`projectContainers()` on every call, so a 13th configured root stayed pending no matter how
+many times a client followed the cursor. Root identity is now an index into the *uncapped*
+configured list, `authorizedRoots(startIndex)` slides that window forward, and the
+continuation carries the index of the first root the scan could not honour.
+
+**`maxProjects` and `maxProjectSkills` lost entries.** Both derived a readdir position from
+sorted accepted rows and a global result count — arithmetic that cannot be truthful, and
+which emitted `entriesConsumed=400` for a root holding 250 dirents. Both walks are now a
+single streaming pass: each dirent is validated as it arrives, every cap is checked
+*before* the entry is touched, and the recorded position advances *only after* the entry is
+fully handled. The skill cursor separately records roots that finished cleanly, projects
+whose every root finished cleanly, and the exact position inside the one interrupted root —
+a partially consumed project is re-listed and resumed rather than marked done.
+
+**Deadlines skipped unprocessed entries.** Both scanners read every name, sorted, then
+validated; a deadline expiring during validation left the position past names nothing had
+looked at. Same streaming fix — the cursor cannot outrun the work.
+
+**Exact project ids were unusable through `workflow_start`.** `resolveProjectHint` had no
+root-qualified-id branch, so `<rootId>/<name>` fell through to fuzzy matching and, with two
+same-named projects, returned the *wrong* one. An exact `<32-hex>/<name>` is now parsed and
+resolved before alias, package or fuzzy; the rootId maps to exactly one container across
+every configured root; an unknown rootId is refused rather than guessed.
+
+The colliding pair from the previous review (`/tmp/mso-root-50323` and
+`/tmp/mso-root-125549`, both `51e156ef` at 8 hex) is now an end-to-end regression:
+`projects_list`, `skills_list`, `skills_read`, `skills_search` and `workflow_start` each
+return the **second** project when handed the second id. Continuation reproducers drain
+13 roots, 2×250 projects, a 437-entry root and a 150+160-skill pair to completion and
+assert no row is dropped or repeated. Note that there are deliberately two paginations —
+`hasMore`/`nextOffset` within one scan, `scan.continuation.cursor` across scans — and the
+docs now say so, because conflating them looks exactly like data loss.
+
+The positive suites are unchanged and green: all-agents-all-tools, the exec/read/write
+ladder, image generation removed everywhere, `fs_upload_file` with regional ChatGPT import,
+and auth/OAuth untouched. `project-identity.ts`, `project-authorized-roots.ts` and
+`catalog-cursor.ts` split the work so every file stays under 200 lines and the value-cycle
+count stays at zero. The MCP server/toolset advance to `1.5.3` / `2026.08.20.6`; the catalog
+stays at **26 tools** (14 read, 10 write, 2 exec).
+
+## 2026-08-20 — one validator, dirent-counted budgets, resumable caps (DONE)
+
+A second fail-closed re-review of the discovery hardening found six things still open.
+Five of them share a shape: a rule enforced in *one* code path and assumed everywhere
+else.
+
+**UID and symlink rules existed only in the walk.** `listProjectDirs()` rejected a
+project owned by another uid, but `resolveProjectHint`'s exact-name, alias and path
+strategies did not — so `workflow_start` could resolve, and read metadata from, a project
+`projects_list` correctly refused to show. `rootHint` went through `resolveReadable()`,
+which canonicalizes and therefore *follows* a symlinked root, and a path hint accepted
+hidden or symlink-reached directories inside it. There is now ONE validator
+(`lib/host/project-candidate.ts`) and every strategy calls it: hidden component, symlinked
+component (target legal or not), container/authorized-root escape, credential path, uid
+ownership — ownership before any metadata read. A path hint is checked component by
+component from the container down, because canonicalizing first and validating afterwards
+is precisely what let a symlinked intermediate through. `rootHint` is validated the same
+way, and authorized against *every* configured read root rather than the scan-capped
+subset, so naming a root neither widens the jail nor shrinks it.
+
+**`readSkillFile` was nofollow at the wrong path.** It realpath'd the supplied path, saw a
+basename of `SKILL.md`, and opened the *target* with `O_NOFOLLOW` — enforcing the promise
+against a path the caller never gave us. A `SKILL.md -> other/SKILL.md` symlink sailed
+through. The supplied path is now opened directly, so any symlink at that component fails
+with ELOOP; parent containment is a separate check, kept separate so the final component
+is never dragged back through `realpath`. A symlinked `SKILL.md` is no longer an untrusted
+skill — it is not a skill, and it is dropped from the catalog.
+
+**Budgets counted the wrong thing.** Both walks incremented their entry cap only for
+*accepted* entries, so a container holding a million regular files still cost a million
+iterations before the "400 entry" cap was reached — the cap bounded the result, not the
+work. Every dirent now consumes budget, and the deadline is enforced through the
+per-entry `lstat`/`realpath`/metadata work as well as the dirent loop. The overall
+300-project-skill cap moved inside the candidate loop; checking it only before each root
+let one root carry the total from just under 300 to nearly 500.
+
+**Caps were reported but not continuable.** A truncated scan named its reason and stopped.
+Every cap now emits `scan.continuation`: pending roots, per-root cursors, and an opaque
+`cursor` to pass back to `projects_list` / `skills_list` to resume where the walk stopped.
+Cursors are positional in readdir order and say so — name-ordered resume would require
+visiting every dirent, which is the unbounded walk the cap exists to prevent. Ordinary
+paging within one scan gained `hasMore`/`nextOffset`.
+
+**Eight hex characters is not a unique id.** `rootId` was 32 bits of sha256, and a probe
+found a genuine collision: `/tmp/mso-root-50323` and `/tmp/mso-root-125549` both hash to
+`51e156ef`, which would have merged two roots' same-named projects back into one row —
+the exact bug root-qualified ids were introduced to fix. It is 128 bits now, both sides
+share one `shortId` rather than each computing its own, and nothing dedupes on the hash at
+all: the internal key is the full canonical path, so even a collision cannot merge two
+containers. The collision pair is a regression fixture.
+
+Regressions cover each: exact/path/alias uid mismatch, symlinked and hidden `rootHint`
+and path hints, `SKILL.md -> SKILL.md`, a root of non-directory entries exhausting the
+cap, `maxProjectSkills` overshoot, resumable continuation for entry and project caps, and
+the deliberate root-id collision. The positive suites are unchanged and green:
+all-agents-all-tools, the exec/read/write ladder, image generation removed everywhere, and
+`fs_upload_file` with regional ChatGPT import. `project-candidate.ts`, `project-cursor.ts`,
+`project-list.ts` and `project-scan-types.ts` split the work so every file stays under 200
+lines. The MCP server/toolset advance to `1.5.2` / `2026.08.20.5`; the catalog stays at
+**26 tools** (14 read, 10 write, 2 exec).
+
+## 2026-08-20 — discovery containment, honest bounds and unique ids (DONE)
+
+A fail-closed review of the discovery release found three things worth blocking on, and
+all three came from the same habit: treating "we checked the happy path" as containment.
+
+**A symlinked `projects/` escaped the read jail.** `<root>/projects` was accepted on a
+plain `realpath`, so with `OS_FS_READ_ROOTS=/safe` and `/safe/projects -> /outside`, the
+enumerator walked `/outside` and project-skill discovery could mark same-uid skills there
+`local` — instructions handed to a model from outside the jail entirely. Each configured
+root is now canonicalized ONCE into an authorized root; a derived container must be a
+REAL non-symlink directory whose realpath stays inside that same root. A symlinked
+`projects/` is refused even when its target is currently legal, because accepting it is a
+TOCTOU bet. Every project candidate is re-checked too: non-hidden, non-symlink, realpath
+still inside its exact container AND an authorized root, and owned by MSO's uid — checked
+BEFORE any metadata read, so a directory another user controls never reaches the readers.
+
+**The advertised limits bounded nothing.** `readdir` materialized a whole container
+before slicing, global skill roots had no entry budget at all, and `package.json`,
+`SKILL.md` and `packed-refs` were read in full and sliced afterwards — so one read-scope
+`projects_list` on an attacker-influenced tree was a memory-exhaustion primitive. Both
+walks now use `opendir` and stop at the cap, global skill roots got the budget they were
+missing, and every metadata read goes through one `O_NOFOLLOW` reader that checks the cap
+against `fstat` before any bytes move. Each walk also carries a 4-second wall clock.
+
+**Truncation lied.** `projectRoots()` returned early after 12 roots and each container was
+silently sliced to 400 entries, yet only the separate 400-project condition set
+`truncated`. A caller could be told the scan was complete while configured containers were
+never opened. Every discovery response now carries a scan report: `truncated:false` means
+"this is all of it", and any cap sets `truncated:true` with a named reason
+(`maxRoots`, `maxEntriesPerRoot:<path>`, `maxProjects`, `maxProjectSkills`, `deadline`)
+plus `scannedRoots`, `skippedRoots` and a count of rejected entries. `workflow_start`
+carries `discovery.complete` and adds a `[Discovery] partial scan` trace line, and the
+tool descriptions tell the client not to conclude something is absent from a truncated
+scan.
+
+**Ids were not unique.** A project skill was `<project>/<name>`, deduped by that string,
+so two configured roots each holding a `widget` collapsed into one row and a whole
+project's skills were unreachable. Identity is now root-qualified: a project is
+`<rootId>/<name>` and its skills `<rootId>/<project>/<name>`, where `rootId` is a short
+sha256 of the canonical container path. The derived `projects/` container gets its own id
+for the same reason, so `~/widget` and `~/projects/widget` no longer collide. `skills_read`
+takes the exact id and REFUSES an ambiguous bare name with the candidate list rather than
+returning one project's instructions under another's name; `skills_list`'s project filter
+accepts an exact projectId, a path or a bare name, reporting `ambiguousProjects` when a
+bare name spans roots.
+
+**`rootHint` was half-wired.** Exact names probed the named root, but package and fuzzy
+resolution walked the global capped list and filtered — so a readable root absent from
+that list could never match by package or fuzzily. All three strategies now run inside the
+named root, and a path hint may not leave it. The exact-name probe also refuses a symlink
+(target legal or not) and a hidden directory, matching what enumeration excludes.
+
+Regressions cover every one of these: escaping and inside-jail symlinked containers,
+symlinked project entries, 13+ configured roots, 401+ entries in one container, duplicate
+project basenames across roots, oversized `package.json`/`SKILL.md`, uid mismatch,
+`rootHint` package and fuzzy resolution, and truthful truncation. The positive suites are
+unchanged and still green: all-agents-all-tools, the exec/read/write scope ladder, image
+generation removed everywhere, and `fs_upload_file` with regional ChatGPT import.
+`lib/host/project-containers.ts`, `project-roots.ts`, `bounded-read.ts` and
+`lib/skills/catalog-scan.ts` split the work so every file is back under 200 lines. The MCP
+server/toolset advance to `1.5.1` / `2026.08.20.4`; the catalog stays at **26 tools**
+(14 read, 10 write, 2 exec).
+
+## 2026-08-20 — global project/skill discovery, and image generation removed (DONE)
+
+**Capabilities are global now, and the docs say so.** Two invisible scopings shipped
+together and were both wrong for the same reason: MSO answered "what projects exist"
+and "what skills exist" from `~/projects` and the global skill roots alone. An owner
+who configured three read roots got one of them, and an agent working in project X
+could not see X's own `SKILL.md`. Nobody decided either; they were defaults nobody
+revisited. A capability that silently covers a subset of what the owner configured is
+worse than one that refuses.
+
+Three new `read` MCP tools. `projects_list` enumerates project directories across
+every configured container — each `OS_FS_READ_ROOTS` entry plus its `projects/` child,
+deduped by realpath, in configured order — with name, path, container root, package
+name/version and Git branch/head read straight off `.git` with no subprocess. Hidden
+dirs, symlinks and credential paths are excluded; the scan is bounded (12 containers,
+400 entries each, 400 projects) and paginated (default 50, max 200). `/` is never a
+container. `resolveProjectHint` searches the same containers, exact-before-fuzzy: an
+absolute/`~` path wins outright, then an exact name or alias probed container by
+container, then one bounded scan scoring exact package names above substrings — so an
+exact name in the second container beats a substring hit in the first.
+
+`skills_list` and `skills_read` merge the global roots with the **per-project** roots
+of every project: `.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills`,
+`.codex/skills`. Skills are now addressed by a catalog **id**: a global skill by bare
+name, a project skill as `<project>/<name>`. Two projects may both ship `deploy` and
+neither can displace an operator or official skill — the collision is impossible rather
+than resolved. `skills_read` takes the exact id and does not fuzzy-resolve into a
+project namespace. Project trust is EARNED, not inherited from the path: `local` only
+after realpath containment inside the project, ownership by MSO's uid, and a regular
+non-symlink `SKILL.md`. Everything else stays `untrusted` — metadata visible,
+instructions withheld until the operator reviews and promotes it into `~/.mso/skills`.
+The generic HOME agent roots keep their untrusted behaviour unchanged. `workflow_start`
+and `skills_search` search the unified catalog and each skill hit carries its project.
+Bounds: 60 projects, 100 skills per root, 300 project skills, 24,000 characters per read.
+
+`skills_list`/`skills_read` therefore exist on BOTH surfaces now, and their old
+`ALFA_ONLY` parity exemption ("stays off a bearer-reached surface") is gone. That was
+the right call for a fuzzy name-resolving reader; it is not for one that takes an exact
+catalog id, returns instructions only for trusted tiers, and still opens nothing but a
+realpath'd file named `SKILL.md`.
+
+**The global-tools invariant is now pinned, not just described.** Alfa already sent
+every tool on every turn; MCP already showed an `exec` token everything. Neither had a
+test that would fail if someone added a per-project filter. `lib/mcp/global-tools.test.ts`
+and a new block in `registry.test.ts` hold both: the exec catalog equals `TOOLS` exactly,
+`read`/`write` are strict prefixes by tier and nothing else, `workflow_id` is optional on
+every operational tool, `HOST_AI_TOOLS` is the same whole-catalog object every turn, and
+`registry.ts` exports nothing that could narrow it. The `read`/`write` opt-down and the
+`exec` consent default are unchanged and covered — the ladder is the security boundary;
+which tools exist is not.
+
+**Image generation is removed end-to-end.** `image_generation_status`, `image_generate`,
+`lib/image-generation/`, `OS_IMAGE_MODEL`, `OS_IMAGE_OUTPUT_ROOT`, the `image.generate`
+audit action and workflow-memory entries, and the Codex provider-side `image_generation`
+built-in are all gone. A GPT client already carries its own image generation; offering a
+second tool for the same job made the model choose between them, usually wrong, and the
+MSO one billed a separate API key. `OS_CODEX_BUILTIN_TOOLS` now defaults to EMPTY and no
+longer accepts `image_generation` — naming it explicitly is dropped, not honoured, and a
+test pins that. **`fs_upload_file` is deliberately preserved**, regional ChatGPT file
+import and `openai/fileParams` binding intact: generating elsewhere and importing here is
+the whole remaining flow. No tool description tells a client to prefer a native or
+provider image tool, and a test greps for that wording.
+
+`lib/mcp/tools.ts` shed `apps_power`/`browser_power` into `tools-power.ts` and the new
+tools live in `tools-discovery.ts`, so every file is back under the 200-line ceiling.
+`lib/host/project-meta.ts` and `project-roots.ts` split the symlink-refusing readers from
+the container enumeration. The MCP server/toolset advanced to `1.5.0` / `2026.08.20.3`,
+with **26 tools** (14 read, 10 write, 2 exec). See the entry above for the containment,
+bounds and id-uniqueness fixes that followed the review of this release.
+
+## 2026-08-20 — provider-backed MCP image generation (SUPERSEDED — removed same day)
+
+MCP now exposes `image_generation_status` (read) and `image_generate` (exec).
+Generation uses the official OpenAI Images API rather than the prior procedural
+icon scripts or the internal unofficial Codex backend. One billed call creates one
+lossless PNG sandbox master plus a prompt-free 0600 provenance sidecar containing
+provider/model/request id, prompt and byte hashes, dimensions, alpha status and
+eligibility findings. The raw prompt is excluded from activity, audit and learned
+workflow memory. The output root is write-jailed (`OS_IMAGE_OUTPUT_ROOT`, default
+`~/generated-images`), generated filenames are unique, temporary previews remain
+authenticated/expiring, and image calls are limited to 5/min. The MCP server/toolset
+advance to `1.4.0` / `2026.08.20.1`, with **24 tools**.
+
+## 2026-08-20 — image generation and full-access defaults (image half SUPERSEDED)
 
 Fresh MSO installs now expose Codex provider-side `image_generation` when
 `OS_CODEX_BUILTIN_TOOLS` is absent, matching the owner's expected assistant capability.
@@ -1502,3 +1763,7 @@ behaviorally verified on an isolated `:4011` dev server (prod never touched).
 *34 older entries (2026-05-29 → 2026-06-15) were trimmed on 2026-08-10 to keep
 this file readable as the source of truth it claims to be. Nothing referenced them
 by line, and they are one command away: `git show 421ab7f:docs/PROGRESS.md`.*
+
+## 2026-08-20 — ChatGPT generated-file → VPS bridge (DONE)
+
+MCP now exposes `fs_upload_file` with `_meta["openai/fileParams"]`, so ChatGPT can generate or receive an image first and then transfer the exact file bytes into an existing bounded VPS directory. The server accepts only temporary HTTPS OpenAI file references, caps imports at 20 MiB, validates image MIME types, inherits the existing write-root and credential denylist through `uploadInto`, audits as `fs.upload`, and returns byte count plus SHA-256 without persisting the temporary download URL.

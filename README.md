@@ -64,7 +64,7 @@ For a real deployment, put MSO behind **Tailscale, a VPN, or a TLS reverse proxy
 **Extend** — Alfa AI, modular slices, and custom apps.
 
 - **Use BYOK AI** — Alfa uses credentials stored on your server, not committed to the repo.
-- **Drive the box from ChatGPT, Claude.ai or Cursor** — an optional MCP server (OAuth 2.1 + PKCE) exposes files, system health and, if you grant it, a shell. Off unless you set `OS_MCP_ENABLED=1`, scoped read/write/exec per token, revocable from Settings. See [docs/MCP.md](./docs/MCP.md).
+- **Drive the box from ChatGPT, Claude.ai or Cursor** — an optional MCP server (OAuth 2.1 + PKCE) exposes files, system health, every project and every trusted skill across all of them, ChatGPT file import, and, if you grant it, a shell. A token sees the *whole* catalog for its tier: the read/write/exec ladder is the only thing that narrows it, never a per-project or per-agent filter. Off unless you set `OS_MCP_ENABLED=1`, revocable from Settings. See [docs/MCP.md](./docs/MCP.md).
 - **Add app slices** — features are modular under `frontend/slices/<slug>/`.
 - **Personalize the interface** — macOS, Windows, iOS, and Android shell layouts are UI preferences, not the core product.
 

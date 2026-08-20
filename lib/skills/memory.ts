@@ -206,6 +206,9 @@ const SAFE_TOOL_ARGS: Record<string, readonly string[]> = {
   fs_search: ["query", "root"],
   fs_usage: ["path"],
   apps_logs: ["id"],
+  projects_list: ["query", "limit", "offset"],
+  skills_list: ["project", "trust", "limit", "offset"],
+  skills_read: ["name"],
   screen_capture: ["shell", "width", "height"],
   fs_write: ["path"], // content is intentionally impossible to persist
   fs_mkdir: ["path"],

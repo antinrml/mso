@@ -78,12 +78,25 @@ shape, different storage, different lifecycle, and the names do not overlap.
 
 | | |
 |---|---|
-| Shape | `{ name, path, description, source, trust, provenance? }` — `lib/skills/catalog.ts` |
-| Source of truth | `GET /api/skills` — explicit operator root → official repo skills → hash-verified bundles → generic discovery roots |
-| Lifecycle | Files on disk; trust is derived from root/provenance, never self-declared by the skill |
-| Written by | MSO, the operator, or discovered agent registries |
+| Shape | `{ id, name, path, description, source, trust, project?, provenance? }` — `lib/skills/catalog-types.ts` |
+| Source of truth | `GET /api/skills` — explicit operator root → official repo skills → hash-verified bundles → generic HOME discovery roots → **per-project roots of every project on the box** |
+| Lifecycle | Files on disk; trust is derived from root/provenance/ownership, never self-declared by the skill |
+| Written by | MSO, the operator, a project checkout, or discovered agent registries |
 
-The model reaches trusted skills through the `skills.list` and `skills.read` **tools**. `official`, hash-`verified`, and explicit operator `local` skills are executable by default; generic discovered skills are cataloged as `untrusted` but their instructions are not fed directly to the model. `/skill` follows the same trust filter. There is no separate execution path.
+The model reaches trusted skills through the `skills.list`, `skills.search` and `skills.read` **tools**. `official`, hash-`verified`, explicit operator `local` and ownership-verified project skills are executable by default; generic discovered skills are cataloged as `untrusted` but their instructions are not fed directly to the model. `/skill` follows the same trust filter. There is no separate execution path.
+
+**Discovery is global, and addressed by id.** Skills come from every project across
+every configured project container (each `OS_FS_READ_ROOTS` entry and its `projects/`
+child), from `.mso/skills`, `.claude/skills`, `.hermes/skills`, `.agents/skills` and
+`.codex/skills`. A global skill's id is its bare name; a project skill's is
+`<rootId>/<project>/<name>`, where `rootId` is a 128-bit hash of the canonical container
+path (32 bits collided in practice) — so two projects with the same basename in
+*different* configured roots stay distinct, and neither can shadow an operator or official skill. A project skill earns
+`local` trust only after realpath containment inside its project, ownership by MSO's uid,
+and a regular non-symlink `SKILL.md`; the generic HOME agent roots stay untrusted.
+`skills.read` takes the exact id and refuses an ambiguous bare name rather than guessing.
+Every response carries a scan report, so a truncated catalog is never presented as
+complete. See [`docs/MCP.md`](../../../docs/MCP.md) and [`skills/README.md`](../../../skills/README.md).
 
 ## Agent
 
@@ -123,7 +136,12 @@ constant is reachable and must not be deleted as dead.
 
 ## Decided: tool scoping is deleted, not repaired
 
-Every agent gets all 18 tools. This is the contract, not a gap.
+Every agent gets **every** tool, on every turn — no per-agent, no per-playbook, and no
+per-project filter. This is the contract, not a gap. `registry.test.ts` pins it: the
+`HOST_AI_TOOLS` array is the whole catalog in catalog order, it is the same object on
+every turn, and `registry.ts` exports nothing that could narrow it. MCP holds the same
+invariant on its own side — an `exec` token sees and can call the entire catalog, and
+the read/write/exec ladder is the only thing that narrows it (`lib/mcp/global-tools.test.ts`).
 
 Four reasons, and the third is the one that settles it:
 
@@ -141,7 +159,9 @@ Four reasons, and the third is the one that settles it:
 4. **It makes an impossible state impossible.** With one tool set, a thread whose
    history holds `tool_use` for a tool "the new agent lacks" cannot occur.
 
-**Done 2026-07-30.** The tool picker, the "Generalist / Curated — by skill" switch,
+**Reaffirmed 2026-08-20** when MCP gained global project/skill discovery: capability
+scoping stayed deleted on both surfaces, and the removed MSO image generation was NOT
+replaced by a per-agent toggle. **Done 2026-07-30.** The tool picker, the "Generalist / Curated — by skill" switch,
 the per-agent Skills grant list and every string that counted tools per agent are
 gone; `toolsForAgent()` went with them. `agent.allTools` and `agent.skills` remain on
 the type because they are persisted and `store-migration.test.ts` covers them — they
@@ -158,8 +178,12 @@ re-discovers them as bugs.
 1. **`Skill.starters`** is typed, edited and labelled "shown as quick chips" — and
    nothing renders it. (`instructions` IS rendered, as the card body in the library
    grid; it just never reaches the model.)
-2. **`/api/skills` is uncached**, `force-dynamic`, ~90 files across 5 roots per
-   call.
+2. **`/api/skills` is uncached**, `force-dynamic`, and now walks the global roots PLUS
+   every project's skill roots on each call. Every cap is enforced and reported
+   (12 containers, 400 entries each, 60 projects, 200 entries per skill root, 300
+   project skills, 4 s per walk), so the worst case is bounded — but a wide box pays it
+   every time. A TTL cache is the obvious next step and was deliberately not added with
+   the discovery change.
 3. **The `Skill` → `Playbook` rename has not happened.** The code and the UI still
    say "Skill" for the localStorage type.
 
