@@ -70,6 +70,26 @@ async function hasApprovedSession(request: NextRequest): Promise<boolean> {
 // per-asset work). Prefix semantics kept exactly as the old negative lookahead's.
 const MATCHER_EXCLUDED = /^\/(?:_next\/static|_next\/image|favicon\.ico)/;
 
+const HERMES_WEBSITE_WEBHOOK_PATH = "/webhooks/antinrml-website";
+const HERMES_WEBSITE_BODY_LIMIT = 256 * 1024;
+
+// Cheap edge prefilter only. Hermes is still the cryptographic authority: it
+// verifies HMAC(secret, timestamp + "." + body). This rejects obvious public
+// garbage before it is proxied to the loopback listener without copying the
+// shared secret into MSO.
+function plausibleHermesWebsiteWebhook(request: NextRequest): boolean {
+  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.startsWith("application/json")) return false;
+  const timestamp = request.headers.get("x-webhook-timestamp") ?? "";
+  const seconds = Number(timestamp);
+  if (!Number.isInteger(seconds) || Math.abs(Math.floor(Date.now() / 1000) - seconds) > 300) return false;
+  if (!/^[0-9a-f]{64}$/i.test(request.headers.get("x-webhook-signature-v2") ?? "")) return false;
+  const length = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(length) && length > HERMES_WEBSITE_BODY_LIMIT) return false;
+  return true;
+}
+
+
 function blocked() {
   return NextResponse.json({ error: "cross_origin_blocked" }, { status: 403 });
 }
@@ -149,6 +169,24 @@ export async function proxy(request: NextRequest) {
   // lie (claiming an app host while on the cockpit) only restricts the request.
   const host = request.headers.get("host") ?? request.nextUrl.host;
   const managedApp = managedAppIdForHost(host);
+
+  // One deliberately public machine-to-machine lane on the Hermes app host.
+  // Discord itself still talks only to Convex; Convex signs the resulting job
+  // with HMAC V2 and POSTs it here. The destination is a hard-coded loopback
+  // path, so this cannot become a generic SSRF/open-relay primitive. Do this
+  // BEFORE the app-host CSRF gate: a server-to-server HMAC request has no cockpit
+  // session cookie and is cross-site by design. Hermes is the authentication
+  // boundary and rejects missing/invalid/replayed signatures.
+  if (
+    managedApp === "hermes" &&
+    request.method === "POST" &&
+    pathname === HERMES_WEBSITE_WEBHOOK_PATH &&
+    plausibleHermesWebsiteWebhook(request)
+  ) {
+    return NextResponse.rewrite(
+      new URL(`http://127.0.0.1:8644${HERMES_WEBSITE_WEBHOOK_PATH}`),
+    );
+  }
 
   // A host inside the app namespace that is NOT an app (a new `X.mso.rahmanef.com`
   // record, or a `*.os` wildcard) must not serve the cockpit: the session cookie is

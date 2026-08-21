@@ -8,6 +8,13 @@ Running log of what shipped each phase. Newest at top.
 > Read those phases as history. **This file is the source of truth for what exists** —
 > `ARCHITECTURE.md` is no longer maintained and carries a stale-warning banner.
 
+
+## 2026-08-21 — signed Convex → Hermes website relay on the existing MSO host (DONE)
+
+AntiNRML's Discord application uses one HTTP Interactions Endpoint (Convex), while Hermes' generic webhook listener intentionally stays on loopback-facing host port 8644. Docker/Traefik cannot reach arbitrary host ports by design, so opening 8644 for one integration would weaken the firewall. The Hermes app host now has exactly one machine-to-machine exception in `proxy.ts`: signed `POST /webhooks/antinrml-website` requests reach MSO on the already-allowed :4005 path and are rewritten by the host process to `127.0.0.1:8644/webhooks/antinrml-website`. Every other Hermes path keeps the normal app-host CSRF/session boundary.
+
+MSO does not duplicate the shared HMAC secret. It cheaply rejects non-JSON, stale timestamps, malformed signatures and declared bodies over 256 KiB; Hermes remains the cryptographic authority and verifies the full timestamp-bound HMAC before accepting a job. The target host/path is constant, so the exception cannot become SSRF or a generic webhook relay.
+
 ## 2026-08-20 — lossless continuation and exact-id project resolution (DONE)
 
 The final fail-closed review found six remaining items. Five were continuation bugs of the
