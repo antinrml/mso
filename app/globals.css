@@ -524,10 +524,11 @@ body {
    the jump moves (maximize/un-maximize/snap) animate. */
 .win-geo { transition: left var(--shell-dur) var(--shell-ease), top var(--shell-dur) var(--shell-ease), width var(--shell-dur) var(--shell-ease), height var(--shell-dur) var(--shell-ease); }
 
-@keyframes appOpen { from { transform: translateY(14px) scale(0.985); } to { transform: none; } }
-/* Dismiss-to-home: the app zooms down a touch + fades, revealing the home
-   behind it (real-iOS close). Finalized on animationend in mobile-shell. */
-@keyframes appClose { from { transform: none; opacity: 1; } to { transform: translateY(10px) scale(0.96); opacity: 0; } }
+/* Mobile app transitions intentionally do NOT scale/zoom the whole UI. On phones
+   a full-surface scale makes text and controls visibly breathe; a short spatial
+   translate keeps orientation/navigation feedback without changing perceived UI size. */
+@keyframes mobileAppOpen { from { transform: translateY(10px); } to { transform: none; } }
+@keyframes mobileAppClose { from { transform: none; opacity: 1; } to { transform: translateY(8px); opacity: 0; } }
 /* Live-wallpaper blob drift (transform-only — compositor-friendly). */
 @keyframes wpFloatA { 0%, 100% { transform: translate(-10%, -6%) scale(1); } 50% { transform: translate(12%, 8%) scale(1.18); } }
 @keyframes wpFloatB { 0%, 100% { transform: translate(8%, 10%) scale(1.1); } 50% { transform: translate(-10%, -8%) scale(0.92); } }
