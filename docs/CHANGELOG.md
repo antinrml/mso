@@ -8,6 +8,7 @@ this is the *what*, and it is what Settings → About shows as “What's new”.
 
 **Fixed**
 
+- `git` isolate push-gate test repositories
 - `settings` improve MCP UI and activity scrolling
 
 ## 2026-08-21
